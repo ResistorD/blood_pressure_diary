@@ -1,0 +1,52 @@
+{
+  "settings": "Настройки",
+  "selectLanguage": "Выбор языка",
+  "appTitle": "Дневник давления",
+  "notifications": "Уведомления",
+  "clearData": "Очистить данные",
+  "aboutApp": "О приложении",
+  "version": "Версия {version}",
+  "@version": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "functionInDevelopment": "Функция в разработке",
+  "deleteRecordQ": "Удалить запись?",
+  "cannotUndo": "Это действие нельзя отменить.",
+  "cancel": "Отмена",
+  "delete": "Удалить",
+  "theme": "Тема",
+  "light": "Светлая",
+  "dark": "Темная",
+  "system": "Системная",
+  "reminders": "Напоминания",
+  "addReminder": "Добавить время",
+  "clearDataConfirm": "Вы уверены, что хотите удалить все записи? Это действие нельзя отменить.",
+  "yes": "Да",
+  "no": "Нет",
+  "export": "Экспорт данных",
+  "exportCSV": "CSV Таблица",
+  "exportPDF": "PDF Отчет",
+  "contactSupport": "Написать нам",
+  "rateApp": "Оценить приложение",
+  "supportEmail": "your_email@mail.com",
+  "profile": "Профиль",
+  "name": "Имя",
+  "age": "Возраст",
+  "gender": "Пол",
+  "weight": "Вес",
+  "male": "Мужской",
+  "female": "Женский",
+  "other": "Другой",
+  "myGoal": "Моя цель",
+  "targetPressure": "Целевое давление",
+  "systolic": "Систолическое",
+  "diastolic": "Диастолическое",
+  "premium": "Премиум",
+  "oneTimePayment": "Разовый платеж 2,99 €",
+  "buyPremium": "Купить Премиум",
+  "save": "Сохранить"
+}

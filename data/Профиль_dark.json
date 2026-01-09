@@ -1,0 +1,798 @@
+{
+  "metadata": {
+    "exportedAt": "2026-01-09T00:41:28.500Z",
+    "componentName": "Профиль (тёмный)",
+    "totalElements": 47,
+    "nestingDepth": 3,
+    "plugin": "Figma to JSON Exporter"
+  },
+  "designTokens": {
+    "colors": {
+      "color-rgb(45, 45, 45)": "rgb(45, 45, 45)",
+      "color-rgb(60, 60, 60)": "rgb(60, 60, 60)",
+      "color-rgb(204, 204, 204)": "rgb(204, 204, 204)",
+      "color-rgb(76, 76, 76)": "rgb(76, 76, 76)",
+      "color-rgb(240, 244, 248)": "rgb(240, 244, 248)"
+    },
+    "fonts": {
+      "inter": {
+        "family": "Inter",
+        "sizes": {
+          "size-24": "24px",
+          "size-16": "16px",
+          "size-20": "20px",
+          "size-12": "12px",
+          "size-14": "14px"
+        },
+        "weights": {
+          "weight-600": "600",
+          "weight-400": "400",
+          "weight-500": "500"
+        }
+      }
+    },
+    "spacing": {},
+    "effects": {
+      "shadow-4-2": {
+        "x": 0,
+        "y": 2,
+        "blur": 4,
+        "color": "rgba(0, 0, 0, 0.10000000149011612)"
+      }
+    }
+  },
+  "structure": {
+    "name": "----------------",
+    "type": "FRAME",
+    "size": {
+      "w": 360,
+      "h": 800
+    },
+    "styles": {
+      "bg": "rgb(45, 45, 45)",
+      "radius": 30,
+      "layout": {
+        "direction": "row",
+        "gap": 0,
+        "align": {
+          "main": "start",
+          "cross": "start"
+        }
+      }
+    },
+    "children": [
+      {
+        "name": "rectangle-4",
+        "type": "RECTANGLE",
+        "size": {
+          "w": 360,
+          "h": 128
+        },
+        "styles": {
+          "bg": "rgb(60, 60, 60)",
+          "shadow": {
+            "x": 0,
+            "y": 2,
+            "blur": 4,
+            "color": "rgba(0, 0, 0, 0.25)"
+          }
+        }
+      },
+      {
+        "name": "-------",
+        "type": "TEXT",
+        "size": {
+          "w": 190,
+          "h": 34
+        },
+        "content": "Профиль",
+        "styles": {
+          "bg": "rgb(204, 204, 204)",
+          "text": {
+            "family": "Inter",
+            "size": 24,
+            "weight": "600",
+            "align": "left"
+          }
+        }
+      },
+      {
+        "name": "rectangle-7",
+        "type": "VECTOR",
+        "size": {
+          "w": 320,
+          "h": 128
+        },
+        "styles": {
+          "bg": "rgb(76, 76, 76)",
+          "radius": 10,
+          "shadow": {
+            "x": 0,
+            "y": 2,
+            "blur": 4,
+            "color": "rgba(0, 0, 0, 0.10000000149011612)"
+          }
+        }
+      },
+      {
+        "name": "-------",
+        "type": "TEXT",
+        "size": {
+          "w": 72,
+          "h": 16
+        },
+        "content": "Аккаунт",
+        "styles": {
+          "bg": "rgb(204, 204, 204)",
+          "text": {
+            "family": "Inter",
+            "size": 16,
+            "weight": "600",
+            "align": "left"
+          }
+        }
+      },
+      {
+        "name": "rectangle-20",
+        "type": "RECTANGLE",
+        "size": {
+          "w": 296,
+          "h": 84
+        },
+        "styles": {
+          "bg": "rgb(76, 76, 76)",
+          "border": {
+            "width": 1,
+            "color": "rgb(60, 60, 60)"
+          },
+          "radius": 10
+        }
+      },
+      {
+        "name": "rectangle-22",
+        "type": "RECTANGLE",
+        "size": {
+          "w": 296,
+          "h": 84
+        },
+        "styles": {
+          "bg": "rgb(240, 244, 248)",
+          "radius": 10
+        }
+      },
+      {
+        "name": "rectangle-19",
+        "type": "RECTANGLE",
+        "size": {
+          "w": 272,
+          "h": 48
+        },
+        "styles": {
+          "bg": "rgb(45, 45, 45)",
+          "radius": 10
+        }
+      },
+      {
+        "name": "-----",
+        "type": "TEXT",
+        "size": {
+          "w": 108,
+          "h": 24
+        },
+        "content": "Войти",
+        "styles": {
+          "bg": "rgb(204, 204, 204)",
+          "text": {
+            "family": "Inter",
+            "size": 20,
+            "weight": "600",
+            "align": "center"
+          }
+        }
+      },
+      {
+        "name": "---------------------",
+        "type": "TEXT",
+        "size": {
+          "w": 140,
+          "h": 16
+        },
+        "content": "Вы не вошли в аккаунт",
+        "styles": {
+          "bg": "rgb(204, 204, 204)",
+          "text": {
+            "family": "Inter",
+            "size": 12,
+            "weight": "400",
+            "align": "left"
+          }
+        }
+      },
+      {
+        "name": "rectangle-23",
+        "type": "RECTANGLE",
+        "size": {
+          "w": 320,
+          "h": 361
+        },
+        "styles": {
+          "bg": "rgb(76, 76, 76)",
+          "radius": 10,
+          "shadow": {
+            "x": 0,
+            "y": 2,
+            "blur": 4,
+            "color": "rgba(0, 0, 0, 0.10000000149011612)"
+          }
+        }
+      },
+      {
+        "name": "rectangle-31",
+        "type": "RECTANGLE",
+        "size": {
+          "w": 272,
+          "h": 48
+        },
+        "styles": {
+          "bg": "rgb(45, 45, 45)",
+          "radius": 10
+        }
+      },
+      {
+        "name": "--------------",
+        "type": "TEXT",
+        "size": {
+          "w": 207,
+          "h": 23
+        },
+        "content": "Убрать рекламу",
+        "styles": {
+          "bg": "rgb(204, 204, 204)",
+          "text": {
+            "family": "Inter",
+            "size": 20,
+            "weight": "600",
+            "align": "center"
+          }
+        }
+      },
+      {
+        "name": "rectangle-24",
+        "type": "RECTANGLE",
+        "size": {
+          "w": 296,
+          "h": 48
+        },
+        "styles": {
+          "bg": "rgb(60, 60, 60)",
+          "radius": 10
+        }
+      },
+      {
+        "name": "rectangle-28",
+        "type": "RECTANGLE",
+        "size": {
+          "w": 296,
+          "h": 97
+        },
+        "styles": {
+          "border": {
+            "width": 1,
+            "color": "rgb(60, 60, 60)"
+          },
+          "radius": 10
+        }
+      },
+      {
+        "name": "rectangle-25",
+        "type": "RECTANGLE",
+        "size": {
+          "w": 140,
+          "h": 48
+        },
+        "styles": {
+          "bg": "rgb(60, 60, 60)",
+          "radius": 10
+        }
+      },
+      {
+        "name": "rectangle-26",
+        "type": "RECTANGLE",
+        "size": {
+          "w": 140,
+          "h": 48
+        },
+        "styles": {
+          "bg": "rgb(60, 60, 60)",
+          "radius": 10
+        }
+      },
+      {
+        "name": "-------",
+        "type": "TEXT",
+        "size": {
+          "w": 178,
+          "h": 24
+        },
+        "content": "Дмитрий",
+        "styles": {
+          "bg": "rgb(204, 204, 204)",
+          "text": {
+            "family": "Inter",
+            "size": 20,
+            "weight": "500",
+            "align": "left"
+          }
+        }
+      },
+      {
+        "name": "---",
+        "type": "TEXT",
+        "size": {
+          "w": 80,
+          "h": 17
+        },
+        "content": "Имя",
+        "styles": {
+          "bg": "rgb(204, 204, 204)",
+          "text": {
+            "family": "Inter",
+            "size": 14,
+            "weight": "400",
+            "align": "left"
+          }
+        }
+      },
+      {
+        "name": "---",
+        "type": "TEXT",
+        "size": {
+          "w": 34,
+          "h": 18
+        },
+        "content": "Пол",
+        "styles": {
+          "bg": "rgb(204, 204, 204)",
+          "text": {
+            "family": "Inter",
+            "size": 14,
+            "weight": "400",
+            "align": "left"
+          }
+        }
+      },
+      {
+        "name": "----",
+        "type": "TEXT",
+        "size": {
+          "w": 52,
+          "h": 24
+        },
+        "content": "Муж.",
+        "styles": {
+          "bg": "rgb(204, 204, 204)",
+          "text": {
+            "family": "Inter",
+            "size": 20,
+            "weight": "500",
+            "align": "left"
+          }
+        }
+      },
+      {
+        "name": "-------",
+        "type": "TEXT",
+        "size": {
+          "w": 88,
+          "h": 24
+        },
+        "content": "Верхнее",
+        "styles": {
+          "bg": "rgb(204, 204, 204)",
+          "text": {
+            "family": "Inter",
+            "size": 20,
+            "weight": "500",
+            "align": "left"
+          }
+        }
+      },
+      {
+        "name": "------",
+        "type": "TEXT",
+        "size": {
+          "w": 88,
+          "h": 23
+        },
+        "content": "Нижнее",
+        "styles": {
+          "bg": "rgb(204, 204, 204)",
+          "text": {
+            "family": "Inter",
+            "size": 20,
+            "weight": "500",
+            "align": "left"
+          }
+        }
+      },
+      {
+        "name": "-------------",
+        "type": "TEXT",
+        "size": {
+          "w": 136,
+          "h": 18
+        },
+        "content": "Дата рождения",
+        "styles": {
+          "bg": "rgb(204, 204, 204)",
+          "text": {
+            "family": "Inter",
+            "size": 14,
+            "weight": "400",
+            "align": "left"
+          }
+        }
+      },
+      {
+        "name": "25-12-1980",
+        "type": "TEXT",
+        "size": {
+          "w": 116,
+          "h": 24
+        },
+        "content": "25.12.1980",
+        "styles": {
+          "bg": "rgb(204, 204, 204)",
+          "text": {
+            "family": "Inter",
+            "size": 20,
+            "weight": "500",
+            "align": "center"
+          }
+        }
+      },
+      {
+        "name": "--------------",
+        "type": "TEXT",
+        "size": {
+          "w": 129,
+          "h": 17
+        },
+        "content": "Нормы давления",
+        "styles": {
+          "bg": "rgb(204, 204, 204)",
+          "text": {
+            "family": "Inter",
+            "size": 14,
+            "weight": "400",
+            "align": "left"
+          }
+        }
+      },
+      {
+        "name": "rectangle-27",
+        "type": "RECTANGLE",
+        "size": {
+          "w": 69,
+          "h": 42
+        },
+        "styles": {
+          "bg": "rgb(76, 76, 76)",
+          "radius": 10
+        }
+      },
+      {
+        "name": "rectangle-29",
+        "type": "RECTANGLE",
+        "size": {
+          "w": 137,
+          "h": 43
+        },
+        "styles": {
+          "bg": "rgb(60, 60, 60)",
+          "radius": 10
+        }
+      },
+      {
+        "name": "rectangle-30",
+        "type": "RECTANGLE",
+        "size": {
+          "w": 137,
+          "h": 44
+        },
+        "styles": {
+          "bg": "rgb(60, 60, 60)",
+          "radius": 10
+        }
+      },
+      {
+        "name": "----",
+        "type": "TEXT",
+        "size": {
+          "w": 51,
+          "h": 24
+        },
+        "content": "Жен.",
+        "styles": {
+          "bg": "rgb(204, 204, 204)",
+          "text": {
+            "family": "Inter",
+            "size": 20,
+            "weight": "500",
+            "align": "left"
+          }
+        }
+      },
+      {
+        "name": "---------------------------",
+        "type": "TEXT",
+        "size": {
+          "w": 240,
+          "h": 20
+        },
+        "content": "Политика конфиденциальности",
+        "styles": {
+          "bg": "rgb(204, 204, 204)",
+          "text": {
+            "family": "Inter",
+            "size": 12,
+            "weight": "400",
+            "align": "center"
+          }
+        }
+      },
+      {
+        "name": "120",
+        "type": "TEXT",
+        "size": {
+          "w": 85,
+          "h": 23
+        },
+        "content": "120",
+        "styles": {
+          "bg": "rgb(204, 204, 204)",
+          "text": {
+            "family": "Inter",
+            "size": 20,
+            "weight": "500",
+            "align": "right"
+          }
+        }
+      },
+      {
+        "name": "80",
+        "type": "TEXT",
+        "size": {
+          "w": 85,
+          "h": 22
+        },
+        "content": "80",
+        "styles": {
+          "bg": "rgb(204, 204, 204)",
+          "text": {
+            "family": "Inter",
+            "size": 20,
+            "weight": "500",
+            "align": "right"
+          }
+        }
+      },
+      {
+        "name": "---------------2-99-------------",
+        "type": "TEXT",
+        "size": {
+          "w": 240,
+          "h": 14
+        },
+        "content": "Разовый платеж 2,99 € -  навсегда",
+        "styles": {
+          "bg": "rgb(204, 204, 204)",
+          "text": {
+            "family": "Inter",
+            "size": 12,
+            "weight": "400",
+            "align": "center"
+          }
+        }
+      },
+      {
+        "name": "rectangle-18",
+        "type": "RECTANGLE",
+        "size": {
+          "w": 360,
+          "h": 69
+        },
+        "styles": {
+          "bg": "rgb(76, 76, 76)"
+        }
+      },
+      {
+        "name": "ellipse-14",
+        "type": "ELLIPSE",
+        "size": {
+          "w": 86,
+          "h": 86
+        }
+      },
+      {
+        "name": "ellipse-15",
+        "type": "ELLIPSE",
+        "size": {
+          "w": 86,
+          "h": 86
+        },
+        "styles": {
+          "shadow": {
+            "x": 0,
+            "y": 2,
+            "blur": 4,
+            "color": "rgba(0, 0, 0, 0.10000000149011612)"
+          }
+        }
+      },
+      {
+        "name": "ellipse-16",
+        "type": "ELLIPSE",
+        "size": {
+          "w": 60,
+          "h": 60
+        },
+        "styles": {
+          "bg": "rgb(45, 45, 45)"
+        }
+      },
+      {
+        "name": "plus",
+        "type": "INSTANCE",
+        "size": {
+          "w": 0,
+          "h": 0
+        }
+      },
+      {
+        "name": "lucide-house",
+        "type": "FRAME",
+        "size": {
+          "w": 30,
+          "h": 30
+        },
+        "styles": {
+          "layout": {
+            "direction": "row",
+            "gap": 0,
+            "align": {
+              "main": "start",
+              "cross": "start"
+            }
+          }
+        },
+        "children": [
+          {
+            "name": "vector",
+            "type": "VECTOR",
+            "size": {
+              "w": 23,
+              "h": 24
+            },
+            "styles": {
+              "border": {
+                "width": 2,
+                "color": "rgb(204, 204, 204)"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "name": "lucide-user-pen",
+        "type": "FRAME",
+        "size": {
+          "w": 30,
+          "h": 30
+        },
+        "styles": {
+          "layout": {
+            "direction": "row",
+            "gap": 0,
+            "align": {
+              "main": "start",
+              "cross": "start"
+            }
+          }
+        },
+        "children": [
+          {
+            "name": "vector",
+            "type": "VECTOR",
+            "size": {
+              "w": 24,
+              "h": 24
+            },
+            "styles": {
+              "border": {
+                "width": 2,
+                "color": "rgb(116, 116, 116)"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "name": "lucide-settings",
+        "type": "FRAME",
+        "size": {
+          "w": 30,
+          "h": 30
+        },
+        "styles": {
+          "layout": {
+            "direction": "row",
+            "gap": 0,
+            "align": {
+              "main": "start",
+              "cross": "start"
+            }
+          }
+        },
+        "children": [
+          {
+            "name": "vector",
+            "type": "VECTOR",
+            "size": {
+              "w": 23,
+              "h": 25
+            },
+            "styles": {
+              "border": {
+                "width": 2,
+                "color": "rgb(204, 204, 204)"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "name": "lucide-chart-no-axes-combined",
+        "type": "FRAME",
+        "size": {
+          "w": 24,
+          "h": 24
+        },
+        "styles": {
+          "layout": {
+            "direction": "row",
+            "gap": 0,
+            "align": {
+              "main": "start",
+              "cross": "start"
+            }
+          }
+        },
+        "children": [
+          {
+            "name": "vector",
+            "type": "VECTOR",
+            "size": {
+              "w": 20,
+              "h": 18
+            },
+            "styles": {
+              "border": {
+                "width": 2,
+                "color": "rgb(204, 204, 204)"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "summary": {
+    "components": 0,
+    "instances": 1,
+    "frames": 5,
+    "texts": 19,
+    "hasAutoLayout": true,
+    "hasEffects": true
+  }
+}

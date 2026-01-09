@@ -1,0 +1,42 @@
+D:\PROJECT_AS\BLOOD_PRESSURE_DIARY\LIB
+│   main.dart
+│   
+├───core
+│   ├───database
+│   │       isar_service.dart
+│   │       
+│   ├───di
+│   │       service_locator.dart
+│   │       
+│   ├───theme
+│   │       app_theme.dart
+│   │       
+│   └───utils
+│           validation_utils.dart
+│           
+└───features
+    ├───add_record
+    │   └───presentation
+    │       │   add_record_screen.dart
+    │       │   
+    │       ├───bloc
+    │       │       add_record_bloc.dart
+    │       │       add_record_event.dart
+    │       │       add_record_state.dart
+    │       │       
+    │       └───widgets
+    │               custom_keypad.dart
+    │               
+    └───home
+        ├───data
+        │       blood_pressure_model.dart
+        │       blood_pressure_model.g.dart
+        │       pressure_repository.dart
+        │       
+        └───presentation
+            │   home_screen.dart
+            │   
+            └───widgets
+                    header_card.dart
+                    record_list_item.dart
+)

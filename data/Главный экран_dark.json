@@ -1,0 +1,1257 @@
+{
+  "metadata": {
+    "exportedAt": "2026-01-09T00:39:14.571Z",
+    "componentName": "Главный экран (тёмный)",
+    "totalElements": 75,
+    "nestingDepth": 4,
+    "plugin": "Figma to JSON Exporter"
+  },
+  "designTokens": {
+    "colors": {
+      "color-rgb(45, 45, 45)": "rgb(45, 45, 45)",
+      "color-rgb(76, 76, 76)": "rgb(76, 76, 76)",
+      "color-rgb(60, 60, 60)": "rgb(60, 60, 60)",
+      "color-rgb(255, 255, 255)": "rgb(255, 255, 255)",
+      "color-rgb(204, 204, 204)": "rgb(204, 204, 204)",
+      "color-rgb(61, 190, 101)": "rgb(61, 190, 101)",
+      "color-rgb(90, 142, 246)": "rgb(90, 142, 246)",
+      "color-rgb(218, 63, 63)": "rgb(218, 63, 63)"
+    },
+    "fonts": {
+      "inter": {
+        "family": "Inter",
+        "sizes": {
+          "size-26": "26px",
+          "size-16": "16px",
+          "size-22": "22px",
+          "size-30": "30px",
+          "size-20": "20px"
+        },
+        "weights": {
+          "weight-600": "600",
+          "weight-700": "700",
+          "weight-400": "400"
+        }
+      }
+    },
+    "spacing": {},
+    "effects": {
+      "shadow-4-0": {
+        "x": 0,
+        "y": 0,
+        "blur": 4,
+        "color": "rgba(0, 0, 0, 0.25)"
+      },
+      "shadow-4-2": {
+        "x": 0,
+        "y": 2,
+        "blur": 4,
+        "color": "rgba(0, 0, 0, 0.10000000149011612)"
+      }
+    }
+  },
+  "structure": {
+    "name": "----------------------",
+    "type": "FRAME",
+    "size": {
+      "w": 360,
+      "h": 800
+    },
+    "styles": {
+      "bg": "rgb(45, 45, 45)",
+      "radius": 30,
+      "layout": {
+        "direction": "row",
+        "gap": 0,
+        "align": {
+          "main": "start",
+          "cross": "start"
+        }
+      }
+    },
+    "children": [
+      {
+        "name": "rectangle-5",
+        "type": "RECTANGLE",
+        "size": {
+          "w": 360,
+          "h": 80
+        },
+        "styles": {
+          "bg": "rgb(76, 76, 76)",
+          "shadow": {
+            "x": 0,
+            "y": 0,
+            "blur": 4,
+            "color": "rgba(0, 0, 0, 0.25)"
+          }
+        }
+      },
+      {
+        "name": "rectangle-4",
+        "type": "RECTANGLE",
+        "size": {
+          "w": 360,
+          "h": 160
+        },
+        "styles": {
+          "bg": "rgb(60, 60, 60)"
+        }
+      },
+      {
+        "name": "rectangle-2",
+        "type": "VECTOR",
+        "size": {
+          "w": 320,
+          "h": 114
+        },
+        "styles": {
+          "bg": "rgb(45, 45, 45)",
+          "radius": 10,
+          "shadow": {
+            "x": 0,
+            "y": 2,
+            "blur": 4,
+            "color": "rgba(0, 0, 0, 0.10000000149011612)"
+          }
+        }
+      },
+      {
+        "name": "-----------",
+        "type": "TEXT",
+        "size": {
+          "w": 190,
+          "h": 30
+        },
+        "content": "Мой дневник",
+        "styles": {
+          "bg": "rgb(255, 255, 255)",
+          "text": {
+            "family": "Inter",
+            "size": 26,
+            "weight": "600",
+            "align": "left"
+          }
+        }
+      },
+      {
+        "name": "rectangle-3",
+        "type": "RECTANGLE",
+        "size": {
+          "w": 360,
+          "h": 69
+        },
+        "styles": {
+          "bg": "rgb(76, 76, 76)"
+        }
+      },
+      {
+        "name": "rounded-rectangle",
+        "type": "RECTANGLE",
+        "size": {
+          "w": 101,
+          "h": 32
+        },
+        "styles": {
+          "bg": "rgb(76, 76, 76)",
+          "radius": 5
+        }
+      },
+      {
+        "name": "-------",
+        "type": "TEXT",
+        "size": {
+          "w": 93,
+          "h": 24
+        },
+        "content": "Сегодня",
+        "styles": {
+          "bg": "rgb(255, 255, 255)",
+          "text": {
+            "family": "Inter",
+            "size": 16,
+            "weight": "600",
+            "align": "center"
+          }
+        }
+      },
+      {
+        "name": "arrow_drop_down",
+        "type": "INSTANCE",
+        "size": {
+          "w": 0,
+          "h": 0
+        }
+      },
+      {
+        "name": "frame-4",
+        "type": "FRAME",
+        "size": {
+          "w": 243,
+          "h": 56
+        },
+        "styles": {
+          "layout": {
+            "direction": "row",
+            "gap": 0,
+            "align": {
+              "main": "start",
+              "cross": "start"
+            }
+          }
+        },
+        "children": [
+          {
+            "name": "rectangle-5",
+            "type": "RECTANGLE",
+            "size": {
+              "w": 243,
+              "h": 56
+            },
+            "styles": {
+              "bg": "rgb(76, 76, 76)",
+              "radius": 5
+            }
+          },
+          {
+            "name": "120-80-170",
+            "type": "TEXT",
+            "size": {
+              "w": 179,
+              "h": 29
+            },
+            "content": "120/80            170",
+            "styles": {
+              "bg": "rgb(204, 204, 204)",
+              "text": {
+                "family": "Inter",
+                "size": 22,
+                "weight": "700",
+                "align": "left"
+              }
+            }
+          },
+          {
+            "name": "lucide-arrow-down-up",
+            "type": "FRAME",
+            "size": {
+              "w": 24,
+              "h": 24
+            },
+            "styles": {
+              "layout": {
+                "direction": "row",
+                "gap": 0,
+                "align": {
+                  "main": "start",
+                  "cross": "start"
+                }
+              }
+            },
+            "children": [
+              {
+                "name": "vector",
+                "type": "VECTOR",
+                "size": {
+                  "w": 18,
+                  "h": 16
+                },
+                "styles": {
+                  "border": {
+                    "width": 2,
+                    "color": "rgb(204, 204, 204)"
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "name": "lucide-activity",
+            "type": "FRAME",
+            "size": {
+              "w": 24,
+              "h": 24
+            },
+            "styles": {
+              "layout": {
+                "direction": "row",
+                "gap": 0,
+                "align": {
+                  "main": "start",
+                  "cross": "start"
+                }
+              }
+            },
+            "children": [
+              {
+                "name": "vector",
+                "type": "VECTOR",
+                "size": {
+                  "w": 20,
+                  "h": 20
+                },
+                "styles": {
+                  "border": {
+                    "width": 2,
+                    "color": "rgb(204, 204, 204)"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "frame-5",
+        "type": "FRAME",
+        "size": {
+          "w": 243,
+          "h": 56
+        },
+        "styles": {
+          "layout": {
+            "direction": "row",
+            "gap": 0,
+            "align": {
+              "main": "start",
+              "cross": "start"
+            }
+          }
+        },
+        "children": [
+          {
+            "name": "rectangle-5",
+            "type": "RECTANGLE",
+            "size": {
+              "w": 243,
+              "h": 56
+            },
+            "styles": {
+              "bg": "rgb(76, 76, 76)",
+              "radius": 5
+            }
+          },
+          {
+            "name": "120-80-150",
+            "type": "TEXT",
+            "size": {
+              "w": 179,
+              "h": 29
+            },
+            "content": "120/80           150",
+            "styles": {
+              "bg": "rgb(204, 204, 204)",
+              "text": {
+                "family": "Inter",
+                "size": 22,
+                "weight": "700",
+                "align": "left"
+              }
+            }
+          },
+          {
+            "name": "lucide-arrow-down-up",
+            "type": "FRAME",
+            "size": {
+              "w": 24,
+              "h": 24
+            },
+            "styles": {
+              "layout": {
+                "direction": "row",
+                "gap": 0,
+                "align": {
+                  "main": "start",
+                  "cross": "start"
+                }
+              }
+            },
+            "children": [
+              {
+                "name": "vector",
+                "type": "VECTOR",
+                "size": {
+                  "w": 18,
+                  "h": 16
+                },
+                "styles": {
+                  "border": {
+                    "width": 2,
+                    "color": "rgb(204, 204, 204)"
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "name": "lucide-activity",
+            "type": "FRAME",
+            "size": {
+              "w": 24,
+              "h": 24
+            },
+            "styles": {
+              "layout": {
+                "direction": "row",
+                "gap": 0,
+                "align": {
+                  "main": "start",
+                  "cross": "start"
+                }
+              }
+            },
+            "children": [
+              {
+                "name": "vector",
+                "type": "VECTOR",
+                "size": {
+                  "w": 20,
+                  "h": 20
+                },
+                "styles": {
+                  "border": {
+                    "width": 2,
+                    "color": "rgb(204, 204, 204)"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "ellipse-2",
+        "type": "ELLIPSE",
+        "size": {
+          "w": 86,
+          "h": 86
+        }
+      },
+      {
+        "name": "ellipse-10",
+        "type": "ELLIPSE",
+        "size": {
+          "w": 86,
+          "h": 86
+        },
+        "styles": {
+          "shadow": {
+            "x": 0,
+            "y": 2,
+            "blur": 4,
+            "color": "rgba(0, 0, 0, 0.10000000149011612)"
+          }
+        }
+      },
+      {
+        "name": "ellipse-3",
+        "type": "ELLIPSE",
+        "size": {
+          "w": 60,
+          "h": 60
+        },
+        "styles": {
+          "bg": "rgb(45, 45, 45)"
+        }
+      },
+      {
+        "name": "120-80",
+        "type": "TEXT",
+        "size": {
+          "w": 139,
+          "h": 46
+        },
+        "content": "120/80",
+        "styles": {
+          "bg": "rgb(204, 204, 204)",
+          "text": {
+            "family": "Inter",
+            "size": 30,
+            "weight": "600",
+            "align": "left"
+          }
+        }
+      },
+      {
+        "name": "75-------",
+        "type": "TEXT",
+        "size": {
+          "w": 114,
+          "h": 38
+        },
+        "content": "75 уд/мин",
+        "styles": {
+          "bg": "rgb(255, 255, 255)",
+          "text": {
+            "family": "Inter",
+            "size": 16,
+            "weight": "600",
+            "align": "left"
+          }
+        }
+      },
+      {
+        "name": "08-00",
+        "type": "TEXT",
+        "size": {
+          "w": 74,
+          "h": 29
+        },
+        "content": "08:00",
+        "styles": {
+          "bg": "rgb(204, 204, 204)",
+          "text": {
+            "family": "Inter",
+            "size": 20,
+            "weight": "600",
+            "align": "left"
+          }
+        }
+      },
+      {
+        "name": "---------8-------",
+        "type": "TEXT",
+        "size": {
+          "w": 147,
+          "h": 22
+        },
+        "content": "Сегодня, 8 января",
+        "styles": {
+          "bg": "rgb(204, 204, 204)",
+          "text": {
+            "family": "Inter",
+            "size": 16,
+            "weight": "600",
+            "align": "left"
+          }
+        }
+      },
+      {
+        "name": "7--------2026-------------",
+        "type": "TEXT",
+        "size": {
+          "w": 228,
+          "h": 22
+        },
+        "content": "7 января 2026, понедельник",
+        "styles": {
+          "bg": "rgb(204, 204, 204)",
+          "text": {
+            "family": "Inter",
+            "size": 16,
+            "weight": "600",
+            "align": "left"
+          }
+        }
+      },
+      {
+        "name": "5--------",
+        "type": "TEXT",
+        "size": {
+          "w": 84,
+          "h": 22
+        },
+        "content": "5 записей",
+        "styles": {
+          "bg": "rgb(204, 204, 204)",
+          "text": {
+            "family": "Inter",
+            "size": 16,
+            "weight": "600",
+            "align": "left"
+          }
+        }
+      },
+      {
+        "name": "frame-1",
+        "type": "FRAME",
+        "size": {
+          "w": 243,
+          "h": 56
+        },
+        "styles": {
+          "layout": {
+            "direction": "row",
+            "gap": 0,
+            "align": {
+              "main": "start",
+              "cross": "start"
+            }
+          }
+        },
+        "children": [
+          {
+            "name": "rectangle-5",
+            "type": "RECTANGLE",
+            "size": {
+              "w": 243,
+              "h": 56
+            },
+            "styles": {
+              "bg": "rgb(76, 76, 76)",
+              "radius": 5
+            }
+          },
+          {
+            "name": "115-80-1-70",
+            "type": "TEXT",
+            "size": {
+              "w": 179,
+              "h": 29
+            },
+            "content": "115/80            1 70",
+            "styles": {
+              "bg": "rgb(204, 204, 204)",
+              "text": {
+                "family": "Inter",
+                "size": 22,
+                "weight": "700",
+                "align": "left"
+              }
+            }
+          },
+          {
+            "name": "lucide-arrow-up-down",
+            "type": "FRAME",
+            "size": {
+              "w": 24,
+              "h": 24
+            },
+            "styles": {
+              "layout": {
+                "direction": "row",
+                "gap": 0,
+                "align": {
+                  "main": "start",
+                  "cross": "start"
+                }
+              }
+            },
+            "children": [
+              {
+                "name": "vector",
+                "type": "VECTOR",
+                "size": {
+                  "w": 18,
+                  "h": 16
+                },
+                "styles": {
+                  "border": {
+                    "width": 2,
+                    "color": "rgb(204, 204, 204)"
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "name": "lucide-activity",
+            "type": "FRAME",
+            "size": {
+              "w": 24,
+              "h": 24
+            },
+            "styles": {
+              "layout": {
+                "direction": "row",
+                "gap": 0,
+                "align": {
+                  "main": "start",
+                  "cross": "start"
+                }
+              }
+            },
+            "children": [
+              {
+                "name": "vector",
+                "type": "VECTOR",
+                "size": {
+                  "w": 20,
+                  "h": 20
+                },
+                "styles": {
+                  "border": {
+                    "width": 2,
+                    "color": "rgb(204, 204, 204)"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "frame-2",
+        "type": "FRAME",
+        "size": {
+          "w": 243,
+          "h": 56
+        },
+        "styles": {
+          "layout": {
+            "direction": "row",
+            "gap": 0,
+            "align": {
+              "main": "start",
+              "cross": "start"
+            }
+          }
+        },
+        "children": [
+          {
+            "name": "rectangle-5",
+            "type": "RECTANGLE",
+            "size": {
+              "w": 243,
+              "h": 56
+            },
+            "styles": {
+              "bg": "rgb(76, 76, 76)",
+              "radius": 5
+            }
+          },
+          {
+            "name": "105-65-170",
+            "type": "TEXT",
+            "size": {
+              "w": 179,
+              "h": 29
+            },
+            "content": "105/65            170",
+            "styles": {
+              "bg": "rgb(204, 204, 204)",
+              "text": {
+                "family": "Inter",
+                "size": 22,
+                "weight": "700",
+                "align": "left"
+              }
+            }
+          },
+          {
+            "name": "lucide-arrow-down-up",
+            "type": "FRAME",
+            "size": {
+              "w": 24,
+              "h": 24
+            },
+            "styles": {
+              "layout": {
+                "direction": "row",
+                "gap": 0,
+                "align": {
+                  "main": "start",
+                  "cross": "start"
+                }
+              }
+            },
+            "children": [
+              {
+                "name": "vector",
+                "type": "VECTOR",
+                "size": {
+                  "w": 18,
+                  "h": 16
+                },
+                "styles": {
+                  "border": {
+                    "width": 2,
+                    "color": "rgb(204, 204, 204)"
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "name": "lucide-activity",
+            "type": "FRAME",
+            "size": {
+              "w": 24,
+              "h": 24
+            },
+            "styles": {
+              "layout": {
+                "direction": "row",
+                "gap": 0,
+                "align": {
+                  "main": "start",
+                  "cross": "start"
+                }
+              }
+            },
+            "children": [
+              {
+                "name": "vector",
+                "type": "VECTOR",
+                "size": {
+                  "w": 20,
+                  "h": 20
+                },
+                "styles": {
+                  "border": {
+                    "width": 2,
+                    "color": "rgb(204, 204, 204)"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "frame-6",
+        "type": "FRAME",
+        "size": {
+          "w": 243,
+          "h": 56
+        },
+        "styles": {
+          "layout": {
+            "direction": "row",
+            "gap": 0,
+            "align": {
+              "main": "start",
+              "cross": "start"
+            }
+          }
+        },
+        "children": [
+          {
+            "name": "rectangle-5",
+            "type": "RECTANGLE",
+            "size": {
+              "w": 243,
+              "h": 56
+            },
+            "styles": {
+              "bg": "rgb(76, 76, 76)",
+              "radius": 5
+            }
+          },
+          {
+            "name": "170-95-170",
+            "type": "TEXT",
+            "size": {
+              "w": 179,
+              "h": 29
+            },
+            "content": "170/95            170",
+            "styles": {
+              "bg": "rgb(204, 204, 204)",
+              "text": {
+                "family": "Inter",
+                "size": 22,
+                "weight": "700",
+                "align": "left"
+              }
+            }
+          },
+          {
+            "name": "lucide-arrow-down-up",
+            "type": "FRAME",
+            "size": {
+              "w": 24,
+              "h": 24
+            },
+            "styles": {
+              "layout": {
+                "direction": "row",
+                "gap": 0,
+                "align": {
+                  "main": "start",
+                  "cross": "start"
+                }
+              }
+            },
+            "children": [
+              {
+                "name": "vector",
+                "type": "VECTOR",
+                "size": {
+                  "w": 18,
+                  "h": 16
+                },
+                "styles": {
+                  "border": {
+                    "width": 2,
+                    "color": "rgb(204, 204, 204)"
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "name": "lucide-activity",
+            "type": "FRAME",
+            "size": {
+              "w": 24,
+              "h": 24
+            },
+            "styles": {
+              "layout": {
+                "direction": "row",
+                "gap": 0,
+                "align": {
+                  "main": "start",
+                  "cross": "start"
+                }
+              }
+            },
+            "children": [
+              {
+                "name": "vector",
+                "type": "VECTOR",
+                "size": {
+                  "w": 20,
+                  "h": 20
+                },
+                "styles": {
+                  "border": {
+                    "width": 2,
+                    "color": "rgb(204, 204, 204)"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "lucide-clock",
+        "type": "FRAME",
+        "size": {
+          "w": 20,
+          "h": 20
+        },
+        "styles": {
+          "layout": {
+            "direction": "row",
+            "gap": 0,
+            "align": {
+              "main": "start",
+              "cross": "start"
+            }
+          }
+        },
+        "children": [
+          {
+            "name": "vector--stroke-",
+            "type": "VECTOR",
+            "size": {
+              "w": 18,
+              "h": 18
+            },
+            "styles": {
+              "bg": "rgb(204, 204, 204)"
+            }
+          }
+        ]
+      },
+      {
+        "name": "ellipse-5",
+        "type": "ELLIPSE",
+        "size": {
+          "w": 15,
+          "h": 15
+        },
+        "styles": {
+          "bg": "rgb(61, 190, 101)"
+        }
+      },
+      {
+        "name": "ellipse-8",
+        "type": "ELLIPSE",
+        "size": {
+          "w": 15,
+          "h": 15
+        },
+        "styles": {
+          "bg": "rgb(61, 190, 101)"
+        }
+      },
+      {
+        "name": "ellipse-6",
+        "type": "ELLIPSE",
+        "size": {
+          "w": 15,
+          "h": 15
+        },
+        "styles": {
+          "bg": "rgb(90, 142, 246)"
+        }
+      },
+      {
+        "name": "ellipse-9",
+        "type": "ELLIPSE",
+        "size": {
+          "w": 15,
+          "h": 15
+        },
+        "styles": {
+          "bg": "rgb(61, 190, 101)"
+        }
+      },
+      {
+        "name": "ellipse-7",
+        "type": "ELLIPSE",
+        "size": {
+          "w": 15,
+          "h": 15
+        },
+        "styles": {
+          "bg": "rgb(218, 63, 63)"
+        }
+      },
+      {
+        "name": "09-00",
+        "type": "TEXT",
+        "size": {
+          "w": 52,
+          "h": 16
+        },
+        "content": "09:00",
+        "styles": {
+          "bg": "rgb(204, 204, 204)",
+          "text": {
+            "family": "Inter",
+            "size": 16,
+            "weight": "400",
+            "align": "left"
+          }
+        }
+      },
+      {
+        "name": "23-00",
+        "type": "TEXT",
+        "size": {
+          "w": 52,
+          "h": 16
+        },
+        "content": "23:00",
+        "styles": {
+          "bg": "rgb(204, 204, 204)",
+          "text": {
+            "family": "Inter",
+            "size": 16,
+            "weight": "400",
+            "align": "left"
+          }
+        }
+      },
+      {
+        "name": "10-00",
+        "type": "TEXT",
+        "size": {
+          "w": 52,
+          "h": 16
+        },
+        "content": "10:00",
+        "styles": {
+          "bg": "rgb(204, 204, 204)",
+          "text": {
+            "family": "Inter",
+            "size": 16,
+            "weight": "400",
+            "align": "left"
+          }
+        }
+      },
+      {
+        "name": "15-00",
+        "type": "TEXT",
+        "size": {
+          "w": 52,
+          "h": 16
+        },
+        "content": "15:00",
+        "styles": {
+          "bg": "rgb(204, 204, 204)",
+          "text": {
+            "family": "Inter",
+            "size": 16,
+            "weight": "400",
+            "align": "left"
+          }
+        }
+      },
+      {
+        "name": "19-00",
+        "type": "TEXT",
+        "size": {
+          "w": 52,
+          "h": 16
+        },
+        "content": "19:00",
+        "styles": {
+          "bg": "rgb(204, 204, 204)",
+          "text": {
+            "family": "Inter",
+            "size": 16,
+            "weight": "400",
+            "align": "left"
+          }
+        }
+      },
+      {
+        "name": "plus",
+        "type": "INSTANCE",
+        "size": {
+          "w": 0,
+          "h": 0
+        }
+      },
+      {
+        "name": "lucide-house",
+        "type": "FRAME",
+        "size": {
+          "w": 30,
+          "h": 30
+        },
+        "styles": {
+          "layout": {
+            "direction": "row",
+            "gap": 0,
+            "align": {
+              "main": "start",
+              "cross": "start"
+            }
+          }
+        },
+        "children": [
+          {
+            "name": "vector",
+            "type": "VECTOR",
+            "size": {
+              "w": 23,
+              "h": 24
+            },
+            "styles": {
+              "border": {
+                "width": 2,
+                "color": "rgb(116, 116, 116)"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "name": "lucide-user-pen",
+        "type": "FRAME",
+        "size": {
+          "w": 30,
+          "h": 30
+        },
+        "styles": {
+          "layout": {
+            "direction": "row",
+            "gap": 0,
+            "align": {
+              "main": "start",
+              "cross": "start"
+            }
+          }
+        },
+        "children": [
+          {
+            "name": "vector",
+            "type": "VECTOR",
+            "size": {
+              "w": 24,
+              "h": 24
+            },
+            "styles": {
+              "border": {
+                "width": 2,
+                "color": "rgb(204, 204, 204)"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "name": "lucide-settings",
+        "type": "FRAME",
+        "size": {
+          "w": 30,
+          "h": 30
+        },
+        "styles": {
+          "layout": {
+            "direction": "row",
+            "gap": 0,
+            "align": {
+              "main": "start",
+              "cross": "start"
+            }
+          }
+        },
+        "children": [
+          {
+            "name": "vector",
+            "type": "VECTOR",
+            "size": {
+              "w": 23,
+              "h": 25
+            },
+            "styles": {
+              "border": {
+                "width": 2,
+                "color": "rgb(204, 204, 204)"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "name": "check",
+        "type": "INSTANCE",
+        "size": {
+          "w": 0,
+          "h": 0
+        }
+      },
+      {
+        "name": "lucide-chart-no-axes-combined",
+        "type": "FRAME",
+        "size": {
+          "w": 24,
+          "h": 24
+        },
+        "styles": {
+          "layout": {
+            "direction": "row",
+            "gap": 0,
+            "align": {
+              "main": "start",
+              "cross": "start"
+            }
+          }
+        },
+        "children": [
+          {
+            "name": "vector",
+            "type": "VECTOR",
+            "size": {
+              "w": 20,
+              "h": 18
+            },
+            "styles": {
+              "border": {
+                "width": 2,
+                "color": "rgb(204, 204, 204)"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "summary": {
+    "components": 0,
+    "instances": 3,
+    "frames": 21,
+    "texts": 18,
+    "hasAutoLayout": true,
+    "hasEffects": true
+  }
+}

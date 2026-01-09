@@ -1,0 +1,98 @@
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../data/blood_pressure_model.dart';
+import 'statistics_state.dart';
+
+class StatisticsCubit extends Cubit<StatisticsState> {
+  final List<BloodPressureRecord> _allRecords;
+
+  StatisticsCubit(
+    this._allRecords, {
+    int targetSystolic = 120,
+    int targetDiastolic = 80,
+  }) : super(StatisticsState(
+          targetSystolic: targetSystolic,
+          targetDiastolic: targetDiastolic,
+        )) {
+    updatePeriod(StatisticsPeriod.sevenDays);
+  }
+
+  void updatePeriod(StatisticsPeriod period) {
+    final now = DateTime.now();
+    List<BloodPressureRecord> filtered;
+
+    switch (period) {
+      case StatisticsPeriod.sevenDays:
+        filtered = _allRecords
+            .where((r) => r.dateTime.isAfter(now.subtract(const Duration(days: 7))))
+            .toList();
+        break;
+      case StatisticsPeriod.thirtyDays:
+        filtered = _allRecords
+            .where((r) => r.dateTime.isAfter(now.subtract(const Duration(days: 30))))
+            .toList();
+        break;
+      case StatisticsPeriod.all:
+        filtered = List.from(_allRecords);
+        break;
+    }
+
+    filtered.sort((a, b) => a.dateTime.compareTo(b.dateTime));
+    
+    // Thinning if records > 100
+    if (filtered.length > 100) {
+      final int skip = (filtered.length / 50).floor();
+      final List<BloodPressureRecord> thinned = [];
+      for (int i = 0; i < filtered.length; i++) {
+        if (i % skip == 0 || i == filtered.length - 1) {
+          thinned.add(filtered[i]);
+        }
+      }
+      filtered = thinned;
+    }
+
+    _calculateAnalytics(filtered, period);
+  }
+
+  void _calculateAnalytics(List<BloodPressureRecord> records, StatisticsPeriod period) {
+    if (records.isEmpty) {
+      emit(state.copyWith(
+        filteredRecords: [],
+        period: period,
+        maxSys: 0,
+        maxDia: 0,
+        minSys: 0,
+        minDia: 0,
+        avgSys: 0,
+        avgDia: 0,
+      ));
+      return;
+    }
+
+    double maxSys = 0;
+    double maxDia = 0;
+    double minSys = double.infinity;
+    double minDia = double.infinity;
+    double sumSys = 0;
+    double sumDia = 0;
+
+    for (var r in records) {
+      if (r.systolic > maxSys) maxSys = r.systolic.toDouble();
+      if (r.diastolic > maxDia) maxDia = r.diastolic.toDouble();
+      if (r.systolic < minSys) minSys = r.systolic.toDouble();
+      if (r.diastolic < minDia) minDia = r.diastolic.toDouble();
+      sumSys += r.systolic;
+      sumDia += r.diastolic;
+    }
+
+    emit(state.copyWith(
+      filteredRecords: records,
+      period: period,
+      maxSys: maxSys,
+      maxDia: maxDia,
+      minSys: minSys == double.infinity ? 0 : minSys,
+      minDia: minDia == double.infinity ? 0 : minDia,
+      avgSys: sumSys / records.length,
+      avgDia: sumDia / records.length,
+    ));
+  }
+}

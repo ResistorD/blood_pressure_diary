@@ -1,0 +1,1068 @@
+{
+  "metadata": {
+    "exportedAt": "2026-01-09T00:36:06.835Z",
+    "componentName": "Графики",
+    "totalElements": 67,
+    "nestingDepth": 3,
+    "plugin": "Figma to JSON Exporter"
+  },
+  "designTokens": {
+    "colors": {
+      "color-rgb(240, 244, 248)": "rgb(240, 244, 248)",
+      "color-rgb(77, 131, 172)": "rgb(77, 131, 172)",
+      "color-rgb(255, 255, 255)": "rgb(255, 255, 255)",
+      "color-rgb(107, 157, 192)": "rgb(107, 157, 192)",
+      "color-rgb(249, 248, 250)": "rgb(249, 248, 250)",
+      "color-rgb(46, 93, 133)": "rgb(46, 93, 133)",
+      "color-rgb(160, 174, 192)": "rgb(160, 174, 192)",
+      "color-rgb(217, 217, 217)": "rgb(217, 217, 217)"
+    },
+    "fonts": {
+      "inter": {
+        "family": "Inter",
+        "sizes": {
+          "size-24": "24px",
+          "size-16": "16px",
+          "size-12": "12px",
+          "size-14": "14px"
+        },
+        "weights": {
+          "weight-600": "600",
+          "weight-400": "400"
+        }
+      }
+    },
+    "spacing": {},
+    "effects": {
+      "shadow-4-2": {
+        "x": 0,
+        "y": 2,
+        "blur": 4,
+        "color": "rgba(0, 0, 0, 0.10000000149011612)"
+      }
+    }
+  },
+  "structure": {
+    "name": "-------",
+    "type": "FRAME",
+    "size": {
+      "w": 360,
+      "h": 800
+    },
+    "styles": {
+      "bg": "rgb(240, 244, 248)",
+      "radius": 30,
+      "layout": {
+        "direction": "row",
+        "gap": 0,
+        "align": {
+          "main": "start",
+          "cross": "start"
+        }
+      }
+    },
+    "children": [
+      {
+        "name": "rectangle-4",
+        "type": "RECTANGLE",
+        "size": {
+          "w": 360,
+          "h": 128
+        },
+        "styles": {
+          "bg": "rgb(77, 131, 172)",
+          "shadow": {
+            "x": 0,
+            "y": 2,
+            "blur": 4,
+            "color": "rgba(0, 0, 0, 0.25)"
+          }
+        }
+      },
+      {
+        "name": "-------",
+        "type": "TEXT",
+        "size": {
+          "w": 190,
+          "h": 34
+        },
+        "content": "Графики",
+        "styles": {
+          "bg": "rgb(255, 255, 255)",
+          "text": {
+            "family": "Inter",
+            "size": 24,
+            "weight": "600",
+            "align": "left"
+          }
+        }
+      },
+      {
+        "name": "rounded-rectangle",
+        "type": "RECTANGLE",
+        "size": {
+          "w": 101,
+          "h": 32
+        },
+        "styles": {
+          "bg": "rgb(107, 157, 192)",
+          "radius": 5
+        }
+      },
+      {
+        "name": "-----",
+        "type": "TEXT",
+        "size": {
+          "w": 93,
+          "h": 24
+        },
+        "content": "Месяц",
+        "styles": {
+          "bg": "rgb(255, 255, 255)",
+          "text": {
+            "family": "Inter",
+            "size": 16,
+            "weight": "600",
+            "align": "center"
+          }
+        }
+      },
+      {
+        "name": "arrow_drop_down",
+        "type": "INSTANCE",
+        "size": {
+          "w": 0,
+          "h": 0
+        }
+      },
+      {
+        "name": "rectangle-15",
+        "type": "RECTANGLE",
+        "size": {
+          "w": 322,
+          "h": 350
+        },
+        "styles": {
+          "bg": "rgb(249, 248, 250)",
+          "shadow": {
+            "x": 0,
+            "y": 2,
+            "blur": 4,
+            "color": "rgba(0, 0, 0, 0.10000000149011612)"
+          }
+        }
+      },
+      {
+        "name": "line-1",
+        "type": "LINE",
+        "size": {
+          "w": 304,
+          "h": 0
+        },
+        "styles": {
+          "border": {
+            "width": 1,
+            "color": "rgb(198, 198, 198)"
+          }
+        }
+      },
+      {
+        "name": "line-2",
+        "type": "LINE",
+        "size": {
+          "w": 304,
+          "h": 0
+        },
+        "styles": {
+          "border": {
+            "width": 1,
+            "color": "rgb(198, 198, 198)"
+          }
+        }
+      },
+      {
+        "name": "line-3",
+        "type": "LINE",
+        "size": {
+          "w": 304,
+          "h": 0
+        },
+        "styles": {
+          "border": {
+            "width": 1,
+            "color": "rgb(198, 198, 198)"
+          }
+        }
+      },
+      {
+        "name": "line-4",
+        "type": "LINE",
+        "size": {
+          "w": 304,
+          "h": 0
+        },
+        "styles": {
+          "border": {
+            "width": 1,
+            "color": "rgb(198, 198, 198)"
+          }
+        }
+      },
+      {
+        "name": "line-5",
+        "type": "LINE",
+        "size": {
+          "w": 304,
+          "h": 0
+        },
+        "styles": {
+          "border": {
+            "width": 1,
+            "color": "rgb(198, 198, 198)"
+          }
+        }
+      },
+      {
+        "name": "line-6",
+        "type": "LINE",
+        "size": {
+          "w": 298,
+          "h": 0
+        },
+        "styles": {
+          "border": {
+            "width": 1,
+            "color": "rgb(255, 255, 255)"
+          }
+        }
+      },
+      {
+        "name": "line-7",
+        "type": "LINE",
+        "size": {
+          "w": 298,
+          "h": 0
+        },
+        "styles": {
+          "border": {
+            "width": 1,
+            "color": "rgb(255, 255, 255)"
+          }
+        }
+      },
+      {
+        "name": "line-8",
+        "type": "LINE",
+        "size": {
+          "w": 276,
+          "h": 0
+        },
+        "styles": {
+          "border": {
+            "width": 1,
+            "color": "rgb(198, 198, 198)"
+          }
+        }
+      },
+      {
+        "name": "line-9",
+        "type": "LINE",
+        "size": {
+          "w": 278,
+          "h": 0
+        },
+        "styles": {
+          "border": {
+            "width": 1,
+            "color": "rgb(198, 198, 198)"
+          }
+        }
+      },
+      {
+        "name": "line-10",
+        "type": "LINE",
+        "size": {
+          "w": 278,
+          "h": 0
+        },
+        "styles": {
+          "border": {
+            "width": 1,
+            "color": "rgb(198, 198, 198)"
+          }
+        }
+      },
+      {
+        "name": "line-11",
+        "type": "LINE",
+        "size": {
+          "w": 278,
+          "h": 0
+        },
+        "styles": {
+          "border": {
+            "width": 1,
+            "color": "rgb(198, 198, 198)"
+          }
+        }
+      },
+      {
+        "name": "line-12",
+        "type": "LINE",
+        "size": {
+          "w": 278,
+          "h": 0
+        },
+        "styles": {
+          "border": {
+            "width": 1,
+            "color": "rgb(198, 198, 198)"
+          }
+        }
+      },
+      {
+        "name": "200",
+        "type": "TEXT",
+        "size": {
+          "w": 30,
+          "h": 16
+        },
+        "content": "200",
+        "styles": {
+          "bg": "rgb(46, 93, 133)",
+          "text": {
+            "family": "Inter",
+            "size": 12,
+            "weight": "400",
+            "align": "center"
+          }
+        }
+      },
+      {
+        "name": "7-----",
+        "type": "TEXT",
+        "size": {
+          "w": 46,
+          "h": 16
+        },
+        "content": "7 июля",
+        "styles": {
+          "bg": "rgb(46, 93, 133)",
+          "text": {
+            "family": "Inter",
+            "size": 12,
+            "weight": "400",
+            "align": "center"
+          }
+        }
+      },
+      {
+        "name": "14-----",
+        "type": "TEXT",
+        "size": {
+          "w": 60,
+          "h": 16
+        },
+        "content": "14 июля",
+        "styles": {
+          "bg": "rgb(46, 93, 133)",
+          "text": {
+            "family": "Inter",
+            "size": 12,
+            "weight": "400",
+            "align": "center"
+          }
+        }
+      },
+      {
+        "name": "21-----",
+        "type": "TEXT",
+        "size": {
+          "w": 60,
+          "h": 16
+        },
+        "content": "21 июля",
+        "styles": {
+          "bg": "rgb(46, 93, 133)",
+          "text": {
+            "family": "Inter",
+            "size": 12,
+            "weight": "400",
+            "align": "center"
+          }
+        }
+      },
+      {
+        "name": "28-----",
+        "type": "TEXT",
+        "size": {
+          "w": 61,
+          "h": 16
+        },
+        "content": "28 июля",
+        "styles": {
+          "bg": "rgb(46, 93, 133)",
+          "text": {
+            "family": "Inter",
+            "size": 12,
+            "weight": "400",
+            "align": "center"
+          }
+        }
+      },
+      {
+        "name": "------",
+        "type": "TEXT",
+        "size": {
+          "w": 61,
+          "h": 16
+        },
+        "content": "Диаст.",
+        "styles": {
+          "bg": "rgb(107, 157, 192)",
+          "text": {
+            "family": "Inter",
+            "size": 12,
+            "weight": "400",
+            "align": "center"
+          }
+        }
+      },
+      {
+        "name": "-----",
+        "type": "TEXT",
+        "size": {
+          "w": 61,
+          "h": 16
+        },
+        "content": "Сист.",
+        "styles": {
+          "bg": "rgb(46, 93, 133)",
+          "text": {
+            "family": "Inter",
+            "size": 12,
+            "weight": "400",
+            "align": "center"
+          }
+        }
+      },
+      {
+        "name": "160",
+        "type": "TEXT",
+        "size": {
+          "w": 30,
+          "h": 16
+        },
+        "content": "160",
+        "styles": {
+          "bg": "rgb(46, 93, 133)",
+          "text": {
+            "family": "Inter",
+            "size": 12,
+            "weight": "400",
+            "align": "center"
+          }
+        }
+      },
+      {
+        "name": "120",
+        "type": "TEXT",
+        "size": {
+          "w": 30,
+          "h": 16
+        },
+        "content": "120",
+        "styles": {
+          "bg": "rgb(46, 93, 133)",
+          "text": {
+            "family": "Inter",
+            "size": 12,
+            "weight": "400",
+            "align": "center"
+          }
+        }
+      },
+      {
+        "name": "80",
+        "type": "TEXT",
+        "size": {
+          "w": 30,
+          "h": 16
+        },
+        "content": "80",
+        "styles": {
+          "bg": "rgb(46, 93, 133)",
+          "text": {
+            "family": "Inter",
+            "size": 12,
+            "weight": "400",
+            "align": "center"
+          }
+        }
+      },
+      {
+        "name": "line-13",
+        "type": "LINE",
+        "size": {
+          "w": 59,
+          "h": 0
+        },
+        "styles": {
+          "border": {
+            "width": 3,
+            "color": "rgb(107, 157, 192)"
+          }
+        }
+      },
+      {
+        "name": "line-14",
+        "type": "LINE",
+        "size": {
+          "w": 40,
+          "h": 0
+        },
+        "styles": {
+          "border": {
+            "width": 3,
+            "color": "rgb(107, 157, 192)"
+          }
+        }
+      },
+      {
+        "name": "line-15",
+        "type": "LINE",
+        "size": {
+          "w": 27,
+          "h": 0
+        },
+        "styles": {
+          "border": {
+            "width": 3,
+            "color": "rgb(107, 157, 192)"
+          }
+        }
+      },
+      {
+        "name": "line-16",
+        "type": "LINE",
+        "size": {
+          "w": 48,
+          "h": 0
+        },
+        "styles": {
+          "border": {
+            "width": 3,
+            "color": "rgb(107, 157, 192)"
+          }
+        }
+      },
+      {
+        "name": "line-17",
+        "type": "LINE",
+        "size": {
+          "w": 38,
+          "h": 0
+        },
+        "styles": {
+          "border": {
+            "width": 3,
+            "color": "rgb(107, 157, 192)"
+          }
+        }
+      },
+      {
+        "name": "line-18",
+        "type": "LINE",
+        "size": {
+          "w": 35,
+          "h": 0
+        },
+        "styles": {
+          "border": {
+            "width": 3,
+            "color": "rgb(107, 157, 192)"
+          }
+        }
+      },
+      {
+        "name": "line-19",
+        "type": "LINE",
+        "size": {
+          "w": 41,
+          "h": 0
+        },
+        "styles": {
+          "border": {
+            "width": 3,
+            "color": "rgb(107, 157, 192)"
+          }
+        }
+      },
+      {
+        "name": "line-20",
+        "type": "LINE",
+        "size": {
+          "w": 59,
+          "h": 0
+        },
+        "styles": {
+          "border": {
+            "width": 3,
+            "color": "rgb(46, 93, 133)"
+          }
+        }
+      },
+      {
+        "name": "line-21",
+        "type": "LINE",
+        "size": {
+          "w": 40,
+          "h": 0
+        },
+        "styles": {
+          "border": {
+            "width": 3,
+            "color": "rgb(46, 93, 133)"
+          }
+        }
+      },
+      {
+        "name": "line-22",
+        "type": "LINE",
+        "size": {
+          "w": 27,
+          "h": 0
+        },
+        "styles": {
+          "border": {
+            "width": 3,
+            "color": "rgb(46, 93, 133)"
+          }
+        }
+      },
+      {
+        "name": "line-23",
+        "type": "LINE",
+        "size": {
+          "w": 48,
+          "h": 0
+        },
+        "styles": {
+          "border": {
+            "width": 3,
+            "color": "rgb(46, 93, 133)"
+          }
+        }
+      },
+      {
+        "name": "line-24",
+        "type": "LINE",
+        "size": {
+          "w": 38,
+          "h": 0
+        },
+        "styles": {
+          "border": {
+            "width": 3,
+            "color": "rgb(46, 93, 133)"
+          }
+        }
+      },
+      {
+        "name": "line-25",
+        "type": "LINE",
+        "size": {
+          "w": 35,
+          "h": 0
+        },
+        "styles": {
+          "border": {
+            "width": 3,
+            "color": "rgb(46, 93, 133)"
+          }
+        }
+      },
+      {
+        "name": "line-26",
+        "type": "LINE",
+        "size": {
+          "w": 41,
+          "h": 0
+        },
+        "styles": {
+          "border": {
+            "width": 3,
+            "color": "rgb(46, 93, 133)"
+          }
+        }
+      },
+      {
+        "name": "rectangle-6",
+        "type": "RECTANGLE",
+        "size": {
+          "w": 360,
+          "h": 69
+        },
+        "styles": {
+          "bg": "rgb(249, 248, 250)"
+        }
+      },
+      {
+        "name": "ellipse-11",
+        "type": "ELLIPSE",
+        "size": {
+          "w": 86,
+          "h": 86
+        }
+      },
+      {
+        "name": "ellipse-12",
+        "type": "ELLIPSE",
+        "size": {
+          "w": 86,
+          "h": 86
+        },
+        "styles": {
+          "shadow": {
+            "x": 0,
+            "y": 2,
+            "blur": 4,
+            "color": "rgba(0, 0, 0, 0.10000000149011612)"
+          }
+        }
+      },
+      {
+        "name": "ellipse-13",
+        "type": "ELLIPSE",
+        "size": {
+          "w": 60,
+          "h": 60
+        },
+        "styles": {
+          "bg": "rgb(46, 93, 133)"
+        }
+      },
+      {
+        "name": "plus",
+        "type": "INSTANCE",
+        "size": {
+          "w": 0,
+          "h": 0
+        }
+      },
+      {
+        "name": "lucide-house",
+        "type": "FRAME",
+        "size": {
+          "w": 30,
+          "h": 30
+        },
+        "styles": {
+          "layout": {
+            "direction": "row",
+            "gap": 0,
+            "align": {
+              "main": "start",
+              "cross": "start"
+            }
+          }
+        },
+        "children": [
+          {
+            "name": "vector",
+            "type": "VECTOR",
+            "size": {
+              "w": 23,
+              "h": 24
+            },
+            "styles": {
+              "border": {
+                "width": 2,
+                "color": "rgb(46, 93, 133)"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "name": "lucide-user-pen",
+        "type": "FRAME",
+        "size": {
+          "w": 30,
+          "h": 30
+        },
+        "styles": {
+          "layout": {
+            "direction": "row",
+            "gap": 0,
+            "align": {
+              "main": "start",
+              "cross": "start"
+            }
+          }
+        },
+        "children": [
+          {
+            "name": "vector",
+            "type": "VECTOR",
+            "size": {
+              "w": 24,
+              "h": 24
+            },
+            "styles": {
+              "border": {
+                "width": 2,
+                "color": "rgb(46, 93, 133)"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "name": "lucide-settings",
+        "type": "FRAME",
+        "size": {
+          "w": 30,
+          "h": 30
+        },
+        "styles": {
+          "layout": {
+            "direction": "row",
+            "gap": 0,
+            "align": {
+              "main": "start",
+              "cross": "start"
+            }
+          }
+        },
+        "children": [
+          {
+            "name": "vector",
+            "type": "VECTOR",
+            "size": {
+              "w": 23,
+              "h": 25
+            },
+            "styles": {
+              "border": {
+                "width": 2,
+                "color": "rgb(46, 93, 133)"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "name": "lucide-chart-no-axes-combined",
+        "type": "FRAME",
+        "size": {
+          "w": 24,
+          "h": 24
+        },
+        "styles": {
+          "layout": {
+            "direction": "row",
+            "gap": 0,
+            "align": {
+              "main": "start",
+              "cross": "start"
+            }
+          }
+        },
+        "children": [
+          {
+            "name": "vector--stroke-",
+            "type": "VECTOR",
+            "size": {
+              "w": 22,
+              "h": 20
+            },
+            "styles": {
+              "bg": "rgb(160, 174, 192)"
+            }
+          }
+        ]
+      },
+      {
+        "name": "rectangle-16",
+        "type": "RECTANGLE",
+        "size": {
+          "w": 320,
+          "h": 46
+        },
+        "styles": {
+          "bg": "rgb(249, 248, 250)",
+          "shadow": {
+            "x": 0,
+            "y": 2,
+            "blur": 4,
+            "color": "rgba(0, 0, 0, 0.10000000149011612)"
+          }
+        }
+      },
+      {
+        "name": "--------",
+        "type": "TEXT",
+        "size": {
+          "w": 132,
+          "h": 32
+        },
+        "content": "Давление",
+        "styles": {
+          "bg": "rgb(46, 93, 133)",
+          "text": {
+            "family": "Inter",
+            "size": 14,
+            "weight": "600",
+            "align": "center"
+          }
+        }
+      },
+      {
+        "name": "-----",
+        "type": "TEXT",
+        "size": {
+          "w": 132,
+          "h": 32
+        },
+        "content": "Пульс",
+        "styles": {
+          "bg": "rgb(46, 93, 133)",
+          "text": {
+            "family": "Inter",
+            "size": 14,
+            "weight": "400",
+            "align": "left"
+          }
+        }
+      },
+      {
+        "name": "line-27",
+        "type": "LINE",
+        "size": {
+          "w": 68,
+          "h": 0
+        },
+        "styles": {
+          "bg": "rgb(217, 217, 217)",
+          "border": {
+            "width": 2,
+            "color": "rgb(46, 93, 133)"
+          }
+        }
+      },
+      {
+        "name": "rectangle-17",
+        "type": "RECTANGLE",
+        "size": {
+          "w": 320,
+          "h": 112
+        },
+        "styles": {
+          "bg": "rgb(249, 248, 250)",
+          "shadow": {
+            "x": 0,
+            "y": 2,
+            "blur": 4,
+            "color": "rgba(0, 0, 0, 0.10000000149011612)"
+          }
+        }
+      },
+      {
+        "name": "---------120-80",
+        "type": "TEXT",
+        "size": {
+          "w": 232,
+          "h": 26
+        },
+        "content": "Среднее:          120/80",
+        "styles": {
+          "bg": "rgb(46, 93, 133)",
+          "text": {
+            "family": "Inter",
+            "size": 14,
+            "weight": "600",
+            "align": "left"
+          }
+        }
+      },
+      {
+        "name": "-------120-80",
+        "type": "TEXT",
+        "size": {
+          "w": 232,
+          "h": 26
+        },
+        "content": "Макс.:                120/80",
+        "styles": {
+          "bg": "rgb(46, 93, 133)",
+          "text": {
+            "family": "Inter",
+            "size": 14,
+            "weight": "600",
+            "align": "left"
+          }
+        }
+      },
+      {
+        "name": "------120-80",
+        "type": "TEXT",
+        "size": {
+          "w": 232,
+          "h": 26
+        },
+        "content": "Мин.:                  120/80",
+        "styles": {
+          "bg": "rgb(46, 93, 133)",
+          "text": {
+            "family": "Inter",
+            "size": 14,
+            "weight": "600",
+            "align": "left"
+          }
+        }
+      },
+      {
+        "name": "vector",
+        "type": "VECTOR",
+        "size": {
+          "w": 16,
+          "h": 14
+        },
+        "styles": {
+          "bg": "rgb(46, 93, 133)"
+        }
+      },
+      {
+        "name": "vector",
+        "type": "VECTOR",
+        "size": {
+          "w": 16,
+          "h": 14
+        },
+        "styles": {
+          "bg": "rgb(46, 93, 133)"
+        }
+      },
+      {
+        "name": "vector",
+        "type": "VECTOR",
+        "size": {
+          "w": 16,
+          "h": 14
+        },
+        "styles": {
+          "bg": "rgb(46, 93, 133)"
+        }
+      }
+    ]
+  },
+  "summary": {
+    "components": 0,
+    "instances": 2,
+    "frames": 5,
+    "texts": 17,
+    "hasAutoLayout": true,
+    "hasEffects": true
+  }
+}

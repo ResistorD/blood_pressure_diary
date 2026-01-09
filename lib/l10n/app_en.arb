@@ -1,0 +1,52 @@
+{
+  "settings": "Settings",
+  "selectLanguage": "Select Language",
+  "appTitle": "Blood Pressure Diary",
+  "notifications": "Notifications",
+  "clearData": "Clear Data",
+  "aboutApp": "About App",
+  "version": "Version {version}",
+  "@version": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "functionInDevelopment": "Function in development",
+  "deleteRecordQ": "Delete record?",
+  "cannotUndo": "This action cannot be undone.",
+  "cancel": "Cancel",
+  "delete": "Delete",
+  "theme": "Theme",
+  "light": "Light",
+  "dark": "Dark",
+  "system": "System",
+  "reminders": "Reminders",
+  "addReminder": "Add time",
+  "clearDataConfirm": "Are you sure you want to delete all records? This action cannot be undone.",
+  "yes": "Yes",
+  "no": "No",
+  "export": "Export Data",
+  "exportCSV": "CSV Spreadsheet",
+  "exportPDF": "PDF Report",
+  "contactSupport": "Contact Support",
+  "rateApp": "Rate App",
+  "supportEmail": "your_email@mail.com",
+  "profile": "Profile",
+  "name": "Name",
+  "age": "Age",
+  "gender": "Gender",
+  "weight": "Weight",
+  "male": "Male",
+  "female": "Female",
+  "other": "Other",
+  "myGoal": "My Goal",
+  "targetPressure": "Target Pressure",
+  "systolic": "Systolic",
+  "diastolic": "Diastolic",
+  "premium": "Premium",
+  "oneTimePayment": "One-time payment 2,99 €",
+  "buyPremium": "Buy Premium",
+  "save": "Save"
+}
