@@ -2,161 +2,148 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/scale.dart';
 import '../../data/blood_pressure_model.dart';
 
 class SummaryCard extends StatelessWidget {
   final BloodPressureRecord? record;
-  final double? width;
-  final double? height;
 
-  const SummaryCard({
-    super.key,
-    this.record,
-    this.width,
-    this.height,
-  });
+  const SummaryCard({super.key, this.record});
 
   String _hhmm(DateTime t) => DateFormat('HH:mm').format(t);
 
   @override
   Widget build(BuildContext context) {
-    final cardW = width ?? (MediaQuery.sizeOf(context).width - 2 * dp(context, 20));
-    final cardH = height ?? dp(context, 120);
-    final r = dp(context, 10);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    const summaryBlue = Color(0xFF3973A2);
+    final colors = context.appColors;
+    final space = context.appSpace;
+    final radii = context.appRadii;
+    final shadow = context.appShadow;
+    final text = context.appText;
 
-    if (record == null) {
-      return Container(
-        width: cardW,
-        height: cardH,
-        decoration: BoxDecoration(
-          color: summaryBlue,
-          borderRadius: BorderRadius.circular(r),
-          boxShadow: const [
-            BoxShadow(
-              offset: Offset(0, 2),
-              blurRadius: 4,
-              color: Color(0x1A000000),
-            ),
-          ],
-        ),
-        alignment: Alignment.center,
-        child: Text(
-          'Нет данных',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: sp(context, 18),
-            fontWeight: FontWeight.w500,
-            fontFamily: 'Inter',
-            height: 1.0,
-          ),
-        ),
-      );
-    }
+    final width = MediaQuery.sizeOf(context).width - dp(context, space.s20) * 2;
+    final height = dp(context, isDark ? space.s114 : space.s112);
+    final r = dp(context, radii.r10);
 
-    final s = record!.systolic;
-    final d = record!.diastolic;
-    final p = record!.pulse;
-    final t = record!.dateTime;
+    final bg = isDark ? AppPalette.dark800 : AppPalette.blue600;
+    final checkColor = isDark ? colors.textOnBrand : AppPalette.blue500;
+
+    final checkSize = dp(context, space.s48); // ✅ чуть больше (было 42)
 
     final pressureStyle = TextStyle(
-      fontFamily: 'Inter',
-      fontSize: sp(context, 30),
-      fontWeight: FontWeight.w700,
-      color: Colors.white,
+      fontFamily: text.family,
+      fontSize: sp(context, text.fs30),
+      fontWeight: text.w600,
+      color: colors.textOnBrand,
       height: 1.0,
     );
 
-    final pulseNumStyle = TextStyle(
-      fontFamily: 'Inter',
-      fontSize: sp(context, 20),
-      fontWeight: FontWeight.w600,
-      color: Colors.white,
-      height: 1.0,
-    );
-
-    final pulseUnitStyle = TextStyle(
-      fontFamily: 'Inter',
-      fontSize: sp(context, 20),
-      fontWeight: FontWeight.w600,
-      color: Colors.white,
+    final pulseStyle = TextStyle(
+      fontFamily: text.family,
+      fontSize: sp(context, text.fs22),
+      fontWeight: text.w600,
+      color: colors.textOnBrand,
       height: 1.0,
     );
 
     final timeStyle = TextStyle(
-      fontFamily: 'Inter',
-      fontSize: sp(context, 20),
-      fontWeight: FontWeight.w600,
-      color: Colors.white,
+      fontFamily: text.family,
+      fontSize: sp(context, text.fs22),
+      fontWeight: text.w600,
+      color: colors.textOnBrand,
       height: 1.0,
     );
 
     return Container(
-      width: cardW,
-      height: cardH,
+      width: width,
+      height: height,
       decoration: BoxDecoration(
-        color: summaryBlue,
+        color: bg,
         borderRadius: BorderRadius.circular(r),
-        boxShadow: const [
-          BoxShadow(
-            offset: Offset(0, 2),
-            blurRadius: 4,
-            color: Color(0x1A000000),
-          ),
-        ],
+        boxShadow: [shadow.card],
       ),
-      padding: EdgeInsets.fromLTRB(dp(context, 16), dp(context, 10), dp(context, 16), dp(context, 10)),
-      child: Column(
+      padding: EdgeInsets.fromLTRB(
+        dp(context, space.s16),
+        dp(context, space.s4),
+        dp(context, space.s16),
+        dp(context, space.s10),
+      ),
+      child: (record == null)
+          ? Center(
+        child: Text(
+          'Нет данных',
+          style: TextStyle(
+            fontFamily: text.family,
+            fontSize: sp(context, text.fs16),
+            fontWeight: text.w500,
+            color: colors.textOnBrand,
+            height: 1.0,
+          ),
+        ),
+      )
+          : Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 1) Давление + чек
+          // Давление + галочка
           Row(
+            crossAxisAlignment: CrossAxisAlignment.center, // ✅ центр по вертикали
             children: [
               Expanded(
-                child: Text(
-                  '$s/$d',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: pressureStyle,
+                child: Padding(
+                  // ✅ чуть подняли строку давления, чтобы не упираться в низ
+                  padding: EdgeInsets.only(top: dp(context, 0)),
+                  child: Text(
+                    '${record!.systolic}/${record!.diastolic}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: pressureStyle,
+                  ),
                 ),
               ),
-              SvgPicture.asset(
-                'assets/check.svg',
-                width: dp(context, 42),
-                height: dp(context, 42),
-                colorFilter: const ColorFilter.mode(Color(0xFF6B9DC0), BlendMode.srcIn),
+              SizedBox(width: dp(context, space.s2)),
+              SizedBox(
+                width: checkSize,
+                height: checkSize,
+                child: Center(
+                  child: SvgPicture.asset(
+                    'assets/check.svg',
+                    width: checkSize,
+                    height: checkSize,
+                    colorFilter: ColorFilter.mode(checkColor, BlendMode.srcIn),
+                  ),
+                ),
               ),
             ],
           ),
 
-          SizedBox(height: dp(context, 8)),
+          // ✅ уменьшили зазор между давлением и пульсом
+          SizedBox(height: dp(context, space.s2)),
 
-          // 2) Пульс: "65 уд/мин" в ОДНУ строку, без переносов
+          // Пульс
           Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
             children: [
-              Text('$p', style: pulseNumStyle),
-              SizedBox(width: dp(context, 6)),
-              Text('уд/мин', style: pulseUnitStyle),
+              Text('${record!.pulse}', style: pulseStyle),
+              SizedBox(width: dp(context, space.s6)),
+              Text('уд/мин', style: pulseStyle),
             ],
           ),
 
-          const Spacer(),
+          // ✅ чуть больше воздуха перед временем, чтобы не "слипалось"
+          SizedBox(height: dp(context, space.s4)),
 
-          // 3) Время
+          // Время
           Row(
             children: [
               SvgPicture.asset(
                 'assets/clock.svg',
-                width: dp(context, 20),
-                height: dp(context, 20),
-                colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
+                width: dp(context, space.s20),
+                height: dp(context, space.s20),
+                colorFilter: ColorFilter.mode(colors.textOnBrand, BlendMode.srcIn),
               ),
-              SizedBox(width: dp(context, 6)),
-              Text(_hhmm(t), style: timeStyle),
+              SizedBox(width: dp(context, space.s6)),
+              Text(_hhmm(record!.dateTime), style: timeStyle),
             ],
           ),
         ],

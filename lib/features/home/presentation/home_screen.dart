@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/scale.dart';
 import '../../../../core/utils/app_strings.dart';
 import '../data/blood_pressure_model.dart';
@@ -68,29 +69,79 @@ class _HomeScreenState extends State<HomeScreen> {
     final safeTop = MediaQuery.of(context).padding.top;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // ===== Figma palette (light/dark) =====
-    final bg = isDark ? const Color(0xFF2D2D2D) : const Color(0xFFF0F4F8);
-    final headerBg = isDark ? const Color(0xFF2D2D2D) : const Color(0xFF4D83AC);
-    final shelfBg = isDark ? const Color(0xFF2D2D2D) : const Color(0xFFF9F8FA);
-    final shelfDivider = isDark ? Colors.transparent : const Color(0x33000000);
+    final colors = context.appColors;
+    final space = context.appSpace;
+    final radii = context.appRadii;
+    final appText = context.appText;
 
-    final titleColor = Colors.white;
-    final countColor = isDark ? const Color(0xFFCCCCCC) : const Color(0xFFBFD4E7);
+    // Layout tokens
+    final side = dp(context, space.s20);
+    final blueH = dp(context, space.s160); // header blue
+    final shelfH = dp(context, space.s80); // shelf
+    final overlap = dp(context, space.s40 + space.s10); // 50
+    final headerTop = safeTop + dp(context, space.s20);
 
-    final dateColor = isDark ? const Color(0xFFCCCCCC) : const Color(0xFF325674);
+    // Header colors (точно как в макете главного экрана)
+    final headerBg = isDark ? AppPalette.dark800 : AppPalette.blue700;
+    final shelfBg = isDark ? AppPalette.dark700 : AppPalette.grey050;
 
-    final filterChipBg = isDark ? const Color(0xFF4C4C4C) : Colors.white.withValues(alpha: 0.15);
-    final filterChipRadius = dp(context, 5);
+    // Divider 0.5px (через s1/s2)
+    final dividerH = dp(context, space.s1) / dp(context, space.s2);
+    final shelfDivider = isDark ? Colors.transparent : colors.divider;
 
-    // ===== Figma sizing =====
-    final blueH = dp(context, 169);
-    final lightH = dp(context, 82);
-    final overlap = dp(context, 50);
+    // Деликатная тень у полки: меньше blur/offset, чем “карточная”
+    final shelfShadow = BoxShadow(
+      offset: Offset(0, dp(context, space.s1)),
+      blurRadius: dp(context, space.s4),
+      color: colors.shadow,
+    );
 
-    final side = dp(context, 20);
+    // Chip
+    final chipH = dp(context, space.s32);
+    final chipR = dp(context, radii.r5);
+    final chipHPad = dp(context, space.s10);
+    final chipGap = dp(context, space.s4);
+    final icon24 = dp(context, space.s24);
 
-    final titleFont = sp(context, 26);
-    final filterFont = sp(context, 16);
+    final chipBg = isDark ? AppPalette.dark700 : AppPalette.blue500;
+    final chipText = colors.textOnBrand;
+
+    // Typography
+    final titleStyle = TextStyle(
+      fontFamily: appText.family,
+      fontSize: sp(context, appText.fs26),
+      fontWeight: appText.w600,
+      color: colors.textOnBrand,
+      height: 1.0,
+    );
+
+    final countStyle = TextStyle(
+      fontFamily: appText.family,
+      fontSize: sp(context, appText.fs16),
+      fontWeight: appText.w500,
+      color: isDark ? AppPalette.dark400 : AppPalette.blue300,
+      height: 1.0,
+    );
+
+    final dateStyle = TextStyle(
+      fontFamily: appText.family,
+      fontSize: sp(context, appText.fs16),
+      fontWeight: appText.w600,
+      color: colors.textPrimary,
+      height: 1.0,
+    );
+
+    final emptyStyle = TextStyle(
+      fontFamily: appText.family,
+      fontSize: sp(context, appText.fs16),
+      fontWeight: appText.w600,
+      color: colors.textPrimary,
+      height: 1.0,
+    );
+
+    // ✅ Нижний “запас” под навбар + FAB, чтобы последняя пилюля не пряталась.
+    // Берём достаточно крупное значение (96) из твоих токенов, чтобы перекрыть и бар, и выступ FAB.
+    final bottomListPadding = dp(context, space.s96);
 
     return BlocBuilder<HomeBloc, HomeState>(
       builder: (context, state) {
@@ -105,38 +156,34 @@ class _HomeScreenState extends State<HomeScreen> {
         final groups = _groupByDate(records);
 
         final header = SizedBox(
-          height: blueH + lightH,
+          height: blueH + shelfH,
           child: Stack(
             clipBehavior: Clip.none,
             children: [
-              // Header background
               Positioned.fill(child: ColoredBox(color: headerBg)),
-
-              // Light shelf (in dark it becomes same bg, divider hidden)
               Positioned(
                 left: 0,
                 right: 0,
                 top: blueH,
-                height: lightH,
-                child: Stack(
-                  children: [
-                    Positioned.fill(child: ColoredBox(color: shelfBg)),
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      height: 0.5,
+                height: shelfH,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: shelfBg,
+                    boxShadow: [shelfShadow],
+                  ),
+                  child: Align(
+                    alignment: Alignment.bottomCenter,
+                    child: SizedBox(
+                      height: dividerH,
                       child: ColoredBox(color: shelfDivider),
                     ),
-                  ],
+                  ),
                 ),
               ),
-
-              // Title + count + filter
               Positioned(
                 left: side,
                 right: side,
-                top: safeTop + dp(context, 20),
+                top: headerTop,
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -148,26 +195,14 @@ class _HomeScreenState extends State<HomeScreen> {
                             AppStrings.myDiary,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: titleColor,
-                              fontSize: titleFont,
-                              fontWeight: FontWeight.w600,
-                              fontFamily: 'Inter',
-                              height: 1.0,
-                            ),
+                            style: titleStyle,
                           ),
-                          SizedBox(height: dp(context, 20)),
+                          SizedBox(height: dp(context, space.s20)),
                           Text(
                             '$filteredCount ${_recordsWord(filteredCount)}',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: countColor,
-                              fontSize: sp(context, 16),
-                              fontWeight: FontWeight.w500,
-                              fontFamily: 'Inter',
-                              height: 1.0,
-                            ),
+                            style: countStyle,
                           ),
                         ],
                       ),
@@ -180,13 +215,13 @@ class _HomeScreenState extends State<HomeScreen> {
                         PopupMenuItem(value: _FilterPeriod.month, child: Text(AppStrings.month)),
                         PopupMenuItem(value: _FilterPeriod.all, child: Text(AppStrings.allTime)),
                       ],
-                      offset: Offset(0, dp(context, 28)),
+                      offset: Offset(0, dp(context, space.s30 - space.s2)), // 28
                       child: Container(
-                        height: dp(context, 32),
-                        padding: EdgeInsets.symmetric(horizontal: dp(context, 10)),
+                        height: chipH,
+                        padding: EdgeInsets.symmetric(horizontal: chipHPad),
                         decoration: BoxDecoration(
-                          color: filterChipBg,
-                          borderRadius: BorderRadius.circular(filterChipRadius),
+                          color: chipBg,
+                          borderRadius: BorderRadius.circular(chipR),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -194,19 +229,19 @@ class _HomeScreenState extends State<HomeScreen> {
                             Text(
                               _periodLabel(_period),
                               style: TextStyle(
-                                color: titleColor,
-                                fontSize: filterFont,
-                                fontWeight: FontWeight.w600,
-                                fontFamily: 'Inter',
+                                fontFamily: appText.family,
+                                fontSize: sp(context, appText.fs16),
+                                fontWeight: appText.w600,
+                                color: chipText,
                                 height: 1.0,
                               ),
                             ),
-                            SizedBox(width: dp(context, 4)),
+                            SizedBox(width: chipGap),
                             SvgPicture.asset(
                               'assets/arrow_drop_down.svg',
-                              width: dp(context, 24),
-                              height: dp(context, 24),
-                              colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
+                              width: icon24,
+                              height: icon24,
+                              colorFilter: ColorFilter.mode(chipText, BlendMode.srcIn),
                             ),
                           ],
                         ),
@@ -224,76 +259,65 @@ class _HomeScreenState extends State<HomeScreen> {
             if (groups.isEmpty) ...[
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: EdgeInsets.only(top: dp(context, 24)),
-                  child: Center(
-                    child: Text(
-                      'Нет записей за выбранный период',
-                      style: TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: sp(context, 16),
-                        fontWeight: FontWeight.w500,
-                        color: isDark ? const Color(0xFFCCCCCC) : const Color(0xFF325674),
-                        height: 1.0,
-                      ),
-                    ),
-                  ),
+                  padding: EdgeInsets.only(top: dp(context, space.s24)),
+                  child: Center(child: Text('Нет записей за выбранный период', style: emptyStyle)),
                 ),
               ),
-              SliverToBoxAdapter(child: SizedBox(height: dp(context, 24))),
+              // ✅ даже при пустом списке оставим запас снизу
+              SliverToBoxAdapter(child: SizedBox(height: bottomListPadding)),
             ] else ...[
-              for (final g in groups) ...[
+              // “до” первой даты — чуть увеличить
+              SliverToBoxAdapter(child: SizedBox(height: dp(context, space.s10))),
+              for (final entry in groups.indexed) ...[
                 SliverToBoxAdapter(
                   child: Padding(
-                    padding: EdgeInsets.only(right: side, top: dp(context, 4), bottom: dp(context, 4)),
+                    padding: EdgeInsets.only(
+                      right: side,
+                      top: dp(context, space.s2),
+                      bottom: dp(context, space.s2),
+                    ),
                     child: Align(
                       alignment: Alignment.centerRight,
-                      child: Text(
-                        _formatDate(g.key),
-                        textAlign: TextAlign.right,
-                        style: TextStyle(
-                          color: dateColor,
-                          fontSize: sp(context, 16),
-                          fontWeight: FontWeight.w600,
-                          fontFamily: 'Inter',
-                          height: 1.0,
-                        ),
-                      ),
+                      child: Text(_formatDate(entry.$2.key), textAlign: TextAlign.right, style: dateStyle),
                     ),
                   ),
                 ),
                 SliverList(
                   delegate: SliverChildBuilderDelegate(
                         (context, i) {
-                      final r = g.value[i];
+                      final r = entry.$2.value[i];
                       return Padding(
-                        padding: EdgeInsets.fromLTRB(side, dp(context, 16), side, 0),
+                        padding: EdgeInsets.fromLTRB(side, dp(context, space.s12), side, 0),
                         child: RecordListItem(
                           record: r,
                           onTap: () => _openEdit(context, r),
                         ),
                       );
                     },
-                    childCount: g.value.length,
+                    childCount: entry.$2.value.length,
                   ),
                 ),
-                SliverToBoxAdapter(child: SizedBox(height: dp(context, 12))),
+                SliverToBoxAdapter(child: SizedBox(height: dp(context, space.s10))),
               ],
+              // ✅ ключевой спейсер: после последней группы
+              SliverToBoxAdapter(child: SizedBox(height: bottomListPadding)),
             ],
           ],
         );
 
         return ColoredBox(
-          color: bg,
+          color: colors.background,
           child: Column(
             children: [
               SizedBox(
-                height: blueH + lightH,
+                height: blueH + shelfH,
                 child: Stack(
                   clipBehavior: Clip.none,
                   children: [
                     header,
                     Positioned(
                       left: side,
+                      right: side,
                       top: blueH - overlap,
                       child: SummaryCard(record: lastRecord),
                     ),

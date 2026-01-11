@@ -5,36 +5,46 @@ class CustomKeypad extends StatelessWidget {
   final VoidCallback onDeletePressed;
   final List<String>? enabledKeys;
 
-  /// Метрики из экрана (такие же, как у _ValuePill)
   final double horizontalPadding;
   final double gap;
   final double cellHeight;
   final double radius;
 
-  /// (опционально) стилизация под ваш UI
   final Color background;
   final Color deleteBackground;
   final Color foreground;
   final TextStyle textStyle;
 
+  final double deleteIconSize;
+  final Color deleteIconColor;
+
   const CustomKeypad({
     super.key,
     required this.onKeyPressed,
     required this.onDeletePressed,
-    this.enabledKeys, // <-- ДОБАВЬ ЭТУ СТРОКУ
+    this.enabledKeys,
     required this.horizontalPadding,
     required this.gap,
     required this.cellHeight,
     required this.radius,
-    this.background = const Color(0xFFFFFFFF),
-    this.deleteBackground = const Color(0xFFE5E7EB),
-    this.foreground = const Color(0xFF2E5D85),
-    this.textStyle = const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, height: 1.0),
+    required this.background,
+    required this.deleteBackground,
+    required this.foreground,
+    required this.textStyle,
+    required this.deleteIconSize,
+    required this.deleteIconColor,
   });
 
   @override
   Widget build(BuildContext context) {
-    final keys = <String>['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'delete'];
+    const keys = <String>[
+      '1','2','3',
+      '4','5','6',
+      '7','8','9',
+      '',
+      '0',
+      'delete',
+    ];
 
     return GridView.builder(
       shrinkWrap: true,
@@ -52,32 +62,30 @@ class CustomKeypad extends StatelessWidget {
         if (key.isEmpty) return const SizedBox.shrink();
 
         final isDelete = key == 'delete';
-
-        // ГЛАВНАЯ ЛОГИКА ТУТ:
-        // Если это кнопка удаления - она всегда активна.
-        // Если цифра - проверяем, есть ли она в списке разрешенных.
-        final bool isEnabled = isDelete ||
-            (enabledKeys == null) ||
-            enabledKeys!.contains(key);
+        final isEnabled = isDelete || enabledKeys == null || enabledKeys!.contains(key);
 
         return Opacity(
-          opacity: isEnabled ? 1.0 : 0.3, // "Гасим" кнопку визуально
+          opacity: isEnabled ? 1.0 : 0.3,
           child: ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: isDelete ? deleteBackground : background,
               foregroundColor: foreground,
               elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(radius),
-              ),
+              padding: EdgeInsets.zero, // ✅ чтобы иконка не “висела”
+              minimumSize: const Size(double.infinity, double.infinity), // ✅ заполнить ячейку
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radius)),
             ),
-            // Если кнопка не активна, передаем null в onPressed, и Flutter сам её отключит
-            onPressed: isEnabled
-                ? () => isDelete ? onDeletePressed() : onKeyPressed(key)
-                : null,
-            child: isDelete
-                ? const Icon(Icons.backspace_outlined)
-                : Text(key, style: textStyle),
+            onPressed: isEnabled ? () => isDelete ? onDeletePressed() : onKeyPressed(key) : null,
+            child: Center(
+              child: isDelete
+                  ? Icon(
+                Icons.backspace_outlined,
+                size: deleteIconSize,
+                color: deleteIconColor,
+              )
+                  : Text(key, style: textStyle),
+            ),
           ),
         );
       },

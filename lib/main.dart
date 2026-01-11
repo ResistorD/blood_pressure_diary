@@ -42,7 +42,7 @@ class BloodPressureApp extends StatelessWidget {
             debugShowCheckedModeBanner: false,
             onGenerateTitle: (context) => AppLocalizations.of(context)!.appTitle,
             theme: AppTheme.lightTheme,
-            darkTheme: ThemeData.dark(), // Можно настроить позже
+            darkTheme: AppTheme.darkTheme,
             themeMode: _getThemeMode(state.settings.themeMode),
             locale: Locale(state.settings.languageCode),
             localizationsDelegates: [

@@ -21,10 +21,6 @@ class AddRecordScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    debugPrint(
-      '### AddRecordScreen BUILD from: lib/features/add_record/presentation/add_record_screen.dart',
-    );
-
     return BlocProvider(
       create: (_) {
         final bloc = GetIt.I<AddRecordBloc>();
@@ -33,28 +29,25 @@ class AddRecordScreen extends StatelessWidget {
         }
         return bloc;
       },
-      child: AddRecordView(isEditing: record != null),
+      child: _AddRecordView(isEditing: record != null),
     );
   }
 }
 
-class AddRecordView extends StatefulWidget {
+class _AddRecordView extends StatefulWidget {
   final bool isEditing;
 
-  const AddRecordView({super.key, required this.isEditing});
+  const _AddRecordView({required this.isEditing});
 
   @override
-  State<AddRecordView> createState() => _AddRecordViewState();
+  State<_AddRecordView> createState() => _AddRecordViewState();
 }
 
-class _AddRecordViewState extends State<AddRecordView> {
+class _AddRecordViewState extends State<_AddRecordView> {
   final TextEditingController _noteController = TextEditingController();
   final FocusNode _noteFocusNode = FocusNode();
 
-  double _snapFloor(BuildContext c, double v) {
-    final dpr = MediaQuery.of(c).devicePixelRatio;
-    return (v * dpr).floorToDouble() / dpr;
-  }
+  String? _selectedEmoji;
 
   @override
   void initState() {
@@ -73,14 +66,31 @@ class _AddRecordViewState extends State<AddRecordView> {
     super.dispose();
   }
 
+  void _appendEmojiToNote(String emoji) {
+    final controller = _noteController;
+
+    final text = controller.text;
+    final selection = controller.selection;
+
+    final start = selection.isValid ? selection.start : text.length;
+    final end = selection.isValid ? selection.end : text.length;
+
+    final newText = text.replaceRange(start, end, emoji);
+    controller.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(offset: start + emoji.length),
+    );
+
+    context.read<AddRecordBloc>().add(NoteChanged(newText));
+  }
+
   Future<void> _pickTime(BuildContext context, DateTime current) async {
     final picked = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(current),
       helpText: AppStrings.pickTime,
     );
-    if (picked == null) return;
-    if (!context.mounted) return;
+    if (picked == null || !context.mounted) return;
 
     final merged = DateTime(
       current.year,
@@ -100,8 +110,7 @@ class _AddRecordViewState extends State<AddRecordView> {
       lastDate: DateTime(current.year + 1),
       helpText: AppStrings.pickDate,
     );
-    if (picked == null) return;
-    if (!context.mounted) return;
+    if (picked == null || !context.mounted) return;
 
     final merged = DateTime(
       picked.year,
@@ -114,24 +123,23 @@ class _AddRecordViewState extends State<AddRecordView> {
   }
 
   Future<void> _confirmDelete(BuildContext context) async {
+    final colors = context.appColors;
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: const Text(AppStrings.deleteRecordQ),
-          content: const Text(AppStrings.cannotUndo),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text(AppStrings.cancel, style: TextStyle(color: AppUI.buttonBlue)),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(true),
-              child: const Text(AppStrings.delete, style: TextStyle(color: AppUI.accentRed)),
-            ),
-          ],
-        );
-      },
+      builder: (ctx) => AlertDialog(
+        title: const Text(AppStrings.deleteRecordQ),
+        content: const Text(AppStrings.cannotUndo),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(AppStrings.cancel, style: TextStyle(color: colors.brandStrong)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(AppStrings.delete, style: TextStyle(color: colors.danger)),
+          ),
+        ],
+      ),
     );
 
     if (ok == true && context.mounted) {
@@ -139,433 +147,425 @@ class _AddRecordViewState extends State<AddRecordView> {
     }
   }
 
-  Widget _buildHeader({
-    required BuildContext context,
-    required bool isEditing,
-    required VoidCallback onClose,
-    required VoidCallback onDelete,
-  }) {
-    final pad = dp(context, 20);
-    final topInset = MediaQuery.paddingOf(context).top;
-
-    // ВАЖНО: 128dp + статус-бар
-    final headerHeight = topInset + dp(context, 128);
-
-    return Container(
-      height: headerHeight,
-      width: double.infinity,
-      color: AppUI.headerBlue,
-      padding: EdgeInsets.only(
-        left: pad,
-        right: pad,
-        top: dp(context, 8) + topInset,
-        bottom: dp(context, 16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              IconButton(
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-                icon: const Icon(Icons.close, color: AppUI.white),
-                onPressed: onClose,
-              ),
-              const Spacer(),
-              if (isEditing)
-                IconButton(
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  icon: const Icon(Icons.delete_outline, color: AppUI.white),
-                  onPressed: onDelete,
-                ),
-            ],
-          ),
-          SizedBox(height: dp(context, 18)),
-          Text(
-            AppStrings.newRecord,
-            style: TextStyle(
-              color: AppUI.white,
-              fontSize: sp(context, 24),
-              fontWeight: FontWeight.w700,
-              fontFamily: 'Inter',
-              height: 1.0,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    final pad = dp(context, 20);
+    final colors = context.appColors;
+    final space = context.appSpace;
+    final radii = context.appRadii;
+    final shadows = context.appShadow;
+    final txt = context.appText;
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final side = dp(context, space.s20);
     final topInset = MediaQuery.paddingOf(context).top;
+    final headerH = dp(context, space.s128);
 
-    final pillH = AppUI.fieldHeight;
-    final radius = AppUI.fieldRadius;
+    final pillH = dp(context, space.s48);
+    final pillR = dp(context, radii.r10);
+    final pillW = dp(context, space.w96);
+    final dateW = dp(context, space.w208);
 
-    const labelColor = AppUI.textLight;
-    const valueColor = AppUI.buttonBlue;
+    final commentW = dp(context, space.w320);
+    final commentH = dp(context, space.s72);
 
-    final pillLabelStyle = TextStyle(
-      color: labelColor,
-      fontSize: sp(context, 14),
-      fontWeight: FontWeight.w700,
-      fontFamily: 'Inter',
+    final emojiSize = dp(context, space.s24);
+
+    final gap20 = dp(context, space.s20);
+    final gap16 = dp(context, space.s16);
+    final gap12 = dp(context, space.s12);
+    final gap10 = dp(context, space.s10);
+    final gap8 = dp(context, space.s8);
+
+    final headerBg = isDark ? AppPalette.dark800 : AppPalette.blue700;
+    final surface = isDark ? AppPalette.dark700 : colors.surface;
+
+    final hint = isDark ? AppPalette.dark350 : AppPalette.grey500;
+    final value = isDark ? AppPalette.dark400 : AppPalette.blue900;
+    final chevron = isDark ? AppPalette.dark350 : AppPalette.grey500;
+
+    final titleStyle = TextStyle(
+      fontFamily: txt.family,
+      fontSize: sp(context, txt.fs24),
+      fontWeight: txt.w700,
+      color: colors.textOnBrand,
       height: 1.0,
     );
 
-    final pillValueStyle = TextStyle(
-      color: valueColor,
-      fontSize: sp(context, 18),
-      fontWeight: FontWeight.w700,
-      fontFamily: 'Inter',
+    final pillValueStyleBold = TextStyle(
+      fontFamily: txt.family,
+      fontSize: sp(context, txt.fs18),
+      fontWeight: txt.w600,
+      color: value,
       height: 1.0,
     );
+
+    final pillValueStyleRegular = TextStyle(
+      fontFamily: txt.family,
+      fontSize: sp(context, txt.fs18),
+      fontWeight: txt.w400,
+      color: value,
+      height: 1.0,
+    );
+
+    final pillHintStyle = TextStyle(
+      fontFamily: txt.family,
+      fontSize: sp(context, txt.fs16),
+      fontWeight: txt.w500,
+      color: hint,
+      height: 1.0,
+    );
+
+    final commentStyle = TextStyle(
+      fontFamily: txt.family,
+      fontSize: sp(context, txt.fs16),
+      fontWeight: txt.w400,
+      color: value,
+      height: 1.0,
+    );
+
+    final commentHintStyle = TextStyle(
+      fontFamily: txt.family,
+      fontSize: sp(context, txt.fs16),
+      fontWeight: txt.w500,
+      color: hint,
+      height: 1.0,
+    );
+
+    final focusBorderColor = isDark ? AppPalette.blue500 : AppPalette.blue500;
+    final focusBorderW = dp(context, space.s1);
 
     return BlocListener<AddRecordBloc, AddRecordState>(
       listenWhen: (prev, curr) => curr.isSaved,
       listener: (context, state) => Navigator.pop(context),
       child: Scaffold(
-        backgroundColor: AppUI.background,
-        body: SafeArea(
-          top: false,
-          bottom: true,
-          child: BlocBuilder<AddRecordBloc, AddRecordState>(
-            builder: (context, state) {
-              final dt = state.selectedDateTime;
-              final showKeypad = state.activeField != InputField.none;
+        backgroundColor: colors.background,
+        body: BlocBuilder<AddRecordBloc, AddRecordState>(
+          builder: (context, state) {
+            final dt = state.selectedDateTime;
+            final showKeypad = state.activeField != InputField.none;
 
-              return Center(
-                child: SingleChildScrollView(
+            if (_noteController.text != state.note) {
+              _noteController.value = TextEditingValue(
+                text: state.note,
+                selection: TextSelection.collapsed(offset: state.note.length),
+              );
+            }
+
+            return Column(
+              children: [
+                Container(
+                  height: headerH,
+                  width: double.infinity,
+                  color: headerBg,
                   padding: EdgeInsets.only(
-                    bottom: MediaQuery.viewInsetsOf(context).bottom +
-                        MediaQuery.paddingOf(context).bottom,
-                    top: topInset,
+                    left: side,
+                    right: side,
+                    top: topInset + gap12,
+                    bottom: gap12,
                   ),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildHeader(
-                        context: context,
-                        isEditing: widget.isEditing,
-                        onClose: () => Navigator.of(context).pop(),
-                        onDelete: () => _confirmDelete(context),
+                      SizedBox(height: gap10),
+                      Row(
+                        children: [
+                          _HeaderIconButton(icon: Icons.close, onTap: () => Navigator.of(context).pop()),
+                          const Spacer(),
+                          if (widget.isEditing)
+                            _HeaderIconButton(icon: Icons.delete_outline, onTap: () => _confirmDelete(context)),
+                        ],
                       ),
-
-                      SizedBox(height: pad),
-
-                      Padding(
-                        padding: EdgeInsets.symmetric(horizontal: pad),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            LayoutBuilder(
-                              builder: (ctx, cons) {
-                                final maxW = cons.maxWidth;
-                                final gap = _snapFloor(ctx, pad);
-                                final colW = _snapFloor(ctx, (maxW - 2 * gap) / 3);
-
-                                return Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        _ValuePill(
-                                          width: colW,
-                                          height: pillH,
-                                          radius: radius,
-                                          label: AppStrings.systolicShort,
-                                          value: state.systolic,
-                                          isActive: state.activeField == InputField.systolic,
-                                          isInvalid: state.systolic.isNotEmpty && !state.systolicValid,
-                                          labelStyle: pillLabelStyle,
-                                          valueStyle: pillValueStyle,
-                                          onTap: () => context
-                                              .read<AddRecordBloc>()
-                                              .add(const FieldChanged(InputField.systolic)),
-                                        ),
-                                        SizedBox(width: gap),
-                                        _ValuePill(
-                                          width: colW,
-                                          height: pillH,
-                                          radius: radius,
-                                          label: AppStrings.diastolicShort,
-                                          value: state.diastolic,
-                                          isActive: state.activeField == InputField.diastolic,
-                                          isInvalid: state.diastolic.isNotEmpty && !state.diastolicValid,
-                                          labelStyle: pillLabelStyle,
-                                          valueStyle: pillValueStyle,
-                                          onTap: () => context
-                                              .read<AddRecordBloc>()
-                                              .add(const FieldChanged(InputField.diastolic)),
-                                        ),
-                                        SizedBox(width: gap),
-                                        _ValuePill(
-                                          width: colW,
-                                          height: pillH,
-                                          radius: radius,
-                                          label: AppStrings.pulse,
-                                          value: state.pulse,
-                                          isActive: state.activeField == InputField.pulse,
-                                          isInvalid: state.pulse.isNotEmpty && !state.pulseValid,
-                                          labelStyle: pillLabelStyle,
-                                          valueStyle: pillValueStyle,
-                                          onTap: () => context
-                                              .read<AddRecordBloc>()
-                                              .add(const FieldChanged(InputField.pulse)),
-                                        ),
-                                      ],
-                                    ),
-                                    SizedBox(height: dp(context, 6)),
-                                    Builder(
-                                      builder: (_) {
-                                        String? err;
-                                        if (state.systolic.isNotEmpty && !state.systolicValid) {
-                                          err = 'Проверьте систолическое значение';
-                                        } else if (state.diastolic.isNotEmpty && !state.diastolicValid) {
-                                          err = 'Проверьте диастолическое значение';
-                                        } else if (state.pulse.isNotEmpty && !state.pulseValid) {
-                                          err = 'Проверьте пульс';
-                                        }
-                                        return err == null
-                                            ? const SizedBox.shrink()
-                                            : Text(
-                                          err,
-                                          style: TextStyle(
-                                            color: AppUI.accentRed,
-                                            fontSize: sp(context, 14),
-                                            fontWeight: FontWeight.w500,
-                                            fontFamily: 'Inter',
-                                            height: 1.0,
-                                          ),
-                                        );
-                                      },
-                                    ),
-                                  ],
-                                );
-                              },
-                            ),
-
-                            SizedBox(height: pad),
-
-                            LayoutBuilder(
-                              builder: (ctx, cons) {
-                                final gap = _snapFloor(ctx, pad);
-                                return Row(
-                                  children: [
-                                    _ChevronPill(
-                                      width: AppUI.timeButtonWidth,
-                                      height: pillH,
-                                      radius: radius,
-                                      text: DateFormat('HH:mm').format(dt),
-                                      textStyle: pillValueStyle,
-                                      chevronColor: labelColor,
-                                      onTap: () => _pickTime(context, dt),
-                                    ),
-                                    SizedBox(width: gap),
-                                    _ChevronPill(
-                                      width: AppUI.dateButtonWidth,
-                                      height: pillH,
-                                      radius: radius,
-                                      text: DateFormat('dd MMMM yyyy', 'ru').format(dt),
-                                      textStyle: pillValueStyle,
-                                      chevronColor: labelColor,
-                                      onTap: () => _pickDate(context, dt),
-                                    ),
-                                  ],
-                                );
-                              },
-                            ),
-
-                            SizedBox(height: pad),
-
-                            Container(
-                              width: double.infinity,
-                              height: dp(context, 72),
-                              decoration: BoxDecoration(
-                                color: AppUI.white,
-                                borderRadius: BorderRadius.circular(radius),
-                                boxShadow: const [],
-                              ),
-                              padding: EdgeInsets.symmetric(
-                                horizontal: dp(context, 14),
-                                vertical: dp(context, 12),
-                              ),
-                              alignment: Alignment.topLeft,
-                              child: TextField(
-                                controller: _noteController,
-                                focusNode: _noteFocusNode,
-                                expands: true,
-                                minLines: null,
-                                maxLines: null,
-                                textAlignVertical: TextAlignVertical.top,
-                                onChanged: (v) => context.read<AddRecordBloc>().add(NoteChanged(v)),
-                                style: TextStyle(
-                                  color: valueColor,
-                                  fontSize: sp(context, 16),
-                                  fontFamily: 'Inter',
-                                  height: 1.0,
-                                ),
-                                decoration: InputDecoration.collapsed(
-                                  hintText: AppStrings.commentHint,
-                                  hintStyle: TextStyle(
-                                    color: labelColor,
-                                    fontSize: sp(context, 16),
-                                    fontFamily: 'Inter',
-                                    fontWeight: FontWeight.w600,
-                                    height: 1.0,
-                                  ),
-                                ),
-                              ),
-                            ),
-
-                            SizedBox(height: pad),
-
-                            const SizedBox.shrink(),
-
-                            SizedBox(height: pad),
-
-                            LayoutBuilder(
-                              builder: (ctx, cons) {
-                                final maxW = cons.maxWidth;
-                                final gap = _snapFloor(ctx, pad);
-                                final timeW = _snapFloor(ctx, (maxW - 2 * gap) / 3);
-                                final saveW = _snapFloor(ctx, maxW - (gap + timeW));
-                                return Align(
-                                  alignment: Alignment.centerRight,
-                                  child: SizedBox(
-                                    width: saveW,
-                                    height: pillH,
-                                    child: ElevatedButton(
-                                      onPressed: state.isValid
-                                          ? () => context.read<AddRecordBloc>().add(SaveSubmitted())
-                                          : null,
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: AppUI.buttonBlue,
-                                        disabledBackgroundColor: AppUI.dividerColor,
-                                        foregroundColor: AppUI.white,
-                                        disabledForegroundColor: AppUI.textLight,
-                                        elevation: 0,
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(radius),
-                                        ),
-                                      ),
-                                      child: Text(
-                                        AppStrings.save,
-                                        style: TextStyle(
-                                          fontSize: sp(context, 18),
-                                          fontWeight: FontWeight.w700,
-                                          fontFamily: 'Inter',
-                                          height: 1.0,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-
-                            if (showKeypad) ...[
-                              SizedBox(height: pad),
-
-                              // ВАЖНО: клавиатура получает те же метрики, что и пилюли
-                              LayoutBuilder(
-                                builder: (ctx, cons) {
-                                  final gap = _snapFloor(ctx, pad);
-
-                                  return CustomKeypad(
-                                    enabledKeys: state.enabledKeys,
-                                    onKeyPressed: (v) => context.read<AddRecordBloc>().add(NumberPressed(v)),
-                                    onDeletePressed: () => context.read<AddRecordBloc>().add(BackspacePressed()),
-                                    horizontalPadding: 0, // мы уже внутри Padding(horizontal: pad)
-                                    gap: gap,
-                                    cellHeight: pillH,
-                                    radius: radius,
-                                    background: AppUI.white,
-                                    deleteBackground: AppUI.dividerColor,
-                                    foreground: valueColor,
-                                    textStyle: TextStyle(
-                                      fontSize: sp(context, 24),
-                                      fontWeight: FontWeight.w800,
-                                      fontFamily: 'Inter',
-                                      height: 1.0,
-                                    ),
-                                  );
-                                },
-                              ),
-                            ],
-
-                            SizedBox(height: pad),
-                          ],
-                        ),
-                      ),
+                      SizedBox(height: gap12),
+                      Text(AppStrings.newRecord, style: titleStyle),
                     ],
                   ),
                 ),
-              );
-            },
-          ),
+
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.only(
+                      left: side,
+                      right: side,
+                      top: gap20,
+                      bottom: dp(context, space.s96) + MediaQuery.viewInsetsOf(context).bottom,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            _InputPill(
+                              width: pillW,
+                              height: pillH,
+                              radius: pillR,
+                              bg: surface,
+                              shadow: shadows.card,
+                              text: state.systolic.isEmpty ? AppStrings.systolicShort : state.systolic,
+                              textStyle: state.systolic.isEmpty ? pillHintStyle : pillValueStyleBold,
+                              isFocused: state.activeField == InputField.systolic,
+                              focusBorderColor: focusBorderColor,
+                              focusBorderWidth: focusBorderW,
+                              onTap: () => context.read<AddRecordBloc>().add(const FieldChanged(InputField.systolic)),
+                            ),
+                            _InputPill(
+                              width: pillW,
+                              height: pillH,
+                              radius: pillR,
+                              bg: surface,
+                              shadow: shadows.card,
+                              text: state.diastolic.isEmpty ? AppStrings.diastolicShort : state.diastolic,
+                              textStyle: state.diastolic.isEmpty ? pillHintStyle : pillValueStyleBold,
+                              isFocused: state.activeField == InputField.diastolic,
+                              focusBorderColor: focusBorderColor,
+                              focusBorderWidth: focusBorderW,
+                              onTap: () => context.read<AddRecordBloc>().add(const FieldChanged(InputField.diastolic)),
+                            ),
+                            _InputPill(
+                              width: pillW,
+                              height: pillH,
+                              radius: pillR,
+                              bg: surface,
+                              shadow: shadows.card,
+                              text: state.pulse.isEmpty ? AppStrings.pulse : state.pulse,
+                              textStyle: state.pulse.isEmpty ? pillHintStyle : pillValueStyleBold,
+                              isFocused: state.activeField == InputField.pulse,
+                              focusBorderColor: focusBorderColor,
+                              focusBorderWidth: focusBorderW,
+                              onTap: () => context.read<AddRecordBloc>().add(const FieldChanged(InputField.pulse)),
+                            ),
+                          ],
+                        ),
+
+                        SizedBox(height: gap20),
+
+                        Row(
+                          children: [
+                            _ChevronPill(
+                              width: pillW,
+                              height: pillH,
+                              radius: pillR,
+                              bg: surface,
+                              text: DateFormat('HH:mm').format(dt),
+                              textStyle: pillValueStyleRegular,
+                              chevronColor: chevron,
+                              shadow: shadows.card,
+                              onTap: () => _pickTime(context, dt),
+                            ),
+                            SizedBox(width: gap16),
+                            _ChevronPill(
+                              width: dateW,
+                              height: pillH,
+                              radius: pillR,
+                              bg: surface,
+                              text: DateFormat('dd MMMM yyyy', 'ru').format(dt),
+                              textStyle: pillValueStyleRegular,
+                              chevronColor: chevron,
+                              shadow: shadows.card,
+                              onTap: () => _pickDate(context, dt),
+                            ),
+                          ],
+                        ),
+
+                        SizedBox(height: gap20),
+
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: Container(
+                            width: commentW,
+                            height: commentH,
+                            decoration: BoxDecoration(
+                              color: surface,
+                              borderRadius: BorderRadius.circular(pillR),
+                              boxShadow: [shadows.card],
+                            ),
+                            padding: EdgeInsets.fromLTRB(
+                              dp(context, space.s14),
+                              dp(context, space.s12),
+                              dp(context, space.s14),
+                              dp(context, space.s12),
+                            ),
+                            child: TextField(
+                              controller: _noteController,
+                              focusNode: _noteFocusNode,
+                              expands: true,
+                              minLines: null,
+                              maxLines: null,
+                              textAlignVertical: TextAlignVertical.top,
+                              onChanged: (v) => context.read<AddRecordBloc>().add(NoteChanged(v)),
+                              style: commentStyle,
+                              decoration: InputDecoration.collapsed(
+                                hintText: AppStrings.commentHint,
+                                hintStyle: commentHintStyle,
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        SizedBox(height: gap16),
+
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              // ✅ сердце удалено
+                              for (final e in const ['💊', '😀', '🙂', '😒', '🤕']) ...[
+                                _EmojiButton(
+                                  emoji: e,
+                                  size: emojiSize,
+                                  isSelected: _selectedEmoji == e,
+                                  onTap: () {
+                                    setState(() => _selectedEmoji = e);
+                                    _appendEmojiToNote(e);
+                                  },
+                                ),
+                                SizedBox(width: gap16),
+                              ],
+                            ],
+                          ),
+                        ),
+
+                        SizedBox(height: gap16),
+
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: SizedBox(
+                            width: dateW,
+                            height: pillH,
+                            child: ElevatedButton(
+                              onPressed: state.isValid ? () => context.read<AddRecordBloc>().add(SaveSubmitted()) : null,
+                              style: ElevatedButton.styleFrom(
+                                elevation: 0,
+                                backgroundColor: colors.brandStrong,
+                                disabledBackgroundColor: isDark ? AppPalette.dark700 : AppPalette.grey400,
+                                foregroundColor: colors.textOnBrand,
+                                disabledForegroundColor: hint,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(pillR)),
+                              ),
+                              child: Text(
+                                AppStrings.save,
+                                style: TextStyle(
+                                  fontFamily: txt.family,
+                                  fontSize: sp(context, txt.fs20),
+                                  fontWeight: txt.w700,
+                                  height: 1.0,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        if (showKeypad) ...[
+                          SizedBox(height: gap20),
+                          CustomKeypad(
+                            enabledKeys: state.enabledKeys,
+                            onKeyPressed: (v) => context.read<AddRecordBloc>().add(NumberPressed(v)),
+                            onDeletePressed: () => context.read<AddRecordBloc>().add(BackspacePressed()),
+                            horizontalPadding: 0,
+                            gap: dp(context, space.s16),
+                            cellHeight: pillH,
+                            radius: dp(context, radii.r10),
+                            background: surface,
+                            // ✅ delete-клавиша выглядит как клавиша (тот же фон)
+                            deleteBackground: surface,
+                            foreground: value,
+                            textStyle: TextStyle(
+                              fontFamily: txt.family,
+                              fontSize: sp(context, txt.fs20),
+                              fontWeight: txt.w400,
+                              height: 1.0,
+                              color: value,
+                            ),
+                            // ✅ уменьшили примерно на четверть (вместо 26 ставим 20)
+                            deleteIconSize: dp(context, space.s20),
+                            deleteIconColor: value,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
   }
 }
 
-class _ValuePill extends StatelessWidget {
+class _HeaderIconButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _HeaderIconButton({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final space = context.appSpace;
+
+    final size = dp(context, space.s24);
+    return SizedBox(
+      width: size,
+      height: size,
+      child: IconButton(
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(),
+        icon: Icon(icon, color: colors.textOnBrand, size: size),
+        onPressed: onTap,
+      ),
+    );
+  }
+}
+
+class _InputPill extends StatelessWidget {
   final double width;
   final double height;
   final double radius;
-  final String label;
-  final String value;
-  final bool isActive;
-  final bool isInvalid;
-  final TextStyle labelStyle;
-  final TextStyle valueStyle;
+  final Color bg;
+  final BoxShadow shadow;
+  final String text;
+  final TextStyle textStyle;
+
+  final bool isFocused;
+  final Color focusBorderColor;
+  final double focusBorderWidth;
+
   final VoidCallback onTap;
 
-  const _ValuePill({
+  const _InputPill({
     required this.width,
     required this.height,
     required this.radius,
-    required this.label,
-    required this.value,
-    required this.isActive,
-    required this.isInvalid,
-    required this.labelStyle,
-    required this.valueStyle,
+    required this.bg,
+    required this.shadow,
+    required this.text,
+    required this.textStyle,
+    required this.isFocused,
+    required this.focusBorderColor,
+    required this.focusBorderWidth,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: width,
-      height: height,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque, // Чтобы кликалось по всей площади
-        onTap: onTap,
-        child: Container(
-          decoration: BoxDecoration(
-            color: AppUI.white,
-            borderRadius: BorderRadius.circular(radius),
-            boxShadow: const [AppUI.shadow4x2],
-            border: (isInvalid || isActive)
-                ? Border.all(
-              color: isInvalid ? AppUI.accentRed : AppUI.headerBlue,
-              width: dp(context, 2),
-            )
-                : null,
-          ),
-          alignment: Alignment.center,
-          child: Text(
-            value.isEmpty ? label : value,
-            style: value.isEmpty ? labelStyle : valueStyle,
-            textAlign: TextAlign.center,
-          ),
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        width: width,
+        height: height,
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(radius),
+          boxShadow: [shadow],
+          border: isFocused ? Border.all(color: focusBorderColor, width: focusBorderWidth) : null,
         ),
+        alignment: Alignment.center,
+        child: Text(text, style: textStyle, maxLines: 1, overflow: TextOverflow.ellipsis),
       ),
     );
   }
@@ -575,53 +575,88 @@ class _ChevronPill extends StatelessWidget {
   final double width;
   final double height;
   final double radius;
+  final Color bg;
   final String text;
   final TextStyle textStyle;
   final Color chevronColor;
+  final BoxShadow shadow;
   final VoidCallback onTap;
 
   const _ChevronPill({
     required this.width,
     required this.height,
     required this.radius,
+    required this.bg,
     required this.text,
     required this.textStyle,
     required this.chevronColor,
+    required this.shadow,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final chevronSize = dp(context, 18);
-    return SizedBox(
-      width: width,
-      height: height,
-      child: Material( // Добавила Material для нормального InkWell (эффект нажатия)
-        color: Colors.transparent,
-        child: InkWell(
+    final space = context.appSpace;
+
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        width: width,
+        height: height,
+        decoration: BoxDecoration(
+          color: bg,
           borderRadius: BorderRadius.circular(radius),
-          onTap: onTap,
-          child: Container(
-            decoration: BoxDecoration(
-              color: AppUI.white,
-              borderRadius: BorderRadius.circular(radius),
-              boxShadow: const [AppUI.shadow4x2],
-            ),
-            padding: EdgeInsets.symmetric(horizontal: dp(context, 14)),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    text,
-                    style: textStyle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                SizedBox(width: dp(context, 8)),
-                Icon(Icons.keyboard_arrow_down, size: chevronSize, color: chevronColor),
-              ],
-            ),
+          boxShadow: [shadow],
+        ),
+        padding: EdgeInsets.symmetric(horizontal: dp(context, space.s12)),
+        child: Row(
+          children: [
+            Expanded(child: Text(text, style: textStyle, maxLines: 1, overflow: TextOverflow.ellipsis)),
+            Icon(Icons.arrow_drop_down, color: chevronColor, size: dp(context, space.s24)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EmojiButton extends StatelessWidget {
+  final String emoji;
+  final double size;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _EmojiButton({
+    required this.emoji,
+    required this.size,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final radii = context.appRadii;
+
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        width: size,
+        height: size,
+        decoration: isSelected
+            ? BoxDecoration(
+          color: colors.shadow.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(dp(context, radii.r10)),
+        )
+            : null,
+        alignment: Alignment.center,
+        child: Text(
+          emoji,
+          style: TextStyle(
+            fontSize: size,
+            height: 1.0,
           ),
         ),
       ),
