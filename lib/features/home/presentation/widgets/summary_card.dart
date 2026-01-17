@@ -24,19 +24,21 @@ class SummaryCard extends StatelessWidget {
     final text = context.appText;
 
     final width = MediaQuery.sizeOf(context).width - dp(context, space.s20) * 2;
-    final height = dp(context, isDark ? space.s114 : space.s112);
+    final height = dp(context, space.s114); // фикс по макету
     final r = dp(context, radii.r10);
 
-    final bg = isDark ? AppPalette.dark800 : AppPalette.blue600;
-    final checkColor = isDark ? colors.textOnBrand : AppPalette.blue500;
+    final bg = isDark ? AppPalette.dark900 : AppPalette.blue600;
+    final mainText = isDark ? AppPalette.dark400 : colors.textOnBrand;
+    final checkColor = isDark ? AppPalette.dark600 : AppPalette.blue500;
 
-    final checkSize = dp(context, space.s48); // ✅ чуть больше (было 42)
+    // ✅ увеличили, но без убийства высоты
+    final checkSize = dp(context, space.s40);
 
     final pressureStyle = TextStyle(
       fontFamily: text.family,
       fontSize: sp(context, text.fs30),
       fontWeight: text.w600,
-      color: colors.textOnBrand,
+      color: mainText,
       height: 1.0,
     );
 
@@ -44,7 +46,7 @@ class SummaryCard extends StatelessWidget {
       fontFamily: text.family,
       fontSize: sp(context, text.fs22),
       fontWeight: text.w600,
-      color: colors.textOnBrand,
+      color: mainText,
       height: 1.0,
     );
 
@@ -52,9 +54,11 @@ class SummaryCard extends StatelessWidget {
       fontFamily: text.family,
       fontSize: sp(context, text.fs22),
       fontWeight: text.w600,
-      color: colors.textOnBrand,
+      color: mainText,
       height: 1.0,
     );
+
+    final clockColor = isDark ? AppPalette.dark600 : colors.textOnBrand;
 
     return Container(
       width: width,
@@ -64,11 +68,12 @@ class SummaryCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(r),
         boxShadow: [shadow.card],
       ),
+      // ✅ уменьшаем вертикальные паддинги
       padding: EdgeInsets.fromLTRB(
         dp(context, space.s16),
-        dp(context, space.s4),
+        dp(context, space.s6),
         dp(context, space.s16),
-        dp(context, space.s10),
+        dp(context, space.s6),
       ),
       child: (record == null)
           ? Center(
@@ -78,7 +83,7 @@ class SummaryCard extends StatelessWidget {
             fontFamily: text.family,
             fontSize: sp(context, text.fs16),
             fontWeight: text.w500,
-            color: colors.textOnBrand,
+            color: mainText,
             height: 1.0,
           ),
         ),
@@ -86,23 +91,29 @@ class SummaryCard extends StatelessWidget {
           : Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Давление + галочка
+          // 1) Давление
+          Text(
+            '${record!.systolic}/${record!.diastolic}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: pressureStyle,
+          ),
+
+          SizedBox(height: dp(context, space.s1)),
+
+          // 2) Пульс + галочка
           Row(
-            crossAxisAlignment: CrossAxisAlignment.center, // ✅ центр по вертикали
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Expanded(
-                child: Padding(
-                  // ✅ чуть подняли строку давления, чтобы не упираться в низ
-                  padding: EdgeInsets.only(top: dp(context, 0)),
-                  child: Text(
-                    '${record!.systolic}/${record!.diastolic}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: pressureStyle,
-                  ),
+                child: Row(
+                  children: [
+                    Text('${record!.pulse}', style: pulseStyle),
+                    SizedBox(width: dp(context, space.s6)),
+                    Text('уд/мин', style: pulseStyle),
+                  ],
                 ),
               ),
-              SizedBox(width: dp(context, space.s2)),
               SizedBox(
                 width: checkSize,
                 height: checkSize,
@@ -118,33 +129,21 @@ class SummaryCard extends StatelessWidget {
             ],
           ),
 
-          // ✅ уменьшили зазор между давлением и пульсом
-          SizedBox(height: dp(context, space.s2)),
-
-          // Пульс
-          Row(
-            children: [
-              Text('${record!.pulse}', style: pulseStyle),
-              SizedBox(width: dp(context, space.s6)),
-              Text('уд/мин', style: pulseStyle),
-            ],
-          ),
-
-          // ✅ чуть больше воздуха перед временем, чтобы не "слипалось"
-          SizedBox(height: dp(context, space.s4)),
-
-          // Время
-          Row(
-            children: [
-              SvgPicture.asset(
-                'assets/clock.svg',
-                width: dp(context, space.s20),
-                height: dp(context, space.s20),
-                colorFilter: ColorFilter.mode(colors.textOnBrand, BlendMode.srcIn),
-              ),
-              SizedBox(width: dp(context, space.s6)),
-              Text(_hhmm(record!.dateTime), style: timeStyle),
-            ],
+          // ✅ “опустить” время визуально, но не раздувать высоту
+          Padding(
+            padding: EdgeInsets.only(top: dp(context, space.s4)),
+            child: Row(
+              children: [
+                SvgPicture.asset(
+                  'assets/clock.svg',
+                  width: dp(context, space.s20),
+                  height: dp(context, space.s20),
+                  colorFilter: ColorFilter.mode(clockColor, BlendMode.srcIn),
+                ),
+                SizedBox(width: dp(context, space.s6)),
+                Text(_hhmm(record!.dateTime), style: timeStyle),
+              ],
+            ),
           ),
         ],
       ),

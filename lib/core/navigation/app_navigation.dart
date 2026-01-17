@@ -1,6 +1,3 @@
-// ... файл целиком не повторяю? Нет, правило: только полные замены.
-// Поэтому — полный файл, с изменением только _Fab.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -56,27 +53,21 @@ class _AppNavigationState extends State<AppNavigation> {
         BlocProvider.value(value: GetIt.I<ProfileCubit>()..loadProfile()),
         BlocProvider.value(value: GetIt.I<SettingsCubit>()),
       ],
-      child: Builder(
-        builder: (context) {
-          final bg = Theme.of(context).scaffoldBackgroundColor;
-          return Scaffold(
-            extendBody: true,
-            backgroundColor: bg,
-            body: IndexedStack(index: _selectedIndex, children: pages),
-            bottomNavigationBar: _BottomNavBar(
-              activeIndex: _selectedIndex,
-              onTap: _onNavTap,
-            ),
-          );
-        },
+      child: Scaffold(
+        extendBody: true,
+        body: IndexedStack(index: _selectedIndex, children: pages),
+        bottomNavigationBar: _BottomNavBar(
+          activeIndex: _selectedIndex,
+          onTap: _onNavTap,
+        ),
       ),
     );
   }
 }
 
 class _BottomNavBar extends StatelessWidget {
-  final int activeIndex;
-  final ValueChanged<int> onTap;
+  final int activeIndex; // 0..3
+  final ValueChanged<int> onTap; // 0..4 (2 is center)
 
   const _BottomNavBar({
     required this.activeIndex,
@@ -89,8 +80,9 @@ class _BottomNavBar extends StatelessWidget {
 
     final s = context.appSpace;
 
-    final inactive = isDark ? AppPalette.dark400 : AppPalette.blue900; // 2E5D85
-    final active = isDark ? AppPalette.dark600 : AppPalette.grey500; // A0AEC0
+    // ✅ В dark: активная БЛЕДНАЯ, остальные ЯРКИЕ
+    final bright = isDark ? AppPalette.dark400 : AppPalette.blue900; // яркая
+    final pale = isDark ? AppPalette.dark600 : AppPalette.grey500;  // бледная
 
     final barH = dp(context, s.s72 - s.s2 - s.s1); // 69
     final icon = dp(context, s.s30);
@@ -101,6 +93,7 @@ class _BottomNavBar extends StatelessWidget {
 
     final lift = outer / 2;
 
+    // ✅ Фон нижнего меню dark: #3C3C3C
     final barBg = isDark ? AppPalette.dark800 : AppPalette.grey050;
 
     return SafeArea(
@@ -111,6 +104,7 @@ class _BottomNavBar extends StatelessWidget {
           clipBehavior: Clip.none,
           alignment: Alignment.bottomCenter,
           children: [
+            // Подложка под поднятую кнопку — прозрачная (как ты и говорил)
             Positioned.fill(child: const ColoredBox(color: Colors.transparent)),
 
             Positioned(
@@ -126,7 +120,7 @@ class _BottomNavBar extends StatelessWidget {
                       child: _NavItem(
                         asset: 'assets/house.svg',
                         size: icon,
-                        color: activeIndex == 0 ? active : inactive,
+                        color: activeIndex == 0 ? pale : bright,
                         onTap: () => onTap(0),
                       ),
                     ),
@@ -134,7 +128,7 @@ class _BottomNavBar extends StatelessWidget {
                       child: _NavItem(
                         asset: 'assets/Vector.svg',
                         size: icon,
-                        color: activeIndex == 1 ? active : inactive,
+                        color: activeIndex == 1 ? pale : bright,
                         onTap: () => onTap(1),
                       ),
                     ),
@@ -143,7 +137,7 @@ class _BottomNavBar extends StatelessWidget {
                       child: _NavItem(
                         asset: 'assets/settings.svg',
                         size: icon,
-                        color: activeIndex == 2 ? active : inactive,
+                        color: activeIndex == 2 ? pale : bright,
                         onTap: () => onTap(3),
                       ),
                     ),
@@ -151,7 +145,7 @@ class _BottomNavBar extends StatelessWidget {
                       child: _NavItem(
                         asset: 'assets/user-pen.svg',
                         size: icon,
-                        color: activeIndex == 3 ? active : inactive,
+                        color: activeIndex == 3 ? pale : bright,
                         onTap: () => onTap(4),
                       ),
                     ),
@@ -172,7 +166,8 @@ class _BottomNavBar extends StatelessWidget {
                     outer: outer,
                     inner: inner,
                     plus: plus,
-                    outerColor: barBg, // ✅ внешнее кольцо снова видно
+                    isDark: isDark,
+                    barBg: barBg,
                   ),
                 ),
               ),
@@ -227,13 +222,15 @@ class _Fab extends StatelessWidget {
   final double outer;
   final double inner;
   final double plus;
-  final Color outerColor;
+  final bool isDark;
+  final Color barBg;
 
   const _Fab({
     required this.outer,
     required this.inner,
     required this.plus,
-    required this.outerColor,
+    required this.isDark,
+    required this.barBg,
   });
 
   @override
@@ -242,10 +239,28 @@ class _Fab extends StatelessWidget {
     final s = context.appSpace;
 
     final shadow = BoxShadow(
-      color: c.shadow.withValues(alpha: 0.12), //0.08–0.14 — диапазон “деликатной” тени
-      blurRadius: dp(context, s.s10), //чем больше blur, тем мягче
-      spreadRadius: dp(context, -s.s2), //Spread < 0 — критично, иначе тень выглядит как обводка
-      offset: Offset(0, dp(context, s.s4)), //Offset — маленький, иначе “падает” тяжело
+      color: AppPalette.shadow10,
+      blurRadius: dp(context, s.s4),
+      offset: Offset(0, dp(context, s.s2)),
+    );
+
+    final innerBg = isDark ? AppPalette.dark900 : c.brandStrong;
+    final plusColor = isDark ? AppPalette.dark400 : c.textOnBrand;
+
+    final outerDecoration = BoxDecoration(
+      shape: BoxShape.circle,
+      boxShadow: [shadow],
+      color: isDark ? null : barBg,
+      gradient: isDark
+          ? const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          AppPalette.dark800, // #3C3C3C
+          AppPalette.dark805, // #3D3D3D
+        ],
+      )
+          : null,
     );
 
     return SizedBox(
@@ -254,22 +269,16 @@ class _Fab extends StatelessWidget {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // ✅ внешнее кольцо снова НЕ прозрачное
           Container(
             width: outer,
             height: outer,
-            decoration: BoxDecoration(
-              color: outerColor,
-              shape: BoxShape.circle,
-              boxShadow: [shadow],
-            ),
+            decoration: outerDecoration,
           ),
-
           Container(
             width: inner,
             height: inner,
             decoration: BoxDecoration(
-              color: c.brandStrong,
+              color: innerBg,
               shape: BoxShape.circle,
             ),
             child: Center(
@@ -277,7 +286,7 @@ class _Fab extends StatelessWidget {
                 'assets/Plus.svg',
                 width: plus,
                 height: plus,
-                colorFilter: ColorFilter.mode(c.textOnBrand, BlendMode.srcIn),
+                colorFilter: ColorFilter.mode(plusColor, BlendMode.srcIn),
               ),
             ),
           ),

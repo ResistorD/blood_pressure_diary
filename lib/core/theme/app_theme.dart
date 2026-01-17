@@ -1,28 +1,13 @@
 import 'package:flutter/material.dart';
 
-/// Единственный источник правды для UI:
-/// - цвета (light/dark)
-/// - размеры (spacing, icon sizes, базовые компоненты)
-/// - радиусы
-/// - тени
-/// - типографика
-///
-/// Правило проекта: в UI-файлах — никаких хардкодов.
-/// Всё берётся либо из ThemeExtension (context.appColors / appSpace / appRadii / appShadow / appText),
-/// либо (временно для старого кода) из AppUI.
-///
-/// ВАЖНО:
-/// - Тему делаем “один раз по всем JSON”.
-/// - Дальше доводим экраны по очереди, НЕ возвращаясь к app_theme.dart.
+// -----------------------------------------------------------------------------
+// Base colors (palette)
 
 @immutable
 class _C {
-  static const Color black = Color(0xFF000000);
   static const Color white = Color(0xFFFFFFFF);
+  static const Color black = Color(0xFF000000);
 }
-
-// -----------------------------------------------------------------------------
-// Raw palette (из всех JSON в пакете)
 
 class AppPalette {
   // Blues
@@ -32,37 +17,30 @@ class AppPalette {
   static const Color blue500 = Color(0xFF6B9DC0); // rgb(107,157,192)
   static const Color blue300 = Color(0xFFBFD4E7); // rgb(191,212,231)
 
-  // Greys (light)
-  static const Color grey050 = Color(0xFFF9F8FA); // rgb(249,248,250)
-  static const Color grey100 = Color(0xFFF5F5F5); // rgb(245,245,245)
-  static const Color grey200 = Color(0xFFF0F4F8); // rgb(240,244,248)
-  static const Color grey400 = Color(0xFFD9D9D9); // rgb(217,217,217)
-  static const Color grey500 = Color(0xFFA0AEC0); // rgb(160,174,192)
-  static const Color grey600 = Color(0xFF808080); // rgb(128,128,128)
+  // Light greys
+  static const Color grey050 = Color(0xFFF9F8FA);
+  static const Color grey100 = Color(0xFFF5F5F5);
+  static const Color grey200 = Color(0xFFF0F4F8);
+  static const Color grey400 = Color(0xFFD9D9D9);
+  static const Color grey500 = Color(0xFFA0AEC0);
+  static const Color grey600 = Color(0xFF808080);
 
-  // Greys (dark)
+  // Dark greys
   static const Color dark900 = Color(0xFF2D2D2D); // rgb(45,45,45)
   static const Color dark800 = Color(0xFF3C3C3C); // rgb(60,60,60)
+  static const Color dark805 = Color(0xFF3D3D3D); // rgb(61,61,61) (для linear кольца)
   static const Color dark700 = Color(0xFF4C4C4C); // rgb(76,76,76)
+  static const Color dark600 = Color(0xFF747474); // rgb(116,116,116)
   static const Color dark400 = Color(0xFFCCCCCC); // rgb(204,204,204)
   static const Color dark350 = Color(0xFFC6C6C6); // rgb(198,198,198)
-  static const Color dark600 = Color(0xFF747474); // rgb(116,116,116)
 
   // Accents
-  static const Color green = Color(0xFF3DBE65); // rgb(61,190,101)
-  static const Color red = Color(0xFFDA3F3F); // rgb(218,63,63)
-  static const Color blueAccent = Color(0xFF5A8EF6); // rgb(90,142,246)
-  static const Color amber = Color(0xFFEB8F00); // rgb(235,143,0)
+  static const Color green = Color(0xFF3DBE65);
+  static const Color red = Color(0xFFDA3F3F);
+  static const Color amber = Color(0xFFEB8F00);
+  static const Color blueAccent = Color(0xFF5A8EF6);
 
-  // Error-ish variants present in some JSON
-  static const Color red600 = Color(0xFFCC3333);
-  static const Color redM3 = Color(0xFFF44336);
-  static const Color redSoft = Color(0xFFFF8A80);
-  static const Color redDark = Color(0xFFC62828);
-  static const Color redWarm = Color(0xFFED7770);
-  static const Color yellow = Color(0xFFFDD835);
-
-  // Browns (встречаются в профиле)
+  // Browns (profile)
   static const Color brown900 = Color(0xFF422B0D);
   static const Color brown700 = Color(0xFF896024);
 
@@ -72,42 +50,34 @@ class AppPalette {
 }
 
 // -----------------------------------------------------------------------------
-// Semantic colors (то, чем реально должен пользоваться UI)
+// Semantic colors (ThemeExtension)
 
 @immutable
 class AppColors extends ThemeExtension<AppColors> {
-  // Surfaces
-  final Color background; // экран
-  final Color surface; // карточки/поля
-  final Color surfaceAlt; // вторичный фон/подложки
+  final Color background;
+  final Color surface;
+  final Color surfaceAlt;
 
-  // Brand
-  final Color brand; // основной бренд (кнопки/акценты)
-  final Color brandStrong; // более тёмный бренд (иконки/текст)
-  final Color brandSoft; // мягкий бренд (чипы/подложки)
+  final Color brand;
+  final Color brandStrong;
+  final Color brandSoft;
 
-  // Text
   final Color textPrimary;
   final Color textSecondary;
   final Color textOnBrand;
 
-  // Dividers
   final Color divider;
 
-  // Icons
   final Color iconPrimary;
   final Color iconSecondary;
 
-  // Status
   final Color success;
   final Color warning;
   final Color danger;
   final Color dangerSoft;
 
-  // Shadow color
   final Color shadow;
 
-  // Profile extras
   final Color profileAccentBrown;
   final Color profileAccentBrownDark;
 
@@ -133,7 +103,7 @@ class AppColors extends ThemeExtension<AppColors> {
     required this.profileAccentBrownDark,
   });
 
-  static const AppColors light = AppColors(
+  static const light = AppColors(
     background: AppPalette.grey200,
     surface: _C.white,
     surfaceAlt: AppPalette.grey050,
@@ -149,13 +119,13 @@ class AppColors extends ThemeExtension<AppColors> {
     success: AppPalette.green,
     warning: AppPalette.amber,
     danger: AppPalette.red,
-    dangerSoft: AppPalette.redSoft,
+    dangerSoft: AppPalette.red,
     shadow: AppPalette.shadow10,
     profileAccentBrown: AppPalette.brown700,
     profileAccentBrownDark: AppPalette.brown900,
   );
 
-  static const AppColors dark = AppColors(
+  static const dark = AppColors(
     background: AppPalette.dark900,
     surface: AppPalette.dark700,
     surfaceAlt: AppPalette.dark800,
@@ -171,7 +141,7 @@ class AppColors extends ThemeExtension<AppColors> {
     success: AppPalette.green,
     warning: AppPalette.amber,
     danger: AppPalette.red,
-    dangerSoft: AppPalette.redWarm,
+    dangerSoft: AppPalette.red,
     shadow: AppPalette.shadow10,
     profileAccentBrown: AppPalette.brown700,
     profileAccentBrownDark: AppPalette.brown900,
@@ -223,41 +193,41 @@ class AppColors extends ThemeExtension<AppColors> {
   }
 
   @override
-  AppColors lerp(ThemeExtension<AppColors>? other, double t) {
+  ThemeExtension<AppColors> lerp(ThemeExtension<AppColors>? other, double t) {
     if (other is! AppColors) return this;
+    Color l(Color a, Color b) => Color.lerp(a, b, t)!;
+
     return AppColors(
-      background: Color.lerp(background, other.background, t)!,
-      surface: Color.lerp(surface, other.surface, t)!,
-      surfaceAlt: Color.lerp(surfaceAlt, other.surfaceAlt, t)!,
-      brand: Color.lerp(brand, other.brand, t)!,
-      brandStrong: Color.lerp(brandStrong, other.brandStrong, t)!,
-      brandSoft: Color.lerp(brandSoft, other.brandSoft, t)!,
-      textPrimary: Color.lerp(textPrimary, other.textPrimary, t)!,
-      textSecondary: Color.lerp(textSecondary, other.textSecondary, t)!,
-      textOnBrand: Color.lerp(textOnBrand, other.textOnBrand, t)!,
-      divider: Color.lerp(divider, other.divider, t)!,
-      iconPrimary: Color.lerp(iconPrimary, other.iconPrimary, t)!,
-      iconSecondary: Color.lerp(iconSecondary, other.iconSecondary, t)!,
-      success: Color.lerp(success, other.success, t)!,
-      warning: Color.lerp(warning, other.warning, t)!,
-      danger: Color.lerp(danger, other.danger, t)!,
-      dangerSoft: Color.lerp(dangerSoft, other.dangerSoft, t)!,
-      shadow: Color.lerp(shadow, other.shadow, t)!,
-      profileAccentBrown: Color.lerp(profileAccentBrown, other.profileAccentBrown, t)!,
-      profileAccentBrownDark: Color.lerp(profileAccentBrownDark, other.profileAccentBrownDark, t)!,
+      background: l(background, other.background),
+      surface: l(surface, other.surface),
+      surfaceAlt: l(surfaceAlt, other.surfaceAlt),
+      brand: l(brand, other.brand),
+      brandStrong: l(brandStrong, other.brandStrong),
+      brandSoft: l(brandSoft, other.brandSoft),
+      textPrimary: l(textPrimary, other.textPrimary),
+      textSecondary: l(textSecondary, other.textSecondary),
+      textOnBrand: l(textOnBrand, other.textOnBrand),
+      divider: l(divider, other.divider),
+      iconPrimary: l(iconPrimary, other.iconPrimary),
+      iconSecondary: l(iconSecondary, other.iconSecondary),
+      success: l(success, other.success),
+      warning: l(warning, other.warning),
+      danger: l(danger, other.danger),
+      dangerSoft: l(dangerSoft, other.dangerSoft),
+      shadow: l(shadow, other.shadow),
+      profileAccentBrown: l(profileAccentBrown, other.profileAccentBrown),
+      profileAccentBrownDark: l(profileAccentBrownDark, other.profileAccentBrownDark),
     );
   }
 }
 
 // -----------------------------------------------------------------------------
-// Spacing / sizes (набор, который встречается в JSON)
+// Spacing
 
 @immutable
 class AppSpacing extends ThemeExtension<AppSpacing> {
-  // ✅ добавили микро-токены для пиксель-перфекта
   final double s1;
   final double s2;
-
   final double s4;
   final double s6;
   final double s8;
@@ -273,6 +243,7 @@ class AppSpacing extends ThemeExtension<AppSpacing> {
   final double s30;
   final double s32;
   final double s40;
+  final double s46;
   final double s48;
   final double s56;
   final double s57;
@@ -285,7 +256,6 @@ class AppSpacing extends ThemeExtension<AppSpacing> {
   final double s128;
   final double s160;
 
-  // common widths seen in designs
   final double w320;
   final double w243;
   final double w208;
@@ -310,6 +280,7 @@ class AppSpacing extends ThemeExtension<AppSpacing> {
     required this.s30,
     required this.s32,
     required this.s40,
+    required this.s46,
     required this.s48,
     required this.s56,
     required this.s57,
@@ -346,6 +317,7 @@ class AppSpacing extends ThemeExtension<AppSpacing> {
     s30: 30,
     s32: 32,
     s40: 40,
+    s46: 46,
     s48: 48,
     s56: 56,
     s57: 57,
@@ -383,6 +355,7 @@ class AppSpacing extends ThemeExtension<AppSpacing> {
     double? s30,
     double? s32,
     double? s40,
+    double? s46,
     double? s48,
     double? s56,
     double? s57,
@@ -418,6 +391,7 @@ class AppSpacing extends ThemeExtension<AppSpacing> {
       s30: s30 ?? this.s30,
       s32: s32 ?? this.s32,
       s40: s40 ?? this.s40,
+      s46: s46 ?? this.s46,
       s48: s48 ?? this.s48,
       s56: s56 ?? this.s56,
       s57: s57 ?? this.s57,
@@ -616,7 +590,7 @@ class AppTypography extends ThemeExtension<AppTypography> {
 }
 
 // -----------------------------------------------------------------------------
-// AppTheme
+// AppTheme (ThemeData builder)
 
 class AppTheme {
   static ThemeData get lightTheme => _build(
@@ -645,6 +619,7 @@ class AppTheme {
       brightness: brightness,
       fontFamily: typography.family,
       scaffoldBackgroundColor: colors.background,
+      // ✅ Это критично для appColors/appSpace/...
       extensions: <ThemeExtension<dynamic>>[
         colors,
         typography,
@@ -682,6 +657,7 @@ class AppTheme {
           fontSize: typography.fs16,
           fontWeight: typography.w400,
           color: colors.textSecondary,
+          height: 1.0,
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
@@ -765,7 +741,7 @@ class AppTheme {
 }
 
 // -----------------------------------------------------------------------------
-// Context accessors
+// Context accessors (это и есть appColors/appSpace/...)
 
 extension AppThemeX on BuildContext {
   AppColors get appColors => Theme.of(this).extension<AppColors>() ?? AppColors.light;
@@ -776,7 +752,7 @@ extension AppThemeX on BuildContext {
 }
 
 // -----------------------------------------------------------------------------
-// Legacy API (чтобы текущий код не посыпался).
+// Legacy API (чтобы старый код не посыпался)
 
 class AppUI {
   // Sizes

@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/scale.dart';
+import '../../../../core/utils/blood_pressure_color_utils.dart';
 import '../../data/blood_pressure_model.dart';
 
 class RecordListItem extends StatelessWidget {
@@ -17,22 +18,6 @@ class RecordListItem extends StatelessWidget {
   });
 
   String _hhmm(DateTime t) => DateFormat('HH:mm').format(t);
-
-  Color _dotColor(BuildContext context) {
-    final c = context.appColors;
-
-    final sys = record.systolic;
-    final dia = record.diastolic;
-
-    final isLow = sys < 100 || dia < 60;
-    final isHigh = sys >= 140 || dia >= 90;
-    final isElevated = !isLow && !isHigh && (sys >= 130 || dia >= 85);
-
-    if (isHigh) return c.danger;
-    if (isElevated) return c.warning;
-    if (isLow) return AppPalette.blueAccent; // #FF5A8EF6
-    return c.success;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -60,8 +45,6 @@ class RecordListItem extends StatelessWidget {
     final hasNote = note.isNotEmpty;
 
     final rowH = dp(context, hasNote ? s.s72 : s.s56);
-
-    // вертикальные паддинги оставляем симметричными
     final padV = dp(context, hasNote ? s.s8 : s.s10);
 
     final valueStyle = TextStyle(
@@ -94,6 +77,12 @@ class RecordListItem extends StatelessWidget {
     final leftTopPad = dp(context, hasNote ? s.s12 : s.s18);
     final dotTopPad = dp(context, hasNote ? s.s12 : s.s20);
 
+    final dotColor = BloodPressureColorUtils.getIndicatorColor(
+      context,
+      systolic: record.systolic,
+      diastolic: record.diastolic,
+    );
+
     return SizedBox(
       height: rowH,
       child: InkWell(
@@ -114,10 +103,7 @@ class RecordListItem extends StatelessWidget {
               child: Container(
                 width: dotD,
                 height: dotD,
-                decoration: BoxDecoration(
-                  color: _dotColor(context),
-                  shape: BoxShape.circle,
-                ),
+                decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle),
               ),
             ),
             SizedBox(width: dotGap),
@@ -132,9 +118,8 @@ class RecordListItem extends StatelessWidget {
                 ),
                 child: hasNote
                     ? Center(
-                  // ✅ ключ: центрируем блок целиком внутри фиксированной высоты
                   child: Column(
-                    mainAxisSize: MainAxisSize.min, // ✅ не растягиваться
+                    mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _MainRow(
@@ -145,13 +130,8 @@ class RecordListItem extends StatelessWidget {
                         blockGap: blockGap,
                         iconColor: iconColor,
                       ),
-                      SizedBox(height: dp(context, s.s8)), // gap между цифрами и комментом
-                      Text(
-                        note,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: noteStyle,
-                      ),
+                      SizedBox(height: dp(context, s.s8)),
+                      Text(note, maxLines: 1, overflow: TextOverflow.ellipsis, style: noteStyle),
                     ],
                   ),
                 )
@@ -220,12 +200,7 @@ class _MainRow extends StatelessWidget {
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              '${record.pulse}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: valueStyle,
-            ),
+            Text('${record.pulse}', maxLines: 1, overflow: TextOverflow.ellipsis, style: valueStyle),
             SizedBox(width: iconGap),
             SvgPicture.asset(
               'assets/activity.svg',

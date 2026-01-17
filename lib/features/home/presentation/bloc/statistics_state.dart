@@ -6,12 +6,19 @@ enum StatisticsPeriod { sevenDays, thirtyDays, all }
 class StatisticsState extends Equatable {
   final List<BloodPressureRecord> filteredRecords;
   final StatisticsPeriod period;
+
   final double maxSys;
   final double maxDia;
   final double minSys;
   final double minDia;
   final double avgSys;
   final double avgDia;
+
+  // ✅ PULSE analytics
+  final double maxPulse;
+  final double minPulse;
+  final double avgPulse;
+
   final int targetSystolic;
   final int targetDiastolic;
 
@@ -24,6 +31,9 @@ class StatisticsState extends Equatable {
     this.minDia = 0,
     this.avgSys = 0,
     this.avgDia = 0,
+    this.maxPulse = 0,
+    this.minPulse = 0,
+    this.avgPulse = 0,
     this.targetSystolic = 120,
     this.targetDiastolic = 80,
   });
@@ -37,6 +47,9 @@ class StatisticsState extends Equatable {
     double? minDia,
     double? avgSys,
     double? avgDia,
+    double? maxPulse,
+    double? minPulse,
+    double? avgPulse,
     int? targetSystolic,
     int? targetDiastolic,
   }) {
@@ -49,6 +62,9 @@ class StatisticsState extends Equatable {
       minDia: minDia ?? this.minDia,
       avgSys: avgSys ?? this.avgSys,
       avgDia: avgDia ?? this.avgDia,
+      maxPulse: maxPulse ?? this.maxPulse,
+      minPulse: minPulse ?? this.minPulse,
+      avgPulse: avgPulse ?? this.avgPulse,
       targetSystolic: targetSystolic ?? this.targetSystolic,
       targetDiastolic: targetDiastolic ?? this.targetDiastolic,
     );
@@ -56,15 +72,18 @@ class StatisticsState extends Equatable {
 
   @override
   List<Object?> get props => [
-        filteredRecords,
-        period,
-        maxSys,
-        maxDia,
-        minSys,
-        minDia,
-        avgSys,
-        avgDia,
-        targetSystolic,
-        targetDiastolic,
-      ];
+    filteredRecords,
+    period,
+    maxSys,
+    maxDia,
+    minSys,
+    minDia,
+    avgSys,
+    avgDia,
+    maxPulse,
+    minPulse,
+    avgPulse,
+    targetSystolic,
+    targetDiastolic,
+  ];
 }

@@ -1,6 +1,6 @@
 {
   "metadata": {
-    "exportedAt": "2026-01-09T00:39:14.571Z",
+    "exportedAt": "2026-01-14T00:56:43.973Z",
     "componentName": "Главный экран (тёмный)",
     "totalElements": 75,
     "nestingDepth": 4,
@@ -142,7 +142,7 @@
           "h": 69
         },
         "styles": {
-          "bg": "rgb(76, 76, 76)"
+          "bg": "rgb(60, 60, 60)"
         }
       },
       {

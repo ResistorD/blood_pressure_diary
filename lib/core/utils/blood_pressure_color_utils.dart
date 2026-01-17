@@ -1,12 +1,21 @@
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 
-/// Утилиты для определения цвета индикатора давления
 class BloodPressureColorUtils {
-  /// Определяет цвет индикатора на основе систолического давления
-  /// Используется для визуального отображения состояния давления в списке
-  static Color getIndicatorColor(int systolic) {
-    if (systolic < 120) return Colors.green;
-    if (systolic < 140) return Colors.orange;
-    return Colors.red;
+  static Color getIndicatorColor(
+      BuildContext context, {
+        required int systolic,
+        required int diastolic,
+      }) {
+    final c = context.appColors;
+
+    final isLow = systolic < 100 || diastolic < 60;
+    final isHigh = systolic >= 140 || diastolic >= 90;
+    final isElevated = !isLow && !isHigh && (systolic >= 130 || diastolic >= 85);
+
+    if (isHigh) return c.danger;
+    if (isElevated) return c.warning;
+    if (isLow) return AppPalette.blueAccent; // rgb(90,142,246)
+    return c.success; // rgb(61,190,101)
   }
 }
