@@ -40,11 +40,12 @@ class _AppNavigationState extends State<AppNavigation> {
 
   @override
   Widget build(BuildContext context) {
+    // ✅ Поменяли местами: Профиль и Настройки
     final pages = <Widget>[
       const HomeScreen(),
       const StatisticsScreen(),
-      const SettingsScreen(),
       const ProfileScreen(),
+      const SettingsScreen(),
     ];
 
     return MultiBlocProvider(
@@ -82,7 +83,7 @@ class _BottomNavBar extends StatelessWidget {
 
     // ✅ В dark: активная БЛЕДНАЯ, остальные ЯРКИЕ
     final bright = isDark ? AppPalette.dark400 : AppPalette.blue900; // яркая
-    final pale = isDark ? AppPalette.dark600 : AppPalette.grey500;  // бледная
+    final pale = isDark ? AppPalette.dark600 : AppPalette.grey500; // бледная
 
     final barH = dp(context, s.s72 - s.s2 - s.s1); // 69
     final icon = dp(context, s.s30);
@@ -104,7 +105,7 @@ class _BottomNavBar extends StatelessWidget {
           clipBehavior: Clip.none,
           alignment: Alignment.bottomCenter,
           children: [
-            // Подложка под поднятую кнопку — прозрачная (как ты и говорил)
+            // Подложка под поднятую кнопку — прозрачная
             Positioned.fill(child: const ColoredBox(color: Colors.transparent)),
 
             Positioned(
@@ -133,17 +134,21 @@ class _BottomNavBar extends StatelessWidget {
                       ),
                     ),
                     SizedBox(width: outer),
+
+                    // ✅ Третья вкладка теперь Профиль (activeIndex == 2)
                     Expanded(
                       child: _NavItem(
-                        asset: 'assets/settings.svg',
+                        asset: 'assets/user-pen.svg',
                         size: icon,
                         color: activeIndex == 2 ? pale : bright,
                         onTap: () => onTap(3),
                       ),
                     ),
+
+                    // ✅ Четвёртая вкладка теперь Настройки (activeIndex == 3)
                     Expanded(
                       child: _NavItem(
-                        asset: 'assets/user-pen.svg',
+                        asset: 'assets/settings.svg',
                         size: icon,
                         color: activeIndex == 3 ? pale : bright,
                         onTap: () => onTap(4),

@@ -1,356 +1,493 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:blood_pressure_diary/core/theme/app_theme.dart';
-import 'package:blood_pressure_diary/features/profile/presentation/bloc/profile_cubit.dart';
-import 'package:blood_pressure_diary/features/profile/presentation/bloc/profile_state.dart';
-import 'package:blood_pressure_diary/l10n/generated/app_localizations.dart';
+
+import '../../../core/theme/app_theme.dart';
+import '../../../core/theme/scale.dart';
+import '../../../l10n/generated/app_localizations.dart';
+
+import 'bloc/profile_cubit.dart';
+import 'bloc/profile_state.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return const ProfileView();
-  }
-}
-
-class ProfileView extends StatefulWidget {
-  const ProfileView({super.key});
-
-  @override
-  State<ProfileView> createState() => _ProfileViewState();
-}
-
-class _ProfileViewState extends State<ProfileView> {
-  final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _ageController = TextEditingController();
-  final TextEditingController _weightController = TextEditingController();
-
-  @override
-  void initState() {
-    super.initState();
-    final state = context.read<ProfileCubit>().state;
-    if (state is ProfileLoaded) {
-      _nameController.text = state.profile.name;
-      _ageController.text = state.profile.age > 0 ? state.profile.age.toString() : '';
-      _weightController.text = state.profile.weight > 0 ? state.profile.weight.toString() : '';
-    }
-  }
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _ageController.dispose();
-    _weightController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
 
-    return Scaffold(
-      backgroundColor: AppUI.background,
-      appBar: AppBar(
-        title: Text(
-          l10n.profile,
-          style: const TextStyle(
-            color: Colors.black,
-            fontFamily: 'Inter',
-            fontWeight: FontWeight.bold,
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final colors = context.appColors;
+    final space = context.appSpace;
+    final radii = context.appRadii;
+    final shadows = context.appShadow;
+    final text = context.appText;
+
+    final headerH = dp(context, space.s128);
+    final side = dp(context, space.s20);
+
+    final cardW = dp(context, space.w320);
+    final cardR = dp(context, radii.r10);
+
+    final innerW = cardW - dp(context, space.s24); // 296
+    final fieldH = dp(context, space.s48);
+    final fieldR = dp(context, radii.r10);
+
+    final headerBg = isDark ? AppPalette.dark800 : AppPalette.blue700;
+    final headerTopInset = MediaQuery.paddingOf(context).top;
+
+    // UI-only: в макете показан пример даты
+    const demoDob = '25.12.1980';
+
+    // Плотнее по Y — главный фикс
+    final pad12 = dp(context, space.s12);
+    final pad10 = dp(context, space.s10);
+    final pad8 = dp(context, space.s8);
+    final pad6 = dp(context, space.s6);
+    final pad4 = dp(context, space.s4);
+    final pad2 = dp(context, space.s2);
+
+    final titleStyle = TextStyle(
+      fontFamily: text.family,
+      fontSize: sp(context, text.fs26),
+      fontWeight: text.w600,
+      color: colors.textOnBrand,
+      height: 1.0,
+    );
+
+    final sectionTitleStyle = TextStyle(
+      fontFamily: text.family,
+      fontSize: sp(context, text.fs16),
+      fontWeight: text.w600,
+      color: colors.textPrimary,
+      height: 1.0,
+    );
+
+    final hintStyle = TextStyle(
+      fontFamily: text.family,
+      fontSize: sp(context, text.fs12),
+      fontWeight: text.w400,
+      color: colors.textPrimary,
+      height: 1.0,
+    );
+
+    final labelStyle = TextStyle(
+      fontFamily: text.family,
+      fontSize: sp(context, text.fs14),
+      fontWeight: text.w400,
+      color: colors.textPrimary,
+      height: 1.0,
+    );
+
+    final valueStyle = TextStyle(
+      fontFamily: text.family,
+      fontSize: sp(context, text.fs20),
+      fontWeight: text.w500,
+      color: colors.textPrimary,
+      height: 1.0,
+    );
+
+    final privacyStyle = TextStyle(
+      fontFamily: text.family,
+      fontSize: sp(context, text.fs12),
+      fontWeight: text.w400,
+      color: colors.textPrimary,
+      height: 1.0,
+    );
+
+    Widget _primaryButton({
+      required String title,
+      String? subtitle,
+      required Color bg,
+      required Color fg,
+      required VoidCallback onTap,
+    }) {
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          height: fieldH,
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(fieldR),
+          ),
+          alignment: Alignment.center,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  fontFamily: text.family,
+                  fontSize: sp(context, text.fs20),
+                  fontWeight: text.w600,
+                  color: fg,
+                  height: 1.0,
+                ),
+              ),
+              if (subtitle != null && subtitle.isNotEmpty) ...[
+                SizedBox(height: dp(context, space.s2)),
+                Text(subtitle, style: hintStyle.copyWith(color: fg), textAlign: TextAlign.center),
+              ],
+            ],
           ),
         ),
-        backgroundColor: Colors.white,
-        elevation: 0,
-      ),
-      body: BlocConsumer<ProfileCubit, ProfileState>(
-        listenWhen: (prev, curr) => prev is ProfileInitial && curr is ProfileLoaded,
-        listener: (context, state) {
-          if (state is ProfileLoaded) {
-            _nameController.text = state.profile.name;
-            _ageController.text = state.profile.age > 0 ? state.profile.age.toString() : '';
-            _weightController.text = state.profile.weight > 0 ? state.profile.weight.toString() : '';
-          }
-        },
+      );
+    }
+
+    Widget _wideField({required String textValue}) {
+      final bg = isDark ? colors.surfaceAlt : colors.background;
+      return Container(
+        height: fieldH,
+        width: innerW,
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(fieldR),
+        ),
+        padding: EdgeInsets.symmetric(horizontal: dp(context, space.s12)),
+        alignment: Alignment.centerLeft,
+        child: Text(textValue, style: valueStyle),
+      );
+    }
+
+    Widget _valueBox({required String textValue}) {
+      final w = dp(context, space.s120 + space.s16 + space.s1); // 137
+      final bg = isDark ? colors.surfaceAlt : colors.background;
+
+      return Container(
+        height: fieldH,
+        width: w,
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(fieldR),
+        ),
+        padding: EdgeInsets.symmetric(horizontal: dp(context, space.s12)),
+        alignment: Alignment.centerRight,
+        child: Text(textValue, style: valueStyle),
+      );
+    }
+
+    Widget _segPill({
+      required String title,
+      required bool selected,
+      required VoidCallback onTap,
+      required Color activeBg,
+      required Color inactiveText,
+      required Color activeText,
+    }) {
+      return Expanded(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: Container(
+            height: fieldH,
+            decoration: BoxDecoration(
+              color: selected ? activeBg : Colors.transparent,
+              borderRadius: BorderRadius.circular(fieldR),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              title,
+              style: valueStyle.copyWith(color: selected ? activeText : inactiveText),
+            ),
+          ),
+        ),
+      );
+    }
+
+    // ---- Нормы давления: правые поля как дата рождения, рамка 1px,
+    // отступ до рамки 2px, левый текст чуть правее, расстояние между строками 4px
+    Widget normsBlock({
+      required String topValue,
+      required String bottomValue,
+    }) {
+      final fieldBg = isDark ? colors.surfaceAlt : colors.background;
+      final borderColor = fieldBg; // "цвет рамки как цвет у полей"
+      final borderW = dp(context, space.s1);
+
+      final labelLeftPad = dp(context, space.s12); // сдвиг вправо от рамки
+      final betweenRows = pad4; // нужно 4px
+
+      return Container(
+        width: innerW,
+        decoration: BoxDecoration(
+          border: Border.all(color: borderColor, width: borderW),
+          borderRadius: BorderRadius.circular(fieldR),
+        ),
+        padding: EdgeInsets.all(pad2), // 2px до рамки
+        child: Column(
+          children: [
+            SizedBox(
+              height: fieldH,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.only(left: labelLeftPad),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text('Верхнее', style: valueStyle),
+                      ),
+                    ),
+                  ),
+                  _valueBox(textValue: topValue),
+                ],
+              ),
+            ),
+            SizedBox(height: betweenRows),
+            SizedBox(
+              height: fieldH,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.only(left: labelLeftPad),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text('Нижнее', style: valueStyle),
+                      ),
+                    ),
+                  ),
+                  _valueBox(textValue: bottomValue),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: colors.background,
+      body: BlocBuilder<ProfileCubit, ProfileState>(
         builder: (context, state) {
           if (state is ProfileLoading) {
             return const Center(child: CircularProgressIndicator());
           }
-
-          if (state is ProfileLoaded) {
-            final profile = state.profile;
-            return SingleChildScrollView(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  const SizedBox(height: 20),
-                  const CircleAvatar(
-                    radius: 50,
-                    backgroundColor: AppUI.headerBlue,
-                    child: Icon(Icons.person, size: 60, color: Colors.white),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: _nameController,
-                    textAlign: TextAlign.center,
-                    decoration: InputDecoration(
-                      hintText: l10n.name,
-                      border: InputBorder.none,
-                      hintStyle: const TextStyle(fontFamily: 'Inter'),
-                    ),
-                    style: const TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      fontFamily: 'Inter',
-                    ),
-                    onChanged: (value) => context.read<ProfileCubit>().updateProfile(name: value),
-                  ),
-                  const SizedBox(height: 32),
-                  _buildProfileFields(context, profile, l10n),
-                  const SizedBox(height: 32),
-                  _buildGoalSection(context, profile, l10n),
-                  const SizedBox(height: 32),
-                  _buildPremiumCard(l10n),
-                  const SizedBox(height: 40),
-                ],
-              ),
-            );
+          if (state is! ProfileLoaded) {
+            return const SizedBox.shrink();
           }
 
-          return const SizedBox.shrink();
-        },
-      ),
-    );
-  }
+          final profile = state.profile;
 
-  Widget _buildProfileFields(BuildContext context, dynamic profile, AppLocalizations l10n) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          _buildFieldRow(
-            l10n.age,
-            TextField(
-              controller: _ageController,
-              keyboardType: TextInputType.number,
-              textAlign: TextAlign.end,
-              decoration: const InputDecoration(border: InputBorder.none),
-              onChanged: (value) {
-                final age = int.tryParse(value) ?? 0;
-                context.read<ProfileCubit>().updateProfile(age: age);
-              },
-            ),
-          ),
-          const Divider(),
-          _buildFieldRow(
-            l10n.weight,
-            TextField(
-              controller: _weightController,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              textAlign: TextAlign.end,
-              decoration: const InputDecoration(border: InputBorder.none),
-              onChanged: (value) {
-                final weight = double.tryParse(value) ?? 0.0;
-                context.read<ProfileCubit>().updateProfile(weight: weight);
-              },
-            ),
-          ),
-          const Divider(),
-          _buildFieldRow(
-            l10n.gender,
-            DropdownButton<String>(
-              value: profile.gender,
-              underline: const SizedBox(),
-              items: [
-                DropdownMenuItem(value: 'male', child: Text(l10n.male)),
-                DropdownMenuItem(value: 'female', child: Text(l10n.female)),
-                DropdownMenuItem(value: 'other', child: Text(l10n.other)),
-              ],
-              onChanged: (value) {
-                if (value != null) {
-                  context.read<ProfileCubit>().updateProfile(gender: value);
-                }
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+          // Пока нет данных об аккаунте — считаем "не вошли" (как макет)
+          const isLoggedIn = false;
 
-  Widget _buildFieldRow(String label, Widget trailing) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(
-              fontFamily: 'Inter',
-              fontSize: 16,
-              color: Colors.grey,
-            ),
-          ),
-          SizedBox(width: 100, child: trailing),
-        ],
-      ),
-    );
-  }
+          final cardBg = colors.surface;
 
-  Widget _buildGoalSection(BuildContext context, dynamic profile, AppLocalizations l10n) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 12),
-          child: Text(
-            l10n.myGoal,
-            style: const TextStyle(
-              fontFamily: 'Inter',
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: AppUI.headerBlue,
-            ),
-          ),
-        ),
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Column(
+          // Аккаунт: в dark средний блок с границей и тем же фоном, что внешняя карточка
+          final innerZoneBg = isDark ? cardBg : AppPalette.grey050;
+          final innerZoneBorderColor = isDark ? (isDark ? AppPalette.dark800 : colors.background) : Colors.transparent;
+
+          // Кнопка Аккаунт: dark active как кнопки, inactive как поля профиля
+          final accountBtnBg = isDark
+              ? (isLoggedIn ? AppPalette.dark900 : colors.surfaceAlt)
+              : (isLoggedIn ? AppPalette.blue900 : AppPalette.blue500);
+
+          final accountBtnFg = isDark
+              ? (isLoggedIn ? colors.textPrimary : colors.textPrimary)
+              : colors.textOnBrand;
+
+          final segBg = isDark ? colors.surfaceAlt : colors.background;
+          final segActiveBg = colors.surface;
+          final segText = colors.textPrimary;
+
+          final bottomPad = dp(context, space.s80);
+
+          return Column(
             children: [
-              _buildTargetInput(
-                context,
-                l10n.systolic,
-                profile.targetSystolic,
-                (val) => context.read<ProfileCubit>().updateProfile(targetSystolic: val),
+              // Header: как на "Графики"
+              Container(
+                height: headerH,
+                width: double.infinity,
+                color: headerBg,
+                padding: EdgeInsets.only(
+                  left: side,
+                  right: side,
+                  top: headerTopInset + dp(context, space.s20),
+                ),
+                alignment: Alignment.centerLeft,
+                child: Text(l10n.profile, style: titleStyle),
               ),
-              const Divider(),
-              _buildTargetInput(
-                context,
-                l10n.diastolic,
-                profile.targetDiastolic,
-                (val) => context.read<ProfileCubit>().updateProfile(targetDiastolic: val),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
 
-  Widget _buildTargetInput(BuildContext context, String label, int value, Function(int) onChanged) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label, style: const TextStyle(fontFamily: 'Inter')),
-        Row(
-          children: [
-            IconButton(
-              icon: const Icon(Icons.remove_circle_outline),
-              onPressed: () => onChanged(value - 1),
-            ),
-            Text(
-              '$value',
-              style: const TextStyle(
-                fontFamily: 'Inter',
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            IconButton(
-              icon: const Icon(Icons.add_circle_outline),
-              onPressed: () => onChanged(value + 1),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.only(
+                    left: side,
+                    right: side,
+                    top: pad12,
+                    bottom: bottomPad,
+                  ),
+                  child: Column(
+                    children: [
+                      // ---- Аккаунт
+                      SizedBox(
+                        width: cardW,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: cardBg,
+                            borderRadius: BorderRadius.circular(cardR),
+                            boxShadow: [shadows.card],
+                          ),
+                          child: Padding(
+                            padding: EdgeInsets.all(pad12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Аккаунт', style: sectionTitleStyle),
+                                SizedBox(height: pad6),
+                                Container(
+                                  width: double.infinity,
+                                  decoration: BoxDecoration(
+                                    color: innerZoneBg,
+                                    borderRadius: BorderRadius.circular(cardR),
+                                    border: isDark
+                                        ? Border.all(
+                                      color: innerZoneBorderColor,
+                                      width: dp(context, space.s1),
+                                    )
+                                        : null,
+                                  ),
+                                  padding: EdgeInsets.symmetric(horizontal: pad12, vertical: pad10),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text('Вы не вошли в аккаунт', style: hintStyle),
+                                      SizedBox(height: pad8),
+                                      Center(
+                                        child: SizedBox(
+                                          width: dp(context, space.w320 - space.s48), // 272
+                                          child: _primaryButton(
+                                            title: 'Войти',
+                                            bg: accountBtnBg,
+                                            fg: accountBtnFg,
+                                            onTap: () {},
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
 
-  Widget _buildPremiumCard(AppLocalizations l10n) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [AppUI.headerBlue, Color(0xFF64B5F6)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: AppUI.headerBlue.withOpacity(0.3),
-            blurRadius: 15,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.star, color: Colors.amber, size: 30),
-              const SizedBox(width: 8),
-              Text(
-                l10n.premium,
-                style: const TextStyle(
-                  fontFamily: 'Inter',
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
+                      SizedBox(height: pad12),
+
+                      // ---- Профиль
+                      SizedBox(
+                        width: cardW,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: cardBg,
+                            borderRadius: BorderRadius.circular(cardR),
+                            boxShadow: [shadows.card],
+                          ),
+                          child: Padding(
+                            padding: EdgeInsets.all(pad12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Имя', style: labelStyle),
+                                SizedBox(height: pad6),
+                                _wideField(textValue: profile.name.isEmpty ? 'Дмитрий' : profile.name),
+
+                                SizedBox(height: pad10),
+
+                                Row(
+                                  children: [
+                                    Expanded(child: Text('Пол', style: labelStyle)),
+                                    SizedBox(width: dp(context, space.s20)),
+                                    Expanded(
+                                      child: Align(
+                                        alignment: Alignment.centerRight,
+                                        child: Text('Дата рождения', style: labelStyle),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                SizedBox(height: pad6),
+                                Row(
+                                  children: [
+                                    SizedBox(
+                                      width: dp(context, (space.w320 - space.s40) / 2), // 140
+                                      child: Container(
+                                        height: fieldH,
+                                        decoration: BoxDecoration(
+                                          color: segBg,
+                                          borderRadius: BorderRadius.circular(fieldR),
+                                        ),
+                                        padding: EdgeInsets.all(pad4),
+                                        child: Row(
+                                          children: [
+                                            _segPill(
+                                              title: 'Муж.',
+                                              selected: profile.gender == 'male',
+                                              activeBg: segActiveBg,
+                                              inactiveText: segText,
+                                              activeText: segText,
+                                              onTap: () => context.read<ProfileCubit>().updateProfile(gender: 'male'),
+                                            ),
+                                            SizedBox(width: pad4),
+                                            _segPill(
+                                              title: 'Жен.',
+                                              selected: profile.gender == 'female',
+                                              activeBg: segActiveBg,
+                                              inactiveText: segText,
+                                              activeText: segText,
+                                              onTap: () =>
+                                                  context.read<ProfileCubit>().updateProfile(gender: 'female'),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                    const Spacer(),
+                                    _valueBox(textValue: demoDob),
+                                  ],
+                                ),
+
+                                SizedBox(height: pad10),
+
+                                // ---- Нормы давления
+                                Text('Нормы давления', style: labelStyle),
+                                SizedBox(height: pad6),
+                                normsBlock(
+                                  topValue: profile.targetSystolic.toString(),
+                                  bottomValue: profile.targetDiastolic.toString(),
+                                ),
+
+                                SizedBox(height: pad12),
+
+                                Center(
+                                  child: SizedBox(
+                                    width: dp(context, space.w320 - space.s48), // 272
+                                    child: _primaryButton(
+                                      title: 'Убрать рекламу',
+                                      subtitle: 'Разовый платеж 2,99 € -  навсегда',
+                                      bg: isDark ? AppPalette.dark900 : AppPalette.blue900,
+                                      fg: isDark ? colors.textPrimary : colors.textOnBrand,
+                                      onTap: () {},
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      SizedBox(height: pad12),
+                      Text('Политика конфиденциальности', style: privacyStyle, textAlign: TextAlign.center),
+                    ],
+                  ),
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            l10n.oneTimePayment,
-            style: const TextStyle(
-              fontFamily: 'Inter',
-              color: Colors.white,
-              fontSize: 16,
-            ),
-          ),
-          const SizedBox(height: 20),
-          ElevatedButton(
-            onPressed: () {},
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.white,
-              foregroundColor: AppUI.headerBlue,
-              minimumSize: const Size(double.infinity, 50),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              elevation: 0,
-            ),
-            child: Text(
-              l10n.buyPremium,
-              style: const TextStyle(
-                fontFamily: 'Inter',
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
