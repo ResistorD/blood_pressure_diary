@@ -16,11 +16,11 @@ class SettingsCubit extends Cubit<SettingsState> {
   final NotificationService _notificationService;
 
   SettingsCubit(
-    this._isarService,
-    this._pressureRepository,
-    this._exportService,
-    this._notificationService,
-  ) : super(SettingsState(AppSettings())) {
+      this._isarService,
+      this._pressureRepository,
+      this._exportService,
+      this._notificationService,
+      ) : super(SettingsState(AppSettings())) {
     _loadSettings();
   }
 
@@ -41,6 +41,9 @@ class SettingsCubit extends Cubit<SettingsState> {
       languageCode: langCode,
       reminders: state.settings.reminders,
       notificationsEnabled: state.settings.notificationsEnabled,
+      accountLinked: state.settings.accountLinked,
+      accountEmail: state.settings.accountEmail,
+      accountProvider: state.settings.accountProvider,
     );
     await _isarService.saveSettings(newSettings);
     emit(SettingsState(newSettings));
@@ -52,7 +55,44 @@ class SettingsCubit extends Cubit<SettingsState> {
       languageCode: state.settings.languageCode,
       reminders: state.settings.reminders,
       notificationsEnabled: state.settings.notificationsEnabled,
+      accountLinked: state.settings.accountLinked,
+      accountEmail: state.settings.accountEmail,
+      accountProvider: state.settings.accountProvider,
     );
+    await _isarService.saveSettings(newSettings);
+    emit(SettingsState(newSettings));
+  }
+
+  // --- Account (локальная привязка)
+  Future<void> linkAccount({required String email, required String provider}) async {
+    final normalizedEmail = email.trim();
+    final normalizedProvider = provider.trim();
+
+    final newSettings = AppSettings(
+      themeMode: state.settings.themeMode,
+      languageCode: state.settings.languageCode,
+      reminders: state.settings.reminders,
+      notificationsEnabled: state.settings.notificationsEnabled,
+      accountLinked: true,
+      accountEmail: normalizedEmail,
+      accountProvider: normalizedProvider,
+    );
+
+    await _isarService.saveSettings(newSettings);
+    emit(SettingsState(newSettings));
+  }
+
+  Future<void> unlinkAccount() async {
+    final newSettings = AppSettings(
+      themeMode: state.settings.themeMode,
+      languageCode: state.settings.languageCode,
+      reminders: state.settings.reminders,
+      notificationsEnabled: state.settings.notificationsEnabled,
+      accountLinked: false,
+      accountEmail: '',
+      accountProvider: '',
+    );
+
     await _isarService.saveSettings(newSettings);
     emit(SettingsState(newSettings));
   }
@@ -72,15 +112,18 @@ class SettingsCubit extends Cubit<SettingsState> {
       languageCode: state.settings.languageCode,
       reminders: newList,
       notificationsEnabled: state.settings.notificationsEnabled,
+      accountLinked: state.settings.accountLinked,
+      accountEmail: state.settings.accountEmail,
+      accountProvider: state.settings.accountProvider,
     );
 
     await _isarService.saveSettings(newSettings);
-    
+
     if (state.settings.notificationsEnabled) {
       final id = timeStr.hashCode;
       await _notificationService.scheduleDailyNotification(id, time);
     }
-    
+
     emit(SettingsState(newSettings));
   }
 
@@ -93,14 +136,17 @@ class SettingsCubit extends Cubit<SettingsState> {
       languageCode: state.settings.languageCode,
       reminders: newList,
       notificationsEnabled: state.settings.notificationsEnabled,
+      accountLinked: state.settings.accountLinked,
+      accountEmail: state.settings.accountEmail,
+      accountProvider: state.settings.accountProvider,
     );
 
     await _isarService.saveSettings(newSettings);
-    
+
     if (state.settings.notificationsEnabled) {
       await _notificationService.cancelNotification(timeStr.hashCode);
     }
-    
+
     emit(SettingsState(newSettings));
   }
 
@@ -108,8 +154,8 @@ class SettingsCubit extends Cubit<SettingsState> {
     if (enabled) {
       final granted = await _notificationService.requestPermissions();
       if (!granted) {
-        final message = state.settings.languageCode == 'ru' 
-            ? 'Разрешение на уведомления не получено' 
+        final message = state.settings.languageCode == 'ru'
+            ? 'Разрешение на уведомления не получено'
             : 'Notification permission not granted';
         emit(state.copyWith(errorMessage: message));
         emit(state.copyWith(errorMessage: null));
@@ -122,6 +168,9 @@ class SettingsCubit extends Cubit<SettingsState> {
       languageCode: state.settings.languageCode,
       reminders: state.settings.reminders,
       notificationsEnabled: enabled,
+      accountLinked: state.settings.accountLinked,
+      accountEmail: state.settings.accountEmail,
+      accountProvider: state.settings.accountProvider,
     );
 
     await _isarService.saveSettings(newSettings);
@@ -146,13 +195,10 @@ class SettingsCubit extends Cubit<SettingsState> {
 
   Future<void> exportData(ExportFormat format) async {
     final records = await _pressureRepository.getAllRecords();
-    
+
     if (records.isEmpty) {
-      final message = state.settings.languageCode == 'ru' 
-          ? 'Нет данных для экспорта' 
-          : 'No data to export';
+      final message = state.settings.languageCode == 'ru' ? 'Нет данных для экспорта' : 'No data to export';
       emit(state.copyWith(errorMessage: message));
-      // Сбрасываем ошибку сразу, чтобы SnackBar не показывался повторно при других действиях
       emit(state.copyWith(errorMessage: null));
       return;
     }
@@ -161,9 +207,7 @@ class SettingsCubit extends Cubit<SettingsState> {
     try {
       await _exportService.exportData(records, format, state.settings.languageCode);
     } catch (e) {
-      final message = state.settings.languageCode == 'ru' 
-          ? 'Ошибка при экспорте: $e' 
-          : 'Export error: $e';
+      final message = state.settings.languageCode == 'ru' ? 'Ошибка при экспорте: $e' : 'Export error: $e';
       emit(state.copyWith(errorMessage: message));
       emit(state.copyWith(errorMessage: null));
     } finally {

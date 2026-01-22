@@ -21,5 +21,15 @@ class SettingsState extends Equatable {
   }
 
   @override
-  List<Object?> get props => [settings.themeMode, settings.languageCode, errorMessage, isExporting];
+  List<Object?> get props => [
+    settings.themeMode,
+    settings.languageCode,
+    settings.notificationsEnabled,
+    settings.reminders.join('|'),
+    settings.accountLinked,
+    settings.accountEmail,
+    settings.accountProvider,
+    errorMessage,
+    isExporting,
+  ];
 }

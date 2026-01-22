@@ -1,7 +1,12 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import 'package:blood_pressure_diary/core/services/export_service.dart';
+import 'package:blood_pressure_diary/core/services/backup_service.dart';
+import 'package:blood_pressure_diary/core/database/isar_service.dart';
+import 'package:blood_pressure_diary/core/di/service_locator.dart';
 import 'package:blood_pressure_diary/core/theme/app_theme.dart';
 import 'package:blood_pressure_diary/core/theme/scale.dart';
 import 'package:blood_pressure_diary/features/settings/data/models/settings_model.dart';
@@ -9,8 +14,86 @@ import 'package:blood_pressure_diary/features/settings/presentation/bloc/setting
 import 'package:blood_pressure_diary/features/settings/presentation/bloc/settings_state.dart';
 import 'package:blood_pressure_diary/l10n/generated/app_localizations.dart';
 
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:file_picker/file_picker.dart';
+
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
+
+  Future<void> _runBlocking(BuildContext context, Future<void> Function() action) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      await action();
+    } finally {
+      if (context.mounted) Navigator.pop(context);
+    }
+  }
+
+  Future<void> _backupToJson(BuildContext context) async {
+    final isar = getIt<IsarService>();
+    final backupService = BackupService(isar);
+
+    await _runBlocking(context, () async {
+      final json = await backupService.createBackupJson();
+
+      final dir = await getTemporaryDirectory();
+      final ts = DateTime.now().toIso8601String().replaceAll(':', '-');
+      final file = File('${dir.path}/pressure_diary_backup_$ts.json');
+      await file.writeAsString(json, flush: true);
+
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        text: 'Pressure Diary backup (JSON)',
+      );
+    });
+  }
+
+  Future<void> _restoreFromJson(BuildContext context) async {
+    final isar = getIt<IsarService>();
+    final backupService = BackupService(isar);
+
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['json'],
+      withData: false,
+    );
+
+    if (result == null || result.files.isEmpty) return;
+    final path = result.files.first.path;
+    if (path == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Восстановление из копии'),
+        content: const Text(
+          'Это действие заменит все текущие данные приложения (профиль, настройки и записи давления). Продолжить?',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Отмена')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Восстановить')),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    await _runBlocking(context, () async {
+      final jsonText = await File(path).readAsString();
+      await backupService.restoreFromJson(jsonText);
+    });
+
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Данные восстановлены')),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -110,7 +193,7 @@ class SettingsScreen extends StatelessWidget {
       return showTimePicker(
         context: context,
         initialTime: TimeOfDay.now(),
-        initialEntryMode: TimePickerEntryMode.input, // без “круглых”
+        initialEntryMode: TimePickerEntryMode.input,
         builder: (ctx, child) {
           return MediaQuery(
             data: MediaQuery.of(ctx).copyWith(alwaysUse24HourFormat: true),
@@ -204,11 +287,11 @@ class SettingsScreen extends StatelessWidget {
             );
           }
 
-          // Минус НЕ красный, с нормальной зоной нажатия
           Widget minusButton({
             required double rowHeight,
             required VoidCallback onTap,
           }) {
+            // Увеличенная зона нажатия + НЕ красный цвет
             final hit = dp(context, space.s32); // 32
             final iconSize = dp(context, space.s20);
             final bg = fieldBg.withValues(alpha: 0.60);
@@ -282,7 +365,6 @@ class SettingsScreen extends StatelessWidget {
                     ],
                     GestureDetector(
                       behavior: HitTestBehavior.opaque,
-                      // ВАЖНО: редактирование времени доступно всегда, независимо от enabled
                       onTap: () => pickReplaceAt(index),
                       child: timeValueBox(value: value, height: h),
                     ),
@@ -292,7 +374,6 @@ class SettingsScreen extends StatelessWidget {
             }
 
             return Opacity(
-              // внешний вид “актив/неактив” сохраняем, но клики не блокируем
               opacity: enabled ? 1.0 : 0.55,
               child: Container(
                 width: innerW,
@@ -362,7 +443,6 @@ class SettingsScreen extends StatelessWidget {
                         opacity: enabled ? 1.0 : 0.55,
                         child: GestureDetector(
                           behavior: HitTestBehavior.opaque,
-                          // ВАЖНО: добавление доступно всегда
                           onTap: pickAndAddTime,
                           child: Padding(
                             padding: EdgeInsets.only(right: dp(context, space.s6)),
@@ -483,6 +563,11 @@ class SettingsScreen extends StatelessWidget {
                         themeCard(),
                         SizedBox(height: gap16),
 
+                        actionButton(title: 'Резервная копия (JSON)', onTap: () => _backupToJson(context)),
+                        SizedBox(height: gap8),
+                        actionButton(title: 'Восстановить из копии', onTap: () => _restoreFromJson(context)),
+                        SizedBox(height: gap16),
+
                         actionButton(title: l10n.clearData, onTap: () => _showClearDataDialog(context, l10n)),
                         SizedBox(height: gap8),
                         actionButton(
@@ -490,7 +575,10 @@ class SettingsScreen extends StatelessWidget {
                           onTap: state.isExporting ? () {} : () => _showExportBottomSheet(context, l10n),
                         ),
                         SizedBox(height: gap8),
-                        actionButton(title: l10n.contactSupport, onTap: () => context.read<SettingsCubit>().contactSupport()),
+                        actionButton(
+                          title: l10n.contactSupport,
+                          onTap: () => context.read<SettingsCubit>().contactSupport(),
+                        ),
                         SizedBox(height: gap8),
                         actionButton(title: l10n.rateApp, onTap: () => context.read<SettingsCubit>().rateApp()),
                         Center(child: Text(l10n.version('1.0.0'), style: versionStyle)),

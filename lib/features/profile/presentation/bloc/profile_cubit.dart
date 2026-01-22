@@ -10,14 +10,14 @@ class ProfileCubit extends Cubit<ProfileState> {
 
   Future<void> loadProfile() async {
     if (state is ProfileLoaded) return;
-    
+
     emit(ProfileLoading());
     try {
       final profile = await _isarService.getProfile();
       if (profile != null) {
         emit(ProfileLoaded(profile));
       } else {
-        final defaultProfile = UserProfile();
+        final defaultProfile = UserProfile()..id = 0;
         await _isarService.saveProfile(defaultProfile);
         emit(ProfileLoaded(defaultProfile));
       }
@@ -34,20 +34,70 @@ class ProfileCubit extends Cubit<ProfileState> {
     int? targetSystolic,
     int? targetDiastolic,
   }) async {
-    if (state is ProfileLoaded) {
-      final currentProfile = (state as ProfileLoaded).profile;
-      
-      final updatedProfile = UserProfile()
-        ..id = 0
-        ..name = name ?? currentProfile.name
-        ..age = age ?? currentProfile.age
-        ..gender = gender ?? currentProfile.gender
-        ..weight = weight ?? currentProfile.weight
-        ..targetSystolic = targetSystolic ?? currentProfile.targetSystolic
-        ..targetDiastolic = targetDiastolic ?? currentProfile.targetDiastolic;
+    if (state is! ProfileLoaded) return;
 
-      await _isarService.saveProfile(updatedProfile);
-      emit(ProfileLoaded(updatedProfile));
-    }
+    final current = (state as ProfileLoaded).profile;
+
+    final updated = UserProfile()
+      ..id = 0
+      ..name = name ?? current.name
+      ..age = age ?? current.age
+      ..gender = gender ?? current.gender
+      ..weight = weight ?? current.weight
+      ..targetSystolic = targetSystolic ?? current.targetSystolic
+      ..targetDiastolic = targetDiastolic ?? current.targetDiastolic
+    // сохраняем аккаунт, чтобы updateProfile не “стирал” его
+      ..accountLinked = current.accountLinked
+      ..accountEmail = current.accountEmail
+      ..accountProvider = current.accountProvider;
+
+    await _isarService.saveProfile(updated);
+    emit(ProfileLoaded(updated));
+  }
+
+  // --- Account link (реально: сохраняем в Isar) ---
+  Future<void> linkAccount({
+    required String provider,
+    required String email,
+  }) async {
+    if (state is! ProfileLoaded) return;
+
+    final current = (state as ProfileLoaded).profile;
+
+    final updated = UserProfile()
+      ..id = 0
+      ..name = current.name
+      ..age = current.age
+      ..gender = current.gender
+      ..weight = current.weight
+      ..targetSystolic = current.targetSystolic
+      ..targetDiastolic = current.targetDiastolic
+      ..accountLinked = true
+      ..accountProvider = provider.trim()
+      ..accountEmail = email.trim();
+
+    await _isarService.saveProfile(updated);
+    emit(ProfileLoaded(updated));
+  }
+
+  Future<void> unlinkAccount() async {
+    if (state is! ProfileLoaded) return;
+
+    final current = (state as ProfileLoaded).profile;
+
+    final updated = UserProfile()
+      ..id = 0
+      ..name = current.name
+      ..age = current.age
+      ..gender = current.gender
+      ..weight = current.weight
+      ..targetSystolic = current.targetSystolic
+      ..targetDiastolic = current.targetDiastolic
+      ..accountLinked = false
+      ..accountProvider = ''
+      ..accountEmail = '';
+
+    await _isarService.saveProfile(updated);
+    emit(ProfileLoaded(updated));
   }
 }

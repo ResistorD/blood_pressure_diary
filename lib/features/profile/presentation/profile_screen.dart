@@ -11,6 +11,19 @@ import 'bloc/profile_state.dart';
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
 
+  String _providerTitle(String provider) {
+    switch (provider) {
+      case 'google':
+        return 'Google';
+      case 'apple':
+        return 'Apple';
+      case 'email':
+        return 'Email';
+      default:
+        return provider.isEmpty ? 'Аккаунт' : provider;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
@@ -195,18 +208,16 @@ class ProfileScreen extends StatelessWidget {
       );
     }
 
-    // ---- Нормы давления: правые поля как дата рождения, рамка 1px,
-    // отступ до рамки 2px, левый текст чуть правее, расстояние между строками 4px
     Widget normsBlock({
       required String topValue,
       required String bottomValue,
     }) {
       final fieldBg = isDark ? colors.surfaceAlt : colors.background;
-      final borderColor = fieldBg; // "цвет рамки как цвет у полей"
+      final borderColor = fieldBg;
       final borderW = dp(context, space.s1);
 
-      final labelLeftPad = dp(context, space.s12); // сдвиг вправо от рамки
-      final betweenRows = pad4; // нужно 4px
+      final labelLeftPad = dp(context, space.s12);
+      final betweenRows = pad4;
 
       return Container(
         width: innerW,
@@ -214,7 +225,7 @@ class ProfileScreen extends StatelessWidget {
           border: Border.all(color: borderColor, width: borderW),
           borderRadius: BorderRadius.circular(fieldR),
         ),
-        padding: EdgeInsets.all(pad2), // 2px до рамки
+        padding: EdgeInsets.all(pad2),
         child: Column(
           children: [
             SizedBox(
@@ -257,10 +268,172 @@ class ProfileScreen extends StatelessWidget {
       );
     }
 
+    Widget _sheetItem({
+      required BuildContext context,
+      required String title,
+      required VoidCallback onTap,
+    }) {
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          height: fieldH,
+          decoration: BoxDecoration(
+            color: isDark ? colors.surfaceAlt : colors.background,
+            borderRadius: BorderRadius.circular(fieldR),
+          ),
+          padding: EdgeInsets.symmetric(horizontal: dp(context, space.s12)),
+          alignment: Alignment.centerLeft,
+          child: Text(title, style: valueStyle),
+        ),
+      );
+    }
+
+    void _showEmailInputSheet(BuildContext context) {
+      final controller = TextEditingController();
+
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (ctx) {
+          final sheetBg = colors.surface;
+          final sheetR = dp(context, radii.r10);
+          final bottomInset = MediaQuery.viewInsetsOf(ctx).bottom;
+
+          return SafeArea(
+            child: Padding(
+              padding: EdgeInsets.only(
+                left: dp(context, space.s12),
+                right: dp(context, space.s12),
+                bottom: dp(context, space.s12) + bottomInset,
+              ),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: sheetBg,
+                  borderRadius: BorderRadius.circular(sheetR),
+                  boxShadow: [shadows.card],
+                ),
+                child: Padding(
+                  padding: EdgeInsets.all(dp(context, space.s12)),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Email', style: sectionTitleStyle),
+                      SizedBox(height: dp(context, space.s8)),
+                      Container(
+                        height: fieldH,
+                        decoration: BoxDecoration(
+                          color: isDark ? colors.surfaceAlt : colors.background,
+                          borderRadius: BorderRadius.circular(fieldR),
+                        ),
+                        padding: EdgeInsets.symmetric(horizontal: dp(context, space.s12)),
+                        alignment: Alignment.centerLeft,
+                        child: TextField(
+                          controller: controller,
+                          keyboardType: TextInputType.emailAddress,
+                          decoration: const InputDecoration(
+                            border: InputBorder.none,
+                            isCollapsed: true,
+                          ),
+                          style: valueStyle,
+                        ),
+                      ),
+                      SizedBox(height: dp(context, space.s12)),
+                      SizedBox(
+                        width: double.infinity,
+                        child: _primaryButton(
+                          title: 'Подключить',
+                          bg: isDark ? AppPalette.dark900 : AppPalette.blue900,
+                          fg: isDark ? colors.textPrimary : colors.textOnBrand,
+                          onTap: () {
+                            final email = controller.text.trim();
+                            if (email.isEmpty) return;
+                            context.read<ProfileCubit>().linkAccount(provider: 'email', email: email);
+                            Navigator.pop(ctx);
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    }
+
+    void _showAccountLinkSheet(BuildContext context) {
+      showModalBottomSheet(
+        context: context,
+        backgroundColor: Colors.transparent,
+        builder: (ctx) {
+          final sheetBg = colors.surface;
+          final sheetR = dp(context, radii.r10);
+
+          return SafeArea(
+            child: Padding(
+              padding: EdgeInsets.all(dp(context, space.s12)),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: sheetBg,
+                  borderRadius: BorderRadius.circular(sheetR),
+                  boxShadow: [shadows.card],
+                ),
+                child: Padding(
+                  padding: EdgeInsets.all(dp(context, space.s12)),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Выберите способ входа', style: sectionTitleStyle),
+                      SizedBox(height: dp(context, space.s12)),
+                      _sheetItem(
+                        context: context,
+                        title: 'Email',
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          _showEmailInputSheet(context);
+                        },
+                      ),
+                      SizedBox(height: dp(context, space.s8)),
+                      _sheetItem(
+                        context: context,
+                        title: 'Google',
+                        onTap: () {
+                          // локальная привязка: провайдер есть, email пустой
+                          context.read<ProfileCubit>().linkAccount(provider: 'google', email: '');
+                          Navigator.pop(ctx);
+                        },
+                      ),
+                      SizedBox(height: dp(context, space.s8)),
+                      _sheetItem(
+                        context: context,
+                        title: 'Apple',
+                        onTap: () {
+                          context.read<ProfileCubit>().linkAccount(provider: 'apple', email: '');
+                          Navigator.pop(ctx);
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    }
+
     return Scaffold(
       backgroundColor: colors.background,
       body: BlocBuilder<ProfileCubit, ProfileState>(
         builder: (context, state) {
+          if (state is ProfileInitial) {
+            context.read<ProfileCubit>().loadProfile();
+          }
           if (state is ProfileLoading) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -269,24 +442,18 @@ class ProfileScreen extends StatelessWidget {
           }
 
           final profile = state.profile;
-
-          // Пока нет данных об аккаунте — считаем "не вошли" (как макет)
-          const isLoggedIn = false;
+          final isLoggedIn = profile.accountLinked;
 
           final cardBg = colors.surface;
 
-          // Аккаунт: в dark средний блок с границей и тем же фоном, что внешняя карточка
           final innerZoneBg = isDark ? cardBg : AppPalette.grey050;
-          final innerZoneBorderColor = isDark ? (isDark ? AppPalette.dark800 : colors.background) : Colors.transparent;
+          final innerZoneBorderColor = isDark ? AppPalette.dark800 : colors.background;
 
-          // Кнопка Аккаунт: dark active как кнопки, inactive как поля профиля
           final accountBtnBg = isDark
-              ? (isLoggedIn ? AppPalette.dark900 : colors.surfaceAlt)
-              : (isLoggedIn ? AppPalette.blue900 : AppPalette.blue500);
+              ? (isLoggedIn ? colors.surfaceAlt : AppPalette.dark900)
+              : (isLoggedIn ? AppPalette.blue500 : AppPalette.blue900);
 
-          final accountBtnFg = isDark
-              ? (isLoggedIn ? colors.textPrimary : colors.textPrimary)
-              : colors.textOnBrand;
+          final accountBtnFg = isDark ? colors.textPrimary : colors.textOnBrand;
 
           final segBg = isDark ? colors.surfaceAlt : colors.background;
           final segActiveBg = colors.surface;
@@ -294,9 +461,12 @@ class ProfileScreen extends StatelessWidget {
 
           final bottomPad = dp(context, space.s80);
 
+          final accountLine = profile.accountEmail.trim().isNotEmpty
+              ? profile.accountEmail.trim()
+              : _providerTitle(profile.accountProvider);
+
           return Column(
             children: [
-              // Header: как на "Графики"
               Container(
                 height: headerH,
                 width: double.infinity,
@@ -309,7 +479,6 @@ class ProfileScreen extends StatelessWidget {
                 alignment: Alignment.centerLeft,
                 child: Text(l10n.profile, style: titleStyle),
               ),
-
               Expanded(
                 child: SingleChildScrollView(
                   padding: EdgeInsets.only(
@@ -352,19 +521,37 @@ class ProfileScreen extends StatelessWidget {
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Text('Вы не вошли в аккаунт', style: hintStyle),
-                                      SizedBox(height: pad8),
-                                      Center(
-                                        child: SizedBox(
-                                          width: dp(context, space.w320 - space.s48), // 272
-                                          child: _primaryButton(
-                                            title: 'Войти',
-                                            bg: accountBtnBg,
-                                            fg: accountBtnFg,
-                                            onTap: () {},
+                                      if (!isLoggedIn) ...[
+                                        Text('Вы не вошли в аккаунт', style: hintStyle),
+                                        SizedBox(height: pad8),
+                                        Center(
+                                          child: SizedBox(
+                                            width: dp(context, space.w320 - space.s48), // 272
+                                            child: _primaryButton(
+                                              title: 'Войти',
+                                              bg: accountBtnBg,
+                                              fg: accountBtnFg,
+                                              onTap: () => _showAccountLinkSheet(context),
+                                            ),
                                           ),
                                         ),
-                                      ),
+                                      ] else ...[
+                                        Text('Аккаунт подключен', style: hintStyle),
+                                        SizedBox(height: pad4),
+                                        Text(accountLine, style: valueStyle),
+                                        SizedBox(height: pad8),
+                                        Center(
+                                          child: SizedBox(
+                                            width: dp(context, space.w320 - space.s48), // 272
+                                            child: _primaryButton(
+                                              title: 'Выйти',
+                                              bg: accountBtnBg,
+                                              fg: accountBtnFg,
+                                              onTap: () => context.read<ProfileCubit>().unlinkAccount(),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ],
                                   ),
                                 ),
@@ -437,8 +624,7 @@ class ProfileScreen extends StatelessWidget {
                                               activeBg: segActiveBg,
                                               inactiveText: segText,
                                               activeText: segText,
-                                              onTap: () =>
-                                                  context.read<ProfileCubit>().updateProfile(gender: 'female'),
+                                              onTap: () => context.read<ProfileCubit>().updateProfile(gender: 'female'),
                                             ),
                                           ],
                                         ),
@@ -451,7 +637,6 @@ class ProfileScreen extends StatelessWidget {
 
                                 SizedBox(height: pad10),
 
-                                // ---- Нормы давления
                                 Text('Нормы давления', style: labelStyle),
                                 SizedBox(height: pad6),
                                 normsBlock(

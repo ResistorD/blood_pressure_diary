@@ -17,33 +17,48 @@ const UserProfileSchema = CollectionSchema(
   name: r'UserProfile',
   id: 4738427352541298891,
   properties: {
-    r'age': PropertySchema(
+    r'accountEmail': PropertySchema(
       id: 0,
+      name: r'accountEmail',
+      type: IsarType.string,
+    ),
+    r'accountLinked': PropertySchema(
+      id: 1,
+      name: r'accountLinked',
+      type: IsarType.bool,
+    ),
+    r'accountProvider': PropertySchema(
+      id: 2,
+      name: r'accountProvider',
+      type: IsarType.string,
+    ),
+    r'age': PropertySchema(
+      id: 3,
       name: r'age',
       type: IsarType.long,
     ),
     r'gender': PropertySchema(
-      id: 1,
+      id: 4,
       name: r'gender',
       type: IsarType.string,
     ),
     r'name': PropertySchema(
-      id: 2,
+      id: 5,
       name: r'name',
       type: IsarType.string,
     ),
     r'targetDiastolic': PropertySchema(
-      id: 3,
+      id: 6,
       name: r'targetDiastolic',
       type: IsarType.long,
     ),
     r'targetSystolic': PropertySchema(
-      id: 4,
+      id: 7,
       name: r'targetSystolic',
       type: IsarType.long,
     ),
     r'weight': PropertySchema(
-      id: 5,
+      id: 8,
       name: r'weight',
       type: IsarType.double,
     )
@@ -68,6 +83,8 @@ int _userProfileEstimateSize(
   Map<Type, List<int>> allOffsets,
 ) {
   var bytesCount = offsets.last;
+  bytesCount += 3 + object.accountEmail.length * 3;
+  bytesCount += 3 + object.accountProvider.length * 3;
   bytesCount += 3 + object.gender.length * 3;
   bytesCount += 3 + object.name.length * 3;
   return bytesCount;
@@ -79,12 +96,15 @@ void _userProfileSerialize(
   List<int> offsets,
   Map<Type, List<int>> allOffsets,
 ) {
-  writer.writeLong(offsets[0], object.age);
-  writer.writeString(offsets[1], object.gender);
-  writer.writeString(offsets[2], object.name);
-  writer.writeLong(offsets[3], object.targetDiastolic);
-  writer.writeLong(offsets[4], object.targetSystolic);
-  writer.writeDouble(offsets[5], object.weight);
+  writer.writeString(offsets[0], object.accountEmail);
+  writer.writeBool(offsets[1], object.accountLinked);
+  writer.writeString(offsets[2], object.accountProvider);
+  writer.writeLong(offsets[3], object.age);
+  writer.writeString(offsets[4], object.gender);
+  writer.writeString(offsets[5], object.name);
+  writer.writeLong(offsets[6], object.targetDiastolic);
+  writer.writeLong(offsets[7], object.targetSystolic);
+  writer.writeDouble(offsets[8], object.weight);
 }
 
 UserProfile _userProfileDeserialize(
@@ -94,12 +114,15 @@ UserProfile _userProfileDeserialize(
   Map<Type, List<int>> allOffsets,
 ) {
   final object = UserProfile(
-    age: reader.readLongOrNull(offsets[0]) ?? 0,
-    gender: reader.readStringOrNull(offsets[1]) ?? 'male',
-    name: reader.readStringOrNull(offsets[2]) ?? '',
-    targetDiastolic: reader.readLongOrNull(offsets[3]) ?? 80,
-    targetSystolic: reader.readLongOrNull(offsets[4]) ?? 120,
-    weight: reader.readDoubleOrNull(offsets[5]) ?? 0.0,
+    accountEmail: reader.readStringOrNull(offsets[0]) ?? '',
+    accountLinked: reader.readBoolOrNull(offsets[1]) ?? false,
+    accountProvider: reader.readStringOrNull(offsets[2]) ?? '',
+    age: reader.readLongOrNull(offsets[3]) ?? 0,
+    gender: reader.readStringOrNull(offsets[4]) ?? 'male',
+    name: reader.readStringOrNull(offsets[5]) ?? '',
+    targetDiastolic: reader.readLongOrNull(offsets[6]) ?? 80,
+    targetSystolic: reader.readLongOrNull(offsets[7]) ?? 120,
+    weight: reader.readDoubleOrNull(offsets[8]) ?? 0.0,
   );
   object.id = id;
   return object;
@@ -113,16 +136,22 @@ P _userProfileDeserializeProp<P>(
 ) {
   switch (propertyId) {
     case 0:
-      return (reader.readLongOrNull(offset) ?? 0) as P;
+      return (reader.readStringOrNull(offset) ?? '') as P;
     case 1:
-      return (reader.readStringOrNull(offset) ?? 'male') as P;
+      return (reader.readBoolOrNull(offset) ?? false) as P;
     case 2:
       return (reader.readStringOrNull(offset) ?? '') as P;
     case 3:
-      return (reader.readLongOrNull(offset) ?? 80) as P;
+      return (reader.readLongOrNull(offset) ?? 0) as P;
     case 4:
-      return (reader.readLongOrNull(offset) ?? 120) as P;
+      return (reader.readStringOrNull(offset) ?? 'male') as P;
     case 5:
+      return (reader.readStringOrNull(offset) ?? '') as P;
+    case 6:
+      return (reader.readLongOrNull(offset) ?? 80) as P;
+    case 7:
+      return (reader.readLongOrNull(offset) ?? 120) as P;
+    case 8:
       return (reader.readDoubleOrNull(offset) ?? 0.0) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -222,6 +251,288 @@ extension UserProfileQueryWhere
 
 extension UserProfileQueryFilter
     on QueryBuilder<UserProfile, UserProfile, QFilterCondition> {
+  QueryBuilder<UserProfile, UserProfile, QAfterFilterCondition>
+      accountEmailEqualTo(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'accountEmail',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<UserProfile, UserProfile, QAfterFilterCondition>
+      accountEmailGreaterThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'accountEmail',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<UserProfile, UserProfile, QAfterFilterCondition>
+      accountEmailLessThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'accountEmail',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<UserProfile, UserProfile, QAfterFilterCondition>
+      accountEmailBetween(
+    String lower,
+    String upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'accountEmail',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<UserProfile, UserProfile, QAfterFilterCondition>
+      accountEmailStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'accountEmail',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<UserProfile, UserProfile, QAfterFilterCondition>
+      accountEmailEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'accountEmail',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<UserProfile, UserProfile, QAfterFilterCondition>
+      accountEmailContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'accountEmail',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<UserProfile, UserProfile, QAfterFilterCondition>
+      accountEmailMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'accountEmail',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<UserProfile, UserProfile, QAfterFilterCondition>
+      accountEmailIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'accountEmail',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<UserProfile, UserProfile, QAfterFilterCondition>
+      accountEmailIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'accountEmail',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<UserProfile, UserProfile, QAfterFilterCondition>
+      accountLinkedEqualTo(bool value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'accountLinked',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<UserProfile, UserProfile, QAfterFilterCondition>
+      accountProviderEqualTo(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'accountProvider',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<UserProfile, UserProfile, QAfterFilterCondition>
+      accountProviderGreaterThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'accountProvider',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<UserProfile, UserProfile, QAfterFilterCondition>
+      accountProviderLessThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'accountProvider',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<UserProfile, UserProfile, QAfterFilterCondition>
+      accountProviderBetween(
+    String lower,
+    String upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'accountProvider',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<UserProfile, UserProfile, QAfterFilterCondition>
+      accountProviderStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'accountProvider',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<UserProfile, UserProfile, QAfterFilterCondition>
+      accountProviderEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'accountProvider',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<UserProfile, UserProfile, QAfterFilterCondition>
+      accountProviderContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'accountProvider',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<UserProfile, UserProfile, QAfterFilterCondition>
+      accountProviderMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'accountProvider',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<UserProfile, UserProfile, QAfterFilterCondition>
+      accountProviderIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'accountProvider',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<UserProfile, UserProfile, QAfterFilterCondition>
+      accountProviderIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'accountProvider',
+        value: '',
+      ));
+    });
+  }
+
   QueryBuilder<UserProfile, UserProfile, QAfterFilterCondition> ageEqualTo(
       int value) {
     return QueryBuilder.apply(this, (query) {
@@ -777,6 +1088,45 @@ extension UserProfileQueryLinks
 
 extension UserProfileQuerySortBy
     on QueryBuilder<UserProfile, UserProfile, QSortBy> {
+  QueryBuilder<UserProfile, UserProfile, QAfterSortBy> sortByAccountEmail() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'accountEmail', Sort.asc);
+    });
+  }
+
+  QueryBuilder<UserProfile, UserProfile, QAfterSortBy>
+      sortByAccountEmailDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'accountEmail', Sort.desc);
+    });
+  }
+
+  QueryBuilder<UserProfile, UserProfile, QAfterSortBy> sortByAccountLinked() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'accountLinked', Sort.asc);
+    });
+  }
+
+  QueryBuilder<UserProfile, UserProfile, QAfterSortBy>
+      sortByAccountLinkedDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'accountLinked', Sort.desc);
+    });
+  }
+
+  QueryBuilder<UserProfile, UserProfile, QAfterSortBy> sortByAccountProvider() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'accountProvider', Sort.asc);
+    });
+  }
+
+  QueryBuilder<UserProfile, UserProfile, QAfterSortBy>
+      sortByAccountProviderDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'accountProvider', Sort.desc);
+    });
+  }
+
   QueryBuilder<UserProfile, UserProfile, QAfterSortBy> sortByAge() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'age', Sort.asc);
@@ -854,6 +1204,45 @@ extension UserProfileQuerySortBy
 
 extension UserProfileQuerySortThenBy
     on QueryBuilder<UserProfile, UserProfile, QSortThenBy> {
+  QueryBuilder<UserProfile, UserProfile, QAfterSortBy> thenByAccountEmail() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'accountEmail', Sort.asc);
+    });
+  }
+
+  QueryBuilder<UserProfile, UserProfile, QAfterSortBy>
+      thenByAccountEmailDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'accountEmail', Sort.desc);
+    });
+  }
+
+  QueryBuilder<UserProfile, UserProfile, QAfterSortBy> thenByAccountLinked() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'accountLinked', Sort.asc);
+    });
+  }
+
+  QueryBuilder<UserProfile, UserProfile, QAfterSortBy>
+      thenByAccountLinkedDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'accountLinked', Sort.desc);
+    });
+  }
+
+  QueryBuilder<UserProfile, UserProfile, QAfterSortBy> thenByAccountProvider() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'accountProvider', Sort.asc);
+    });
+  }
+
+  QueryBuilder<UserProfile, UserProfile, QAfterSortBy>
+      thenByAccountProviderDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'accountProvider', Sort.desc);
+    });
+  }
+
   QueryBuilder<UserProfile, UserProfile, QAfterSortBy> thenByAge() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'age', Sort.asc);
@@ -943,6 +1332,27 @@ extension UserProfileQuerySortThenBy
 
 extension UserProfileQueryWhereDistinct
     on QueryBuilder<UserProfile, UserProfile, QDistinct> {
+  QueryBuilder<UserProfile, UserProfile, QDistinct> distinctByAccountEmail(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'accountEmail', caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<UserProfile, UserProfile, QDistinct> distinctByAccountLinked() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'accountLinked');
+    });
+  }
+
+  QueryBuilder<UserProfile, UserProfile, QDistinct> distinctByAccountProvider(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'accountProvider',
+          caseSensitive: caseSensitive);
+    });
+  }
+
   QueryBuilder<UserProfile, UserProfile, QDistinct> distinctByAge() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'age');
@@ -988,6 +1398,25 @@ extension UserProfileQueryProperty
   QueryBuilder<UserProfile, int, QQueryOperations> idProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'id');
+    });
+  }
+
+  QueryBuilder<UserProfile, String, QQueryOperations> accountEmailProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'accountEmail');
+    });
+  }
+
+  QueryBuilder<UserProfile, bool, QQueryOperations> accountLinkedProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'accountLinked');
+    });
+  }
+
+  QueryBuilder<UserProfile, String, QQueryOperations>
+      accountProviderProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'accountProvider');
     });
   }
 

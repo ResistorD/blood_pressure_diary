@@ -18,7 +18,19 @@ class ProfileLoaded extends ProfileState {
   const ProfileLoaded(this.profile);
 
   @override
-  List<Object?> get props => [profile.name, profile.age, profile.gender, profile.weight, profile.targetSystolic, profile.targetDiastolic];
+  List<Object?> get props => [
+    profile.name,
+    profile.age,
+    profile.gender,
+    profile.weight,
+    profile.targetSystolic,
+    profile.targetDiastolic,
+
+    // ✅ ВАЖНО: чтобы UI обновлялся при входе/выходе
+    profile.accountLinked,
+    profile.accountEmail,
+    profile.accountProvider,
+  ];
 }
 
 class ProfileError extends ProfileState {

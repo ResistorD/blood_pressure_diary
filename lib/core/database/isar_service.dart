@@ -29,6 +29,12 @@ class IsarService {
     });
   }
 
+  Future<void> saveRecords(List<BloodPressureRecord> records) async {
+    await _isar.writeTxn(() async {
+      await _isar.bloodPressureRecords.putAll(records);
+    });
+  }
+
   Future<void> deleteRecord(int id) async {
     await _isar.writeTxn(() async {
       await _isar.bloodPressureRecords.delete(id);
@@ -48,6 +54,7 @@ class IsarService {
 
   Future<void> saveSettings(AppSettings settings) async {
     await _isar.writeTxn(() async {
+      settings.id = 0;
       await _isar.appSettings.put(settings);
     });
   }
@@ -59,7 +66,28 @@ class IsarService {
 
   Future<void> saveProfile(UserProfile profile) async {
     await _isar.writeTxn(() async {
+      profile.id = 0;
       await _isar.userProfiles.put(profile);
+    });
+  }
+
+  /// Полная замена данных приложения (для restore):
+  /// - settings/profile перезаписываем
+  /// - записи давления полностью заменяем
+  Future<void> replaceAllData({
+    required AppSettings settings,
+    required UserProfile profile,
+    required List<BloodPressureRecord> records,
+  }) async {
+    await _isar.writeTxn(() async {
+      settings.id = 0;
+      profile.id = 0;
+
+      await _isar.appSettings.put(settings);
+      await _isar.userProfiles.put(profile);
+
+      await _isar.bloodPressureRecords.clear();
+      await _isar.bloodPressureRecords.putAll(records);
     });
   }
 }

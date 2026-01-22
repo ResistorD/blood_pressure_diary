@@ -15,11 +15,21 @@ class AppSettings {
 
   bool notificationsEnabled = false;
 
+  // --- Account (локальная привязка аккаунта)
+  // Сейчас это простой "профиль привязки" (email/провайдер) без реальной авторизации.
+  // Нужен, чтобы экран Профиля мог "войти/выйти" и в будущем использовать синхронизацию.
+  bool accountLinked = false;
+  String accountEmail = '';
+  String accountProvider = ''; // например: 'email', 'google', 'apple'
+
   AppSettings({
     this.themeMode = AppThemeMode.light,
     this.languageCode = 'ru',
     this.reminders = const [],
     this.notificationsEnabled = false,
+    this.accountLinked = false,
+    this.accountEmail = '',
+    this.accountProvider = '',
   });
 }
 

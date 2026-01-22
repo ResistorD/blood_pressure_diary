@@ -10,9 +10,14 @@ class UserProfile {
   int age = 0;
   String gender = 'male'; // 'male', 'female', 'other'
   double weight = 0.0;
-  
+
   int targetSystolic = 120;
   int targetDiastolic = 80;
+
+  // --- Account link (локальная привязка, реальная: хранится в Isar)
+  bool accountLinked = false;
+  String accountEmail = '';
+  String accountProvider = ''; // 'email' | 'google' | 'apple'
 
   UserProfile({
     this.name = '',
@@ -21,5 +26,8 @@ class UserProfile {
     this.weight = 0.0,
     this.targetSystolic = 120,
     this.targetDiastolic = 80,
+    this.accountLinked = false,
+    this.accountEmail = '',
+    this.accountProvider = '',
   });
 }
