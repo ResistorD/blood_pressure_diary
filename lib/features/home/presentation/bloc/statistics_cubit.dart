@@ -6,14 +6,14 @@ class StatisticsCubit extends Cubit<StatisticsState> {
   List<BloodPressureRecord> _allRecords;
 
   StatisticsCubit(
-      List<BloodPressureRecord> records, {
-        int targetSystolic = 120,
-        int targetDiastolic = 80,
-      })  : _allRecords = List<BloodPressureRecord>.from(records),
+    List<BloodPressureRecord> records, {
+    int targetSystolic = 120,
+    int targetDiastolic = 80,
+  })  : _allRecords = List<BloodPressureRecord>.from(records),
         super(StatisticsState(
-        targetSystolic: targetSystolic,
-        targetDiastolic: targetDiastolic,
-      )) {
+          targetSystolic: targetSystolic,
+          targetDiastolic: targetDiastolic,
+        )) {
     updatePeriod(StatisticsPeriod.sevenDays);
   }
 
@@ -22,6 +22,13 @@ class StatisticsCubit extends Cubit<StatisticsState> {
   void updateRecords(List<BloodPressureRecord> records) {
     _allRecords = List<BloodPressureRecord>.from(records);
     updatePeriod(state.period);
+  }
+
+  void updateTargets({required int targetSystolic, required int targetDiastolic}) {
+    emit(state.copyWith(
+      targetSystolic: targetSystolic,
+      targetDiastolic: targetDiastolic,
+    ));
   }
 
   void updatePeriod(StatisticsPeriod period) {

@@ -16,7 +16,7 @@ class HomeBloc extends Bloc<HomeEvent, HomeState> {
     // Явно типизируем стрим, чтобы избежать ошибки Object?
     await emit.forEach<List<BloodPressureRecord>>(
       _repository.getAllRecordsStream(),
-      onData: (records) => HomeLoaded(records),
+      onData: (records) => HomeLoaded(List<BloodPressureRecord>.from(records)),
       onError: (error, stackTrace) => HomeError(error.toString()),
     );
   }
