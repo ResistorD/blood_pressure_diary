@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/scale.dart';
 
+import '../data/blood_pressure_model.dart';
 import '../../profile/presentation/bloc/profile_cubit.dart';
 import '../../profile/presentation/bloc/profile_state.dart';
 
@@ -22,33 +23,49 @@ class StatisticsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BlocBuilder<ProfileCubit, ProfileState>(
-      builder: (context, profileState) {
-        int targetSys = 120;
-        int targetDia = 80;
-
-        if (profileState is ProfileLoaded) {
-          targetSys = profileState.profile.targetSystolic;
-          targetDia = profileState.profile.targetDiastolic;
-        }
-
-        return BlocBuilder<HomeBloc, HomeState>(
+    return BlocProvider(
+      create: (context) {
+        final homeState = context.read<HomeBloc>().state;
+        final profileState = context.read<ProfileCubit>().state;
+        final records = homeState is HomeLoaded ? homeState.records : const <BloodPressureRecord>[];
+        final targetSys = profileState is ProfileLoaded ? profileState.profile.targetSystolic : 120;
+        final targetDia = profileState is ProfileLoaded ? profileState.profile.targetDiastolic : 80;
+        return StatisticsCubit(
+          records,
+          targetSystolic: targetSys,
+          targetDiastolic: targetDia,
+        )..updatePeriod(StatisticsPeriod.thirtyDays);
+      },
+      child: MultiBlocListener(
+        listeners: [
+          BlocListener<HomeBloc, HomeState>(
+            listener: (context, homeState) {
+              if (homeState is HomeLoaded) {
+                context.read<StatisticsCubit>().updateRecords(homeState.records);
+              }
+            },
+          ),
+          BlocListener<ProfileCubit, ProfileState>(
+            listener: (context, profileState) {
+              if (profileState is ProfileLoaded) {
+                context.read<StatisticsCubit>().updateTargets(
+                  targetSystolic: profileState.profile.targetSystolic,
+                  targetDiastolic: profileState.profile.targetDiastolic,
+                );
+              }
+            },
+          ),
+        ],
+        child: BlocBuilder<HomeBloc, HomeState>(
           builder: (context, homeState) {
             if (homeState is! HomeLoaded) {
               return const Scaffold(body: Center(child: CircularProgressIndicator()));
             }
 
-            return BlocProvider(
-              create: (_) => StatisticsCubit(
-                homeState.records,
-                targetSystolic: targetSys,
-                targetDiastolic: targetDia,
-              )..updatePeriod(StatisticsPeriod.thirtyDays),
-              child: const _StatisticsView(),
-            );
+            return const _StatisticsView();
           },
-        );
-      },
+        ),
+      ),
     );
   }
 }
@@ -227,53 +244,67 @@ class _StatisticsViewState extends State<_StatisticsView> {
                           boxShadow: [shadows.card],
                         ),
                         child: Padding(
-                          padding: EdgeInsets.fromLTRB(
-                            dp(context, space.s16),
-                            dp(context, space.s16),
-                            dp(context, space.s16),
-                            dp(context, space.s20),
+                          padding: EdgeInsets.only(
+                            left: dp(context, space.s16),
+                            right: dp(context, space.s16),
+                            top: dp(context, space.s16),
+                            bottom: dp(context, space.s8),
                           ),
-                          child: hasData
-                              ? _Chart(
-                            tab: _tab,
-                            state: state,
-                            isDark: isDark,
-                          )
-                              : Center(
-                            child: Text(
-                              'Нет данных за этот период',
-                              style: TextStyle(
-                                fontFamily: text.family,
-                                fontSize: sp(context, text.fs14),
-                                fontWeight: text.w400,
-                                color: isDark ? AppPalette.dark350 : AppPalette.grey500,
-                                height: 1.0,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _tab == _ChartTab.pressure ? 'Артериальное давление' : 'Пульс',
+                                style: TextStyle(
+                                  fontFamily: text.family,
+                                  fontSize: sp(context, text.fs16),
+                                  fontWeight: text.w600,
+                                  color: colors.textPrimary,
+                                  height: 1.0,
+                                ),
                               ),
-                            ),
+                              SizedBox(height: dp(context, space.s8)),
+                              Expanded(
+                                child: hasData
+                                    ? _Chart(
+                                        records: state.filteredRecords,
+                                        showPressure: _tab == _ChartTab.pressure,
+                                        targetSystolic: state.targetSystolic,
+                                        targetDiastolic: state.targetDiastolic,
+                                      )
+                                    : Center(
+                                        child: Text(
+                                          'Нет данных',
+                                          style: TextStyle(
+                                            fontFamily: text.family,
+                                            fontSize: sp(context, text.fs14),
+                                            fontWeight: text.w400,
+                                            color: colors.textSecondary,
+                                          ),
+                                        ),
+                                      ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
 
-                      SizedBox(height: dp(context, space.s20)),
+                      SizedBox(height: dp(context, space.s12)),
 
                       // Stats
-                      Container(
+                      SizedBox(
                         width: statsW,
                         height: statsH,
-                        decoration: BoxDecoration(
-                          color: cardBg,
-                          boxShadow: [shadows.card],
-                        ),
-                        padding: EdgeInsets.symmetric(
-                          horizontal: dp(context, space.s20),
-                          vertical: dp(context, space.s16),
-                        ),
                         child: _StatsBlock(
-                          isDark: isDark,
-                          tab: _tab,
                           state: state,
+                          cardBg: cardBg,
+                          shadows: shadows,
+                          text: text,
+                          colors: colors,
                         ),
                       ),
+
+                      SizedBox(height: dp(context, space.s12)),
                     ],
                   ),
                 ),
@@ -307,17 +338,12 @@ class _PeriodChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final space = context.appSpace;
     final text = context.appText;
+    final space = context.appSpace;
 
-    return PopupMenuButton<StatisticsPeriod>(
-      onSelected: onSelected,
-      itemBuilder: (context) => const [
-        PopupMenuItem(value: StatisticsPeriod.sevenDays, child: Text('Неделя')),
-        PopupMenuItem(value: StatisticsPeriod.thirtyDays, child: Text('Месяц')),
-        PopupMenuItem(value: StatisticsPeriod.all, child: Text('Все')),
-      ],
-      offset: Offset(0, dp(context, space.s30 - space.s2)),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _showPeriodMenu(context),
       child: Container(
         width: width,
         height: height,
@@ -325,33 +351,101 @@ class _PeriodChip extends StatelessWidget {
           color: bg,
           borderRadius: BorderRadius.circular(radius),
         ),
-        padding: EdgeInsets.symmetric(horizontal: dp(context, space.s10)),
+        padding: EdgeInsets.symmetric(horizontal: dp(context, space.s12)),
+        alignment: Alignment.center,
         child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Expanded(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontFamily: text.family,
-                  fontSize: sp(context, text.fs16),
-                  fontWeight: text.w600,
-                  color: textColor,
-                  height: 1.0,
-                ),
+            Text(
+              label,
+              style: TextStyle(
+                fontFamily: text.family,
+                fontSize: sp(context, text.fs14),
+                fontWeight: text.w600,
+                color: textColor,
+                height: 1.0,
               ),
             ),
-            SvgPicture.asset(
-              'assets/arrow_drop_down.svg',
-              width: dp(context, space.s24),
-              height: dp(context, space.s24),
-              colorFilter: ColorFilter.mode(textColor, BlendMode.srcIn),
+            Icon(
+              Icons.keyboard_arrow_down,
+              size: dp(context, space.s20),
+              color: textColor,
             ),
           ],
         ),
       ),
     );
+  }
+
+  void _showPeriodMenu(BuildContext context) async {
+    final selected = await showModalBottomSheet<StatisticsPeriod>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final colors = context.appColors;
+        final space = context.appSpace;
+        final radii = context.appRadii;
+        final text = context.appText;
+
+        final sheetBg = colors.surface;
+        final sheetR = dp(context, radii.r10);
+
+        Widget item(String title, StatisticsPeriod period) {
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => Navigator.pop(ctx, period),
+            child: Container(
+              height: dp(context, space.s48),
+              decoration: BoxDecoration(
+                color: colors.surfaceAlt,
+                borderRadius: BorderRadius.circular(dp(context, radii.r10)),
+              ),
+              padding: EdgeInsets.symmetric(horizontal: dp(context, space.s12)),
+              alignment: Alignment.centerLeft,
+              child: Text(
+                title,
+                style: TextStyle(
+                  fontFamily: text.family,
+                  fontSize: sp(context, text.fs18),
+                  fontWeight: text.w500,
+                  color: colors.textPrimary,
+                ),
+              ),
+            ),
+          );
+        }
+
+        return SafeArea(
+          child: Padding(
+            padding: EdgeInsets.all(dp(context, space.s12)),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: sheetBg,
+                borderRadius: BorderRadius.circular(sheetR),
+                boxShadow: [context.appShadow.card],
+              ),
+              child: Padding(
+                padding: EdgeInsets.all(dp(context, space.s12)),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    item('Неделя', StatisticsPeriod.sevenDays),
+                    SizedBox(height: dp(context, space.s8)),
+                    item('Месяц', StatisticsPeriod.thirtyDays),
+                    SizedBox(height: dp(context, space.s8)),
+                    item('Все', StatisticsPeriod.all),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    if (selected != null) {
+      onSelected(selected);
+    }
   }
 }
 
@@ -381,357 +475,263 @@ class _WordUnderlineTab extends StatelessWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
-      child: Center(
-        child: IntrinsicWidth(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(title, style: selected ? selectedStyle : unselectedStyle),
-              SizedBox(height: dp(context, space.s6)),
+      child: Container(
+        alignment: Alignment.center,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(title, style: selected ? selectedStyle : unselectedStyle),
+            SizedBox(height: dp(context, space.s8)),
+            if (selected)
               Container(
                 height: underlineHeight,
-                width: double.infinity,
-                color: selected ? underlineColor : Colors.transparent,
+                width: dp(context, space.s56),
+                color: underlineColor,
               ),
-            ],
-          ),
+          ],
         ),
       ),
     );
   }
 }
 
-class _StatsBlock extends StatelessWidget {
-  final bool isDark;
-  final _ChartTab tab;
-  final StatisticsState state;
-
-  const _StatsBlock({
-    required this.isDark,
-    required this.tab,
-    required this.state,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final space = context.appSpace;
-    final text = context.appText;
-
-    final color = isDark ? AppPalette.dark350 : AppPalette.blue900;
-
-    String fmtPressure(double sys, double dia) => '${sys.toInt()}/${dia.toInt()}';
-    String fmtPulse(double v) => v == 0 ? '—' : '${v.toInt()}';
-
-    final avg = tab == _ChartTab.pressure ? fmtPressure(state.avgSys, state.avgDia) : fmtPulse(state.avgPulse);
-    final max = tab == _ChartTab.pressure ? fmtPressure(state.maxSys, state.maxDia) : fmtPulse(state.maxPulse);
-    final min = tab == _ChartTab.pressure ? fmtPressure(state.minSys, state.minDia) : fmtPulse(state.minPulse);
-
-    Widget row(String label, String value) => Row(
-      children: [
-        Icon(Icons.favorite, size: dp(context, space.s20), color: color),
-        SizedBox(width: dp(context, space.s16)),
-        Expanded(
-          child: Text(
-            label,
-            style: TextStyle(
-              fontFamily: text.family,
-              fontSize: sp(context, text.fs16),
-              fontWeight: text.w600,
-              color: color,
-              height: 1.0,
-            ),
-          ),
-        ),
-        Text(
-          value,
-          style: TextStyle(
-            fontFamily: text.family,
-            fontSize: sp(context, text.fs16),
-            fontWeight: text.w600,
-            color: color,
-            height: 1.0,
-          ),
-        ),
-      ],
-    );
-
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        row('Среднее:', avg),
-        row('Макс.:', max),
-        row('Мин.:', min),
-      ],
-    );
-  }
-}
-
 class _Chart extends StatelessWidget {
-  final _ChartTab tab;
-  final StatisticsState state;
-  final bool isDark;
+  final List<BloodPressureRecord> records;
+  final bool showPressure;
+  final int targetSystolic;
+  final int targetDiastolic;
 
   const _Chart({
-    required this.tab,
-    required this.state,
-    required this.isDark,
+    required this.records,
+    required this.showPressure,
+    required this.targetSystolic,
+    required this.targetDiastolic,
   });
-
-  int _xLabelStep(int len, StatisticsPeriod period) {
-    if (len <= 1) return 1;
-    if (period == StatisticsPeriod.sevenDays) return 1;
-
-    if (period == StatisticsPeriod.thirtyDays) {
-      if (len <= 10) return 1;
-      if (len <= 20) return 2;
-      return 4;
-    }
-
-    final target = 8;
-    return (len / target).ceil().clamp(1, len);
-  }
-
-  Set<int> _pulseYLabels(double minY, double maxY) {
-    int round10(double v) => (v / 10).round() * 10;
-    final minR = (minY / 10).floor() * 10;
-    final maxR = (maxY / 10).ceil() * 10;
-
-    final span = (maxR - minR).abs();
-    final rawStep = span / 3;
-    var step = round10(rawStep.toDouble()).abs();
-    if (step < 10) step = 10;
-
-    return {minR, minR + step, minR + step * 2, maxR};
-  }
 
   @override
   Widget build(BuildContext context) {
-    final space = context.appSpace;
-    final text = context.appText;
-    final colors = context.appColors;
-
-    final all = state.filteredRecords;
-    final records = tab == _ChartTab.pulse ? all.where((r) => r.pulse > 0).toList() : all;
-
     if (records.isEmpty) {
-      return Center(
-        child: Text(
-          'Нет данных',
-          style: TextStyle(
-            fontFamily: text.family,
-            fontSize: sp(context, text.fs14),
-            fontWeight: text.w400,
-            color: isDark ? AppPalette.dark350 : AppPalette.grey500,
-            height: 1.0,
-          ),
-        ),
-      );
+      return const SizedBox.shrink();
     }
 
-    const pressureGridStep = 40.0;
-    const pulseGridStep = 10.0;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final colors = context.appColors;
+    final space = context.appSpace;
 
-    double minY;
-    double maxY;
+    final spotsSys = <FlSpot>[];
+    final spotsDia = <FlSpot>[];
+    final spotsPulse = <FlSpot>[];
 
-    if (tab == _ChartTab.pressure) {
-      // фиксируем разумный диапазон как в макете
-      minY = 40;
-      maxY = 220;
-    } else {
-      final minP = records.map((e) => e.pulse).reduce((a, b) => a < b ? a : b).toDouble();
-      final maxP = records.map((e) => e.pulse).reduce((a, b) => a > b ? a : b).toDouble();
-      minY = (minP - 10).clamp(30, 220);
-      maxY = (maxP + 10).clamp(60, 240);
+    for (int i = 0; i < records.length; i++) {
+      final r = records[i];
+      spotsSys.add(FlSpot(i.toDouble(), r.systolic.toDouble()));
+      spotsDia.add(FlSpot(i.toDouble(), r.diastolic.toDouble()));
+      spotsPulse.add(FlSpot(i.toDouble(), r.pulse.toDouble()));
     }
 
-    final gridColor = isDark ? AppPalette.dark600.withValues(alpha: 0.25) : AppPalette.grey400.withValues(alpha: 0.7);
-    final axisTextColor = isDark ? AppPalette.dark350 : AppPalette.blue900;
+    final lineColorSys = isDark ? colors.textOnBrand : AppPalette.blue900;
+    final lineColorDia = isDark ? colors.textOnBrand : AppPalette.blue500;
+    final lineColorPulse = isDark ? colors.textOnBrand : AppPalette.blue700;
 
-    final lineStrong = isDark ? AppPalette.dark350 : AppPalette.blue900;
-    final lineSoft = isDark ? AppPalette.blue500 : AppPalette.blue500;
+    final refLineColor = isDark ? colors.textOnBrand.withValues(alpha: 0.35) : AppPalette.blue700;
 
-    final spotsA = records.asMap().entries.map((e) {
-      final x = e.key.toDouble();
-      final y = tab == _ChartTab.pressure ? e.value.systolic.toDouble() : e.value.pulse.toDouble();
-      return FlSpot(x, y);
-    }).toList();
+    final textStyle = TextStyle(
+      fontFamily: context.appText.family,
+      fontSize: sp(context, context.appText.fs10),
+      color: colors.textSecondary,
+    );
 
-    final spotsB = tab == _ChartTab.pressure
-        ? records.asMap().entries.map((e) => FlSpot(e.key.toDouble(), e.value.diastolic.toDouble())).toList()
-        : const <FlSpot>[];
+    final axisColor = isDark ? colors.textOnBrand.withValues(alpha: 0.6) : AppPalette.grey300;
 
-    final pressureYLabels = <int>{80, 120, 160, 200};
-    final pulseYLabels = _pulseYLabels(minY, maxY);
-    final xStep = _xLabelStep(records.length, state.period);
-
-    String xLabel(DateTime dt) => DateFormat('d', 'ru').format(dt);
-
-    // tooltip style
-    final tooltipBg = isDark ? AppPalette.dark900.withValues(alpha: 0.92) : AppPalette.grey050.withValues(alpha: 0.96);
-    final tooltipTextColor = isDark ? Colors.white : AppPalette.blue900;
-
-    // ✅ зона давления из профиля
-    final yLow = state.targetDiastolic.toDouble();
-    final yHigh = state.targetSystolic.toDouble();
-    final zoneColor = (tab == _ChartTab.pressure)
-        ? (isDark ? AppPalette.blueAccent.withValues(alpha: 0.10) : AppPalette.blueAccent.withValues(alpha: 0.12))
-        : Colors.transparent;
-
-    final zoneLineColor = isDark
-        ? AppPalette.dark350.withValues(alpha: 0.45)
-        : AppPalette.blue900.withValues(alpha: 0.35);
+    final gridColor = isDark ? colors.textOnBrand.withValues(alpha: 0.1) : AppPalette.grey200;
 
     return LineChart(
       LineChartData(
-        // ✅ ZONE (полоса)
-        rangeAnnotations: tab == _ChartTab.pressure
-            ? RangeAnnotations(
-          horizontalRangeAnnotations: [
-            HorizontalRangeAnnotation(
-              y1: yLow,
-              y2: yHigh,
-              color: zoneColor,
-            ),
-          ],
-        )
-            : const RangeAnnotations(),
-
-        // ✅ границы зоны пунктиром
-        extraLinesData: tab == _ChartTab.pressure
-            ? ExtraLinesData(
-          horizontalLines: [
-            HorizontalLine(
-              y: yHigh,
-              color: zoneLineColor,
-              strokeWidth: 1,
-              dashArray: const [6, 6],
-            ),
-            HorizontalLine(
-              y: yLow,
-              color: zoneLineColor,
-              strokeWidth: 1,
-              dashArray: const [6, 6],
-            ),
-          ],
-        )
-            : ExtraLinesData(horizontalLines: const []),
-
-    gridData: FlGridData(
+        minX: 0,
+        maxX: records.length.toDouble() - 1,
+        minY: 0,
+        maxY: showPressure ? 200 : 150,
+        lineTouchData: LineTouchData(
+          enabled: true,
+          touchTooltipData: LineTouchTooltipData(
+            tooltipBgColor: colors.surface,
+            tooltipRoundedRadius: dp(context, space.s8),
+            tooltipBorder: BorderSide(color: colors.textPrimary.withValues(alpha: 0.1)),
+          ),
+        ),
+        gridData: FlGridData(
           show: true,
-          drawVerticalLine: true,
-          horizontalInterval: tab == _ChartTab.pressure ? pressureGridStep : pulseGridStep,
-          verticalInterval: 1,
-          getDrawingHorizontalLine: (_) => FlLine(color: gridColor, strokeWidth: 1),
-          getDrawingVerticalLine: (_) => FlLine(color: gridColor, strokeWidth: 1),
+          drawVerticalLine: false,
+          horizontalInterval: 20,
+          getDrawingHorizontalLine: (_) => FlLine(color: gridColor, strokeWidth: dp(context, space.s1)),
         ),
         titlesData: FlTitlesData(
-          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
           leftTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
-              reservedSize: dp(context, space.s40),
-              interval: tab == _ChartTab.pressure ? pressureGridStep : pulseGridStep,
+              interval: 20,
+              reservedSize: dp(context, space.s32),
               getTitlesWidget: (value, meta) {
-                final v = value.toInt();
-                if (tab == _ChartTab.pressure) {
-                  if (!pressureYLabels.contains(v)) return const SizedBox.shrink();
-                } else {
-                  if (!pulseYLabels.contains(v)) return const SizedBox.shrink();
-                }
-                return Text(
-                  v.toString(),
-                  style: TextStyle(
-                    fontFamily: text.family,
-                    fontSize: sp(context, text.fs12),
-                    fontWeight: text.w400,
-                    color: axisTextColor,
-                    height: 1.0,
-                  ),
-                );
+                return Text(value.toInt().toString(), style: textStyle);
               },
             ),
           ),
           bottomTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
-              reservedSize: dp(context, space.s24),
-              interval: 1,
+              interval: 2,
               getTitlesWidget: (value, meta) {
-                final i = value.toInt();
-                if (i < 0 || i >= records.length) return const SizedBox.shrink();
-                if (i % xStep != 0 && i != records.length - 1) return const SizedBox.shrink();
-                return Padding(
-                  padding: EdgeInsets.only(top: dp(context, space.s6)),
-                  child: Text(
-                    xLabel(records[i].dateTime),
-                    style: TextStyle(
-                      fontFamily: text.family,
-                      fontSize: sp(context, text.fs12),
-                      fontWeight: text.w400,
-                      color: axisTextColor,
-                      height: 1.0,
-                    ),
-                  ),
-                );
+                final index = value.toInt();
+                if (index < 0 || index >= records.length) return const SizedBox.shrink();
+                final date = records[index].dateTime;
+                return Text(DateFormat('dd.MM').format(date), style: textStyle);
               },
             ),
           ),
+          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
         ),
-        borderData: FlBorderData(show: false),
-        minX: 0,
-        maxX: (records.length - 1).toDouble(),
-        minY: minY,
-        maxY: maxY,
-        lineBarsData: [
-          LineChartBarData(
-            spots: spotsA,
-            isCurved: false,
-            color: lineStrong,
-            barWidth: dp(context, space.s2),
-            dotData: const FlDotData(show: false),
+        borderData: FlBorderData(
+          show: true,
+          border: Border(
+            bottom: BorderSide(color: axisColor, width: dp(context, space.s1)),
+            left: BorderSide(color: axisColor, width: dp(context, space.s1)),
           ),
-          if (tab == _ChartTab.pressure)
-            LineChartBarData(
-              spots: spotsB,
-              isCurved: false,
-              color: lineSoft,
-              barWidth: dp(context, space.s2),
-              dotData: const FlDotData(show: false),
-            ),
-        ],
-        lineTouchData: LineTouchData(
-          enabled: true,
-          handleBuiltInTouches: true,
-          touchTooltipData: LineTouchTooltipData(
-            getTooltipColor: (_) => tooltipBg,
-            tooltipRoundedRadius: dp(context, context.appRadii.r10),
-            tooltipPadding: EdgeInsets.symmetric(
-              horizontal: dp(context, space.s10),
-              vertical: dp(context, space.s6),
-            ),
-            fitInsideHorizontally: true,
-            fitInsideVertically: true,
-            getTooltipItems: (touchedSpots) {
-              return touchedSpots.map((spot) {
-                final rec = records[spot.x.toInt()];
-                final dateStr = DateFormat('dd.MM', 'ru').format(rec.dateTime);
-                final label = tab == _ChartTab.pressure ? (spot.barIndex == 0 ? 'Сист.' : 'Диаст.') : 'Пульс';
-                return LineTooltipItem(
-                  '$dateStr\n$label: ${spot.y.toInt()}',
-                  TextStyle(
-                    fontFamily: text.family,
-                    fontSize: sp(context, text.fs12),
-                    fontWeight: text.w600,
-                    color: tooltipTextColor,
-                    height: 1.1,
+        ),
+        lineBarsData: showPressure
+            ? [
+                LineChartBarData(
+                  spots: spotsSys,
+                  isCurved: true,
+                  color: lineColorSys,
+                  barWidth: dp(context, space.s2),
+                  dotData: const FlDotData(show: false),
+                ),
+                LineChartBarData(
+                  spots: spotsDia,
+                  isCurved: true,
+                  color: lineColorDia,
+                  barWidth: dp(context, space.s2),
+                  dotData: const FlDotData(show: false),
+                ),
+              ]
+            : [
+                LineChartBarData(
+                  spots: spotsPulse,
+                  isCurved: true,
+                  color: lineColorPulse,
+                  barWidth: dp(context, space.s2),
+                  dotData: const FlDotData(show: false),
+                ),
+              ],
+        extraLinesData: showPressure
+            ? ExtraLinesData(
+                horizontalLines: [
+                  HorizontalLine(
+                    y: targetSystolic.toDouble(),
+                    color: refLineColor,
+                    strokeWidth: dp(context, space.s1),
+                    dashArray: [dp(context, space.s4).toInt(), dp(context, space.s4).toInt()],
                   ),
-                );
-              }).toList();
-            },
+                  HorizontalLine(
+                    y: targetDiastolic.toDouble(),
+                    color: refLineColor,
+                    strokeWidth: dp(context, space.s1),
+                    dashArray: [dp(context, space.s4).toInt(), dp(context, space.s4).toInt()],
+                  ),
+                ],
+              )
+            : null,
+      ),
+    );
+  }
+}
+
+class _StatsBlock extends StatelessWidget {
+  final StatisticsState state;
+  final Color cardBg;
+  final AppShadow shadows;
+  final AppText text;
+  final AppColors colors;
+
+  const _StatsBlock({
+    required this.state,
+    required this.cardBg,
+    required this.shadows,
+    required this.text,
+    required this.colors,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final space = context.appSpace;
+
+    TextStyle labelStyle = TextStyle(
+      fontFamily: text.family,
+      fontSize: sp(context, text.fs12),
+      fontWeight: text.w400,
+      color: colors.textSecondary,
+      height: 1.0,
+    );
+
+    TextStyle valueStyle = TextStyle(
+      fontFamily: text.family,
+      fontSize: sp(context, text.fs20),
+      fontWeight: text.w600,
+      color: colors.textPrimary,
+      height: 1.0,
+    );
+
+    Widget rowItem(String label, String value) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label, style: labelStyle),
+          SizedBox(height: dp(context, space.s4)),
+          Text(value, style: valueStyle),
+        ],
+      );
+    }
+
+    String fmt(double v) => v.toStringAsFixed(0);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: cardBg,
+        boxShadow: [shadows.card],
+      ),
+      padding: EdgeInsets.all(dp(context, space.s16)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              rowItem('Максимум', fmt(state.maxSys)),
+              rowItem('Среднее', fmt(state.avgSys)),
+              rowItem('Минимум', fmt(state.minSys)),
+            ],
           ),
-        ),
+          SizedBox(height: dp(context, space.s8)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              rowItem('Диаст', fmt(state.maxDia)),
+              rowItem('Диаст', fmt(state.avgDia)),
+              rowItem('Диаст', fmt(state.minDia)),
+            ],
+          ),
+          SizedBox(height: dp(context, space.s8)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              rowItem('Пульс', fmt(state.maxPulse)),
+              rowItem('Пульс', fmt(state.avgPulse)),
+              rowItem('Пульс', fmt(state.minPulse)),
+            ],
+          ),
+        ],
       ),
     );
   }

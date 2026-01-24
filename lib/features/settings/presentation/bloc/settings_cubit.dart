@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:blood_pressure_diary/core/database/isar_service.dart';
@@ -14,20 +16,34 @@ class SettingsCubit extends Cubit<SettingsState> {
   final PressureRepository _pressureRepository;
   final ExportService _exportService;
   final NotificationService _notificationService;
+  StreamSubscription<AppSettings>? _settingsSub;
 
   SettingsCubit(
-      this._isarService,
-      this._pressureRepository,
-      this._exportService,
-      this._notificationService,
-      ) : super(SettingsState(AppSettings())) {
-    _loadSettings();
+    this._isarService,
+    this._pressureRepository,
+    this._exportService,
+    this._notificationService,
+  ) : super(SettingsState(AppSettings())) {
+    _init();
   }
 
-  Future<void> _loadSettings() async {
-    // ✅ Надёжно: всегда получаем singleton-настройки из Isar
+  Future<void> _init() async {
     final settings = await _isarService.getOrCreateSettings();
     emit(SettingsState(settings));
+    _settingsSub?.cancel();
+    _settingsSub = _isarService.watchSettings().listen(
+      (settings) {
+        emit(SettingsState(
+          settings,
+          errorMessage: state.errorMessage,
+          isExporting: state.isExporting,
+        ));
+      },
+      onError: (error) {
+        emit(state.copyWith(errorMessage: error.toString()));
+        emit(state.copyWith(errorMessage: null));
+      },
+    );
   }
 
   Future<void> changeLanguage(String langCode) async {
@@ -202,5 +218,11 @@ class SettingsCubit extends Cubit<SettingsState> {
     } else {
       await inAppReview.openStoreListing();
     }
+  }
+
+  @override
+  Future<void> close() async {
+    await _settingsSub?.cancel();
+    return super.close();
   }
 }

@@ -73,6 +73,12 @@ class IsarService {
     return created;
   }
 
+  Stream<AppSettings> watchSettings() {
+    return _isar.appSettings.watchObject(0, fireImmediately: true).asyncMap(
+          (settings) async => settings ?? await getOrCreateSettings(),
+        );
+  }
+
   Future<AppSettings?> getSettings() async {
     // оставляю метод, но делаю его надёжным
     return await getOrCreateSettings();
@@ -108,6 +114,12 @@ class IsarService {
       await _isar.userProfiles.put(created);
     });
     return created;
+  }
+
+  Stream<UserProfile> watchProfile() {
+    return _isar.userProfiles.watchObject(0, fireImmediately: true).asyncMap(
+          (profile) async => profile ?? await getOrCreateProfile(),
+        );
   }
 
   Future<UserProfile?> getProfile() async {
