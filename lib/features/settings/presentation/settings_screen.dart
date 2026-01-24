@@ -21,6 +21,16 @@ import 'package:file_picker/file_picker.dart';
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 
+  double _contentBottomInset(BuildContext context) {
+    final s = context.appSpace;
+    final safeBottom = MediaQuery.paddingOf(context).bottom;
+    // Bottom bar in AppNavigation: barH (69) + lift (43) = 112 (tokens-based)
+    final barH = dp(context, s.s72 - s.s2 - s.s1);
+    final outer = dp(context, s.s80 + s.s6);
+    final lift = outer / 2;
+    return barH + lift + safeBottom + dp(context, s.s12);
+  }
+
   Future<void> _runBlocking(BuildContext context, Future<void> Function() action) async {
     showDialog(
       context: context,
@@ -291,7 +301,6 @@ class SettingsScreen extends StatelessWidget {
             required double rowHeight,
             required VoidCallback onTap,
           }) {
-            // Увеличенная зона нажатия + НЕ красный цвет
             final hit = dp(context, space.s32); // 32
             final iconSize = dp(context, space.s20);
             final bg = fieldBg.withValues(alpha: 0.60);
@@ -544,7 +553,7 @@ class SettingsScreen extends StatelessWidget {
                 ),
                 Positioned(
                   left: side,
-                  top: safeTop + dp(context, space.s20),
+                  top: safeTop + dp(context, space.s20) + dp(context, space.s10),
                   child: Text(l10n.settings, style: titleStyle),
                 ),
                 Positioned.fill(
@@ -554,7 +563,7 @@ class SettingsScreen extends StatelessWidget {
                       left: side,
                       right: side,
                       top: gap16,
-                      bottom: dp(context, space.s96),
+                      bottom: _contentBottomInset(context),
                     ),
                     child: Column(
                       children: [

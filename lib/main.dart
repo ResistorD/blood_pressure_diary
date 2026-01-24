@@ -45,13 +45,25 @@ class BloodPressureApp extends StatelessWidget {
             darkTheme: AppTheme.darkTheme,
             themeMode: _getThemeMode(state.settings.themeMode),
             locale: Locale(state.settings.languageCode),
-            localizationsDelegates: [
+            localizationsDelegates: const [
               AppLocalizations.delegate,
               GlobalMaterialLocalizations.delegate,
               GlobalWidgetsLocalizations.delegate,
               GlobalCupertinoLocalizations.delegate,
             ],
             supportedLocales: AppLocalizations.supportedLocales,
+
+            // ✅ Фиксируем системный масштаб шрифта (для пиксель-перфекта)
+            builder: (context, child) {
+              final mq = MediaQuery.of(context);
+              return MediaQuery(
+                data: mq.copyWith(
+                  textScaler: const TextScaler.linear(1.0),
+                ),
+                child: child ?? const SizedBox.shrink(),
+              );
+            },
+
             home: const AppNavigation(),
           );
         },

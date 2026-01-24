@@ -64,6 +64,18 @@ class _HomeScreenState extends State<HomeScreen> {
     Navigator.push(context, MaterialPageRoute(builder: (_) => AddRecordScreen(record: record)));
   }
 
+  double _bottomInset(BuildContext context) {
+    // Bottom bar in AppNavigation: barH (69) + lift (43) ≈ 112, плюс safeBottom.
+    final space = context.appSpace;
+    final safeBottom = MediaQuery.paddingOf(context).bottom;
+
+    final barH = dp(context, space.s72 - space.s2 - space.s1);
+    final outer = dp(context, space.s80 + space.s6);
+    final lift = outer / 2;
+
+    return barH + lift + safeBottom + dp(context, space.s12);
+  }
+
   @override
   Widget build(BuildContext context) {
     final safeTop = MediaQuery.of(context).padding.top;
@@ -139,9 +151,8 @@ class _HomeScreenState extends State<HomeScreen> {
       height: 1.0,
     );
 
-    // ✅ Нижний “запас” под навбар + FAB, чтобы последняя пилюля не пряталась.
-    // Берём достаточно крупное значение (96) из твоих токенов, чтобы перекрыть и бар, и выступ FAB.
-    final bottomListPadding = dp(context, space.s96);
+    // ✅ Нижний “запас” под навбар + FAB + safeBottom (устойчиво на разных девайсах)
+    final bottomListPadding = _bottomInset(context);
 
     return BlocBuilder<HomeBloc, HomeState>(
       builder: (context, state) {
@@ -263,10 +274,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: Center(child: Text('Нет записей за выбранный период', style: emptyStyle)),
                 ),
               ),
-              // ✅ даже при пустом списке оставим запас снизу
               SliverToBoxAdapter(child: SizedBox(height: bottomListPadding)),
             ] else ...[
-              // “до” первой даты — чуть увеличить
               SliverToBoxAdapter(child: SizedBox(height: dp(context, space.s10))),
               for (final entry in groups.indexed) ...[
                 SliverToBoxAdapter(
@@ -299,7 +308,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 SliverToBoxAdapter(child: SizedBox(height: dp(context, space.s10))),
               ],
-              // ✅ ключевой спейсер: после последней группы
               SliverToBoxAdapter(child: SizedBox(height: bottomListPadding)),
             ],
           ],

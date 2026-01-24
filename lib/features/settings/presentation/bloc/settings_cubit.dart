@@ -25,14 +25,9 @@ class SettingsCubit extends Cubit<SettingsState> {
   }
 
   Future<void> _loadSettings() async {
-    final settings = await _isarService.getSettings();
-    if (settings != null) {
-      emit(SettingsState(settings));
-    } else {
-      final defaultSettings = AppSettings();
-      await _isarService.saveSettings(defaultSettings);
-      emit(SettingsState(defaultSettings));
-    }
+    // ✅ Надёжно: всегда получаем singleton-настройки из Isar
+    final settings = await _isarService.getOrCreateSettings();
+    emit(SettingsState(settings));
   }
 
   Future<void> changeLanguage(String langCode) async {
@@ -45,6 +40,7 @@ class SettingsCubit extends Cubit<SettingsState> {
       accountEmail: state.settings.accountEmail,
       accountProvider: state.settings.accountProvider,
     );
+
     await _isarService.saveSettings(newSettings);
     emit(SettingsState(newSettings));
   }
@@ -58,39 +54,6 @@ class SettingsCubit extends Cubit<SettingsState> {
       accountLinked: state.settings.accountLinked,
       accountEmail: state.settings.accountEmail,
       accountProvider: state.settings.accountProvider,
-    );
-    await _isarService.saveSettings(newSettings);
-    emit(SettingsState(newSettings));
-  }
-
-  // --- Account (локальная привязка)
-  Future<void> linkAccount({required String email, required String provider}) async {
-    final normalizedEmail = email.trim();
-    final normalizedProvider = provider.trim();
-
-    final newSettings = AppSettings(
-      themeMode: state.settings.themeMode,
-      languageCode: state.settings.languageCode,
-      reminders: state.settings.reminders,
-      notificationsEnabled: state.settings.notificationsEnabled,
-      accountLinked: true,
-      accountEmail: normalizedEmail,
-      accountProvider: normalizedProvider,
-    );
-
-    await _isarService.saveSettings(newSettings);
-    emit(SettingsState(newSettings));
-  }
-
-  Future<void> unlinkAccount() async {
-    final newSettings = AppSettings(
-      themeMode: state.settings.themeMode,
-      languageCode: state.settings.languageCode,
-      reminders: state.settings.reminders,
-      notificationsEnabled: state.settings.notificationsEnabled,
-      accountLinked: false,
-      accountEmail: '',
-      accountProvider: '',
     );
 
     await _isarService.saveSettings(newSettings);
@@ -128,6 +91,8 @@ class SettingsCubit extends Cubit<SettingsState> {
   }
 
   Future<void> removeReminder(int index) async {
+    if (index < 0 || index >= state.settings.reminders.length) return;
+
     final timeStr = state.settings.reminders[index];
     final newList = List<String>.from(state.settings.reminders)..removeAt(index);
 

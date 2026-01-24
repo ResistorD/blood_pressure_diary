@@ -147,6 +147,20 @@ class _AddRecordViewState extends State<_AddRecordView> {
     }
   }
 
+  double _bottomInset(BuildContext context) {
+    final space = context.appSpace;
+
+    final safeBottom = MediaQuery.paddingOf(context).bottom;
+    final keyboard = MediaQuery.viewInsetsOf(context).bottom;
+
+    // Bottom bar in AppNavigation: barH (69) + lift (43) ≈ 112, плюс safeBottom.
+    final barH = dp(context, space.s72 - space.s2 - space.s1);
+    final outer = dp(context, space.s80 + space.s6);
+    final lift = outer / 2;
+
+    return dp(context, space.s96) + barH + lift + safeBottom + dp(context, space.s12) + keyboard;
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
@@ -175,7 +189,6 @@ class _AddRecordViewState extends State<_AddRecordView> {
     final gap16 = dp(context, space.s16);
     final gap12 = dp(context, space.s12);
     final gap10 = dp(context, space.s10);
-    final gap8 = dp(context, space.s8);
 
     final headerBg = isDark ? AppPalette.dark800 : AppPalette.blue700;
     final surface = isDark ? AppPalette.dark700 : colors.surface;
@@ -254,8 +267,9 @@ class _AddRecordViewState extends State<_AddRecordView> {
 
             return Column(
               children: [
+                // ✅ FIX 1: высота шапки учитывает topInset
                 Container(
-                  height: headerH,
+                  height: headerH + topInset,
                   width: double.infinity,
                   color: headerBg,
                   padding: EdgeInsets.only(
@@ -277,7 +291,12 @@ class _AddRecordViewState extends State<_AddRecordView> {
                         ],
                       ),
                       SizedBox(height: gap12),
-                      Text(AppStrings.newRecord, style: titleStyle),
+                      Text(
+                        AppStrings.newRecord,
+                        style: titleStyle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ],
                   ),
                 ),
@@ -288,7 +307,8 @@ class _AddRecordViewState extends State<_AddRecordView> {
                       left: side,
                       right: side,
                       top: gap20,
-                      bottom: dp(context, space.s96) + MediaQuery.viewInsetsOf(context).bottom,
+                      // ✅ FIX 2: низ учитывает навбар + safeBottom + клавиатуру
+                      bottom: _bottomInset(context),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -410,7 +430,6 @@ class _AddRecordViewState extends State<_AddRecordView> {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              // ✅ сердце удалено
                               for (final e in const ['💊', '😀', '🙂', '😒', '🤕']) ...[
                                 _EmojiButton(
                                   emoji: e,
@@ -468,7 +487,6 @@ class _AddRecordViewState extends State<_AddRecordView> {
                             cellHeight: pillH,
                             radius: dp(context, radii.r10),
                             background: surface,
-                            // ✅ delete-клавиша выглядит как клавиша (тот же фон)
                             deleteBackground: surface,
                             foreground: value,
                             textStyle: TextStyle(
@@ -478,7 +496,6 @@ class _AddRecordViewState extends State<_AddRecordView> {
                               height: 1.0,
                               color: value,
                             ),
-                            // ✅ уменьшили примерно на четверть (вместо 26 ставим 20)
                             deleteIconSize: dp(context, space.s20),
                             deleteIconColor: value,
                           ),
