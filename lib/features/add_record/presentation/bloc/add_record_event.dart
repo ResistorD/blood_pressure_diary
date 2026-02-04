@@ -44,6 +44,16 @@ class NoteChanged extends AddRecordEvent {
   List<Object?> get props => [note];
 }
 
+class TagToggled extends AddRecordEvent {
+  final String tag;
+
+  const TagToggled(this.tag);
+}
+
+class TagsExpandedToggled extends AddRecordEvent {
+  const TagsExpandedToggled();
+}
+
 class EmotionChanged extends AddRecordEvent {
   final String emotion;
   const EmotionChanged(this.emotion);

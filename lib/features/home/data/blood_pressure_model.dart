@@ -17,6 +17,7 @@ class BloodPressureRecord {
 
   String? note;    // Поле для заметок (бывший comment)
   String? emotion; // Твой эмодзи
+  List<String> tags = const []; // Контекстные теги (после кофе, стресс и т.п.)
 
   @ignore
   Color get statusColor {

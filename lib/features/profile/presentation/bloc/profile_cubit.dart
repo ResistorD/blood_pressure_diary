@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter_bloc/flutter_bloc.dart';
+
 import 'package:blood_pressure_diary/core/database/isar_service.dart';
 import 'package:blood_pressure_diary/core/database/models/user_profile.dart';
 import 'package:blood_pressure_diary/features/profile/presentation/bloc/profile_state.dart';
@@ -6,21 +9,33 @@ import 'package:blood_pressure_diary/features/profile/presentation/bloc/profile_
 class ProfileCubit extends Cubit<ProfileState> {
   final IsarService _isarService;
 
-  ProfileCubit(this._isarService) : super(ProfileInitial());
+  StreamSubscription<UserProfile>? _profileSub;
+
+  ProfileCubit(this._isarService) : super(ProfileInitial()) {
+    _bind();
+  }
+
+  Future<void> _bind() async {
+    await _isarService.getOrCreateProfile();
+
+    await _profileSub?.cancel();
+    _profileSub = _isarService.watchProfile().listen((profile) {
+      emit(ProfileLoaded(profile));
+    });
+  }
+
+  @override
+  Future<void> close() async {
+    await _profileSub?.cancel();
+    return super.close();
+  }
 
   Future<void> loadProfile() async {
     if (state is ProfileLoaded) return;
-
     emit(ProfileLoading());
     try {
-      final profile = await _isarService.getProfile();
-      if (profile != null) {
-        emit(ProfileLoaded(profile));
-      } else {
-        final defaultProfile = UserProfile()..id = 0;
-        await _isarService.saveProfile(defaultProfile);
-        emit(ProfileLoaded(defaultProfile));
-      }
+      final profile = await _isarService.getOrCreateProfile();
+      emit(ProfileLoaded(profile));
     } catch (e) {
       emit(ProfileError(e.toString()));
     }
@@ -34,9 +49,7 @@ class ProfileCubit extends Cubit<ProfileState> {
     int? targetSystolic,
     int? targetDiastolic,
   }) async {
-    if (state is! ProfileLoaded) return;
-
-    final current = (state as ProfileLoaded).profile;
+    final current = await _isarService.getOrCreateProfile();
 
     final updated = UserProfile()
       ..id = 0
@@ -46,23 +59,18 @@ class ProfileCubit extends Cubit<ProfileState> {
       ..weight = weight ?? current.weight
       ..targetSystolic = targetSystolic ?? current.targetSystolic
       ..targetDiastolic = targetDiastolic ?? current.targetDiastolic
-    // сохраняем аккаунт, чтобы updateProfile не “стирал” его
       ..accountLinked = current.accountLinked
       ..accountEmail = current.accountEmail
       ..accountProvider = current.accountProvider;
 
     await _isarService.saveProfile(updated);
-    emit(ProfileLoaded(updated));
   }
 
-  // --- Account link (реально: сохраняем в Isar) ---
   Future<void> linkAccount({
     required String provider,
     required String email,
   }) async {
-    if (state is! ProfileLoaded) return;
-
-    final current = (state as ProfileLoaded).profile;
+    final current = await _isarService.getOrCreateProfile();
 
     final updated = UserProfile()
       ..id = 0
@@ -77,13 +85,10 @@ class ProfileCubit extends Cubit<ProfileState> {
       ..accountEmail = email.trim();
 
     await _isarService.saveProfile(updated);
-    emit(ProfileLoaded(updated));
   }
 
   Future<void> unlinkAccount() async {
-    if (state is! ProfileLoaded) return;
-
-    final current = (state as ProfileLoaded).profile;
+    final current = await _isarService.getOrCreateProfile();
 
     final updated = UserProfile()
       ..id = 0
@@ -98,6 +103,5 @@ class ProfileCubit extends Cubit<ProfileState> {
       ..accountEmail = '';
 
     await _isarService.saveProfile(updated);
-    emit(ProfileLoaded(updated));
   }
 }

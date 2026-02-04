@@ -1,0 +1,19 @@
+<lint-module
+    format="1"
+    dir="D:\Project_AS\blood_pressure_diary\third_party\isar_flutter_libs\android"
+    name=":isar_flutter_libs"
+    type="LIBRARY"
+    maven="dev.isar.isar_flutter_libs:isar_flutter_libs:1.0"
+    agpVersion="8.9.2"
+    buildFolder="build"
+    bootClassPath="C:\Users\resis\AppData\Local\Android\Sdk\platforms\android-36\android.jar;C:\Users\resis\AppData\Local\Android\Sdk\build-tools\35.0.0\core-lambda-stubs.jar"
+    javaSourceLevel="1.8"
+    compileTarget="android-36"
+    neverShrinking="true">
+  <lintOptions
+      abortOnError="true"
+      absolutePaths="true"
+      checkReleaseBuilds="true"
+      explainIssues="true"/>
+  <variant name="release"/>
+</lint-module>

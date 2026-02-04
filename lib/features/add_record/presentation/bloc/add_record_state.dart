@@ -1,17 +1,27 @@
 import 'package:equatable/equatable.dart';
-import '../../../../core/utils/validation_policy.dart';
-import '../../../../core/utils/validation_utils.dart';
+
 import 'package:blood_pressure_diary/core/utils/input_field.dart';
+import '../../../../core/utils/validation_utils.dart';
 
 class AddRecordState extends Equatable {
   final String systolic;
   final String diastolic;
   final String pulse;
   final String note;
+
   final DateTime selectedDateTime;
   final InputField activeField;
+
   final bool isSaved;
-  final List<String> enabledKeys; // Поле для умной клавиатуры
+
+  /// Разрешённые кнопки кастомной клавиатуры (строки цифр).
+  final List<String> enabledKeys;
+
+  /// Выбранные теги (храним текстовые label).
+  final List<String> tags;
+
+  /// Раскрыт ли блок тегов на экране.
+  final bool isTagsExpanded;
 
   AddRecordState({
     this.systolic = '',
@@ -21,44 +31,16 @@ class AddRecordState extends Equatable {
     DateTime? selectedDateTime,
     this.activeField = InputField.systolic,
     this.isSaved = false,
-    this.enabledKeys = const ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
+    this.enabledKeys = const [],
+    this.tags = const [],
+    this.isTagsExpanded = false,
   }) : selectedDateTime = selectedDateTime ?? DateTime.now();
 
-  /// Проверяет, валидна ли форма
   bool get isValid => ValidationUtils.isFormValid(
-        systolic: systolic,
-        diastolic: diastolic,
-        pulse: pulse,
-      );
-
-  bool get systolicValid {
-    final v = int.tryParse(systolic);
-    if (v == null) return false;
-    return v >= ValidationPolicy.minSys && v <= ValidationPolicy.maxSys;
-  }
-
-  bool get diastolicValid {
-    final d = int.tryParse(diastolic);
-    if (d == null) return false;
-
-    final s = int.tryParse(systolic);
-    if (s == null) {
-      return d >= ValidationPolicy.minDia &&
-          d <= ValidationPolicy.maxDia;
-    }
-
-    final (min, max) = ValidationUtils.diaRangeForSys(s);
-
-    return d >= min && d <= max;
-  }
-
-
-
-  bool get pulseValid {
-    final p = int.tryParse(pulse);
-    if (p == null) return false;
-    return p >= ValidationPolicy.minPulse && p <= ValidationPolicy.maxPulse;
-  }
+    systolic: systolic,
+    diastolic: diastolic,
+    pulse: pulse,
+  );
 
   AddRecordState copyWith({
     String? systolic,
@@ -69,6 +51,8 @@ class AddRecordState extends Equatable {
     InputField? activeField,
     bool? isSaved,
     List<String>? enabledKeys,
+    List<String>? tags,
+    bool? isTagsExpanded,
   }) {
     return AddRecordState(
       systolic: systolic ?? this.systolic,
@@ -79,6 +63,8 @@ class AddRecordState extends Equatable {
       activeField: activeField ?? this.activeField,
       isSaved: isSaved ?? this.isSaved,
       enabledKeys: enabledKeys ?? this.enabledKeys,
+      tags: tags ?? this.tags,
+      isTagsExpanded: isTagsExpanded ?? this.isTagsExpanded,
     );
   }
 
@@ -92,5 +78,7 @@ class AddRecordState extends Equatable {
     activeField,
     isSaved,
     enabledKeys,
+    tags,
+    isTagsExpanded,
   ];
 }

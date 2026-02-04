@@ -326,7 +326,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     Positioned(
                       left: side,
                       right: side,
-                      top: blueH - overlap,
+                      top: blueH - overlap + dp(context, space.s4),
                       child: SummaryCard(record: lastRecord),
                     ),
                   ],

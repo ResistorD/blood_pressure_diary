@@ -50,6 +50,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/
+    - assets/icons/tags/
   fonts:
     - family: Inter
       fonts:
@@ -60,3 +61,6 @@ flutter:
         - asset: assets/fonts/Inter-SemiBold.ttf
           weight: 600
 
+dependency_overrides:
+  isar_flutter_libs:
+    path: third_party/isar_flutter_libs

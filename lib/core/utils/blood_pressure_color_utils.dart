@@ -2,20 +2,31 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
 class BloodPressureColorUtils {
+  /// Цвет маркера записи в журнале.
+  /// Логика синхронизирована с зонами на графике:
+  /// SYS: target ±10, DIA: target ±5.
   static Color getIndicatorColor(
       BuildContext context, {
         required int systolic,
         required int diastolic,
+        required int targetSystolic,
+        required int targetDiastolic,
       }) {
     final c = context.appColors;
 
-    final isLow = systolic < 100 || diastolic < 60;
-    final isHigh = systolic >= 140 || diastolic >= 90;
-    final isElevated = !isLow && !isHigh && (systolic >= 130 || diastolic >= 85);
+    const sysDelta = 10;
+    const diaDelta = 5;
+
+    final sysLow = targetSystolic - sysDelta;
+    final sysHigh = targetSystolic + sysDelta;
+    final diaLow = targetDiastolic - diaDelta;
+    final diaHigh = targetDiastolic + diaDelta;
+
+    final isLow = systolic < sysLow || diastolic < diaLow;
+    final isHigh = systolic > sysHigh || diastolic > diaHigh;
 
     if (isHigh) return c.danger;
-    if (isElevated) return c.warning;
-    if (isLow) return AppPalette.blueAccent; // rgb(90,142,246)
-    return c.success; // rgb(61,190,101)
+    if (isLow) return AppPalette.blueAccent; // низкое давление
+    return c.success; // в зоне
   }
 }

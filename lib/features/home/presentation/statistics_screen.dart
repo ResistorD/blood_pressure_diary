@@ -86,19 +86,19 @@ class _StatisticsViewState extends State<_StatisticsView> {
 
     final headerH = dp(context, space.s128);
     final navH = dp(context, space.s72 - space.s2 - space.s1); // 69
-    final side = dp(context, space.s20);
+    final side = space.s20;
 
     final chipH = dp(context, space.s32);
     final chipW = dp(context, space.w96) + dp(context, space.s4) + dp(context, space.s1); // 101
     final chipR = dp(context, radii.r5);
 
-    final tabsW = dp(context, space.w320);
+    final tabsW = double.infinity;
     final tabsH = dp(context, space.s46);
 
-    final chartW = dp(context, 322);
+    final chartW = double.infinity;
     final chartH = dp(context, 350);
 
-    final statsW = dp(context, space.w320);
+    final statsW = double.infinity;
     final statsH = dp(context, space.s112);
 
     final headerBg = isDark ? AppPalette.dark800 : AppPalette.blue700;
@@ -174,9 +174,11 @@ class _StatisticsViewState extends State<_StatisticsView> {
 
               Expanded(
                 child: SingleChildScrollView(
-                  padding: EdgeInsets.only(
-                    top: dp(context, space.s20),
-                    bottom: navH + dp(context, space.s20),
+                  padding: EdgeInsets.fromLTRB(
+                    side,
+                    dp(context, space.s20),
+                    side,
+                    navH + dp(context, space.s20),
                   ),
                   child: Column(
                     children: [
@@ -228,9 +230,9 @@ class _StatisticsViewState extends State<_StatisticsView> {
                         ),
                         child: Padding(
                           padding: EdgeInsets.fromLTRB(
+                            space.s16,
                             dp(context, space.s16),
-                            dp(context, space.s16),
-                            dp(context, space.s16),
+                            space.s16,
                             dp(context, space.s20),
                           ),
                           child: hasData
@@ -325,7 +327,7 @@ class _PeriodChip extends StatelessWidget {
           color: bg,
           borderRadius: BorderRadius.circular(radius),
         ),
-        padding: EdgeInsets.symmetric(horizontal: dp(context, space.s10)),
+        padding: EdgeInsets.symmetric(horizontal: space.s10),
         child: Row(
           children: [
             Expanded(
@@ -617,7 +619,7 @@ class _Chart extends StatelessWidget {
         )
             : ExtraLinesData(horizontalLines: const []),
 
-    gridData: FlGridData(
+        gridData: FlGridData(
           show: true,
           drawVerticalLine: true,
           horizontalInterval: tab == _ChartTab.pressure ? pressureGridStep : pulseGridStep,
@@ -708,7 +710,7 @@ class _Chart extends StatelessWidget {
             getTooltipColor: (_) => tooltipBg,
             tooltipRoundedRadius: dp(context, context.appRadii.r10),
             tooltipPadding: EdgeInsets.symmetric(
-              horizontal: dp(context, space.s10),
+              horizontal: space.s10,
               vertical: dp(context, space.s6),
             ),
             fitInsideHorizontally: true,

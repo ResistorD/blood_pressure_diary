@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:isar/isar.dart';
+
 import '../../features/home/data/blood_pressure_model.dart';
 import '../../features/settings/data/models/settings_model.dart';
 import '../database/models/user_profile.dart';
@@ -17,10 +20,7 @@ class IsarService {
   }
 
   Future<List<BloodPressureRecord>> getAllRecords() async {
-    return await _isar.bloodPressureRecords
-        .where()
-        .sortByDateTimeDesc()
-        .findAll();
+    return await _isar.bloodPressureRecords.where().sortByDateTimeDesc().findAll();
   }
 
   Future<void> saveRecord(BloodPressureRecord record) async {
@@ -48,46 +48,60 @@ class IsarService {
   }
 
   // --- Settings (singleton, id=0) ---
+
+  /// Реактивное наблюдение за singleton-настройками (id=0).
+  /// Важно: запись должна существовать (создаётся через [getOrCreateSettings]).
+  Stream<AppSettings> watchSettings() {
+    return _isar.appSettings
+        .watchObject(0, fireImmediately: true)
+        .where((s) => s != null)
+        .cast<AppSettings>();
+  }
+
   Future<AppSettings> getOrCreateSettings() async {
     final byId = await _isar.appSettings.get(0);
     if (byId != null) return byId;
 
-    // Если в базе есть "какая-то" запись настроек (например после старых экспериментов),
+    // Если в базе есть "какая-то" запись настроек (после старых экспериментов),
     // поднимаем её и насильно делаем singleton id=0.
     final any = await _isar.appSettings.where().findFirst();
     if (any != null) {
       any.id = 0;
       await _isar.writeTxn(() async {
-        await _isar.appSettings.clear();
         await _isar.appSettings.put(any);
       });
       return any;
     }
 
-    // Совсем пусто — создаём дефолт и сохраняем.
     final created = AppSettings()..id = 0;
     await _isar.writeTxn(() async {
-      await _isar.appSettings.clear();
       await _isar.appSettings.put(created);
     });
     return created;
   }
 
   Future<AppSettings?> getSettings() async {
-    // оставляю метод, но делаю его надёжным
     return await getOrCreateSettings();
   }
 
   Future<void> saveSettings(AppSettings settings) async {
     await _isar.writeTxn(() async {
       settings.id = 0;
-      // гарантируем, что в коллекции всегда 1 запись
-      await _isar.appSettings.clear();
       await _isar.appSettings.put(settings);
     });
   }
 
   // --- Profile (singleton, id=0) ---
+
+  /// Реактивное наблюдение за singleton-профилем (id=0).
+  /// Важно: запись должна существовать (создаётся через [getOrCreateProfile]).
+  Stream<UserProfile> watchProfile() {
+    return _isar.userProfiles
+        .watchObject(0, fireImmediately: true)
+        .where((p) => p != null)
+        .cast<UserProfile>();
+  }
+
   Future<UserProfile> getOrCreateProfile() async {
     final byId = await _isar.userProfiles.get(0);
     if (byId != null) return byId;
@@ -96,7 +110,6 @@ class IsarService {
     if (any != null) {
       any.id = 0;
       await _isar.writeTxn(() async {
-        await _isar.userProfiles.clear();
         await _isar.userProfiles.put(any);
       });
       return any;
@@ -104,7 +117,6 @@ class IsarService {
 
     final created = UserProfile()..id = 0;
     await _isar.writeTxn(() async {
-      await _isar.userProfiles.clear();
       await _isar.userProfiles.put(created);
     });
     return created;
@@ -117,7 +129,6 @@ class IsarService {
   Future<void> saveProfile(UserProfile profile) async {
     await _isar.writeTxn(() async {
       profile.id = 0;
-      await _isar.userProfiles.clear();
       await _isar.userProfiles.put(profile);
     });
   }
@@ -133,9 +144,6 @@ class IsarService {
     await _isar.writeTxn(() async {
       settings.id = 0;
       profile.id = 0;
-
-      await _isar.appSettings.clear();
-      await _isar.userProfiles.clear();
 
       await _isar.appSettings.put(settings);
       await _isar.userProfiles.put(profile);

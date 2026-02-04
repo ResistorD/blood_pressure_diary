@@ -20,6 +20,10 @@ class AddRecordBloc extends Bloc<AddRecordEvent, AddRecordState> {
     on<SaveSubmitted>(_onSaveSubmitted);
     on<DeleteSubmitted>(_onDeleteSubmitted);
     on<DateTimeSet>((event, emit) => emit(state.copyWith(selectedDateTime: event.value)));
+    on<TagToggled>(_onTagToggled);
+    on<TagsExpandedToggled>((event, emit) {
+      emit(state.copyWith(isTagsExpanded: !state.isTagsExpanded));
+    });
 
     // КРИТИЧНО: Инициализируем кнопки для пустого состояния систолы сразу
     add(const FieldChanged(InputField.systolic));
@@ -121,6 +125,8 @@ class AddRecordBloc extends Bloc<AddRecordEvent, AddRecordState> {
       note: event.record.note,
       selectedDateTime: event.record.dateTime,
       activeField: InputField.systolic,
+      tags: List<String>.from(event.record.tags),
+      isTagsExpanded: event.record.tags.isNotEmpty,
     );
     emit(ns);
     _updateEnabledKeys(emit, ns);
@@ -131,6 +137,21 @@ class AddRecordBloc extends Bloc<AddRecordEvent, AddRecordState> {
     if (field == InputField.diastolic) return s.copyWith(diastolic: val);
     if (field == InputField.pulse) return s.copyWith(pulse: val);
     return s;
+  }
+
+  void _onTagToggled(
+      TagToggled event,
+      Emitter<AddRecordState> emit,
+      ) {
+    final current = List<String>.from(state.tags);
+
+    if (current.contains(event.tag)) {
+      current.remove(event.tag);
+    } else {
+      current.add(event.tag);
+    }
+
+    emit(state.copyWith(tags: current));
   }
 
   void _onBackspacePressed(BackspacePressed event, Emitter<AddRecordState> emit) {
@@ -157,7 +178,8 @@ class AddRecordBloc extends Bloc<AddRecordEvent, AddRecordState> {
       ..diastolic = int.parse(state.diastolic)
       ..pulse = int.parse(state.pulse)
       ..note = state.note
-      ..dateTime = state.selectedDateTime;
+      ..dateTime = state.selectedDateTime
+      ..tags = List<String>.from(state.tags);
 
     if (_editingId != null) {
       record.id = _editingId!;

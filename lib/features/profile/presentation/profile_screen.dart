@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../core/database/models/user_profile.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/scale.dart';
 import '../../../l10n/generated/app_localizations.dart';
@@ -39,10 +40,8 @@ class ProfileScreen extends StatelessWidget {
     final headerH = dp(context, space.s128);
     final side = dp(context, space.s20);
 
-    final cardW = dp(context, space.w320);
     final cardR = dp(context, radii.r10);
 
-    final innerW = cardW - dp(context, space.s24); // 296
     final fieldH = dp(context, space.s48);
     final fieldR = dp(context, radii.r10);
 
@@ -51,6 +50,17 @@ class ProfileScreen extends StatelessWidget {
 
     // UI-only: в макете показан пример даты
     const demoDob = '25.12.1980';
+
+    String? _formatDob(int stored) {
+      // Храним дату рождения как YYYYMMDD в поле age (чтобы не трогать Isar-схему).
+      // Если stored выглядит как "обычный возраст" (0..150) — даты нет.
+      if (stored < 19000101) return null;
+      final s = stored.toString().padLeft(8, '0');
+      final yyyy = s.substring(0, 4);
+      final mm = s.substring(4, 6);
+      final dd = s.substring(6, 8);
+      return '$dd.$mm.$yyyy';
+    }
 
     // Плотнее по Y — главный фикс
     final pad12 = dp(context, space.s12);
@@ -148,35 +158,43 @@ class ProfileScreen extends StatelessWidget {
       );
     }
 
-    Widget _wideField({required String textValue}) {
+    Widget _wideField({required String textValue, VoidCallback? onTap}) {
       final bg = isDark ? colors.surfaceAlt : colors.background;
-      return Container(
-        height: fieldH,
-        width: innerW,
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(fieldR),
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          height: fieldH,
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(fieldR),
+          ),
+          padding: EdgeInsets.symmetric(horizontal: dp(context, space.s12)),
+          alignment: Alignment.centerLeft,
+          child: Text(textValue, style: valueStyle),
         ),
-        padding: EdgeInsets.symmetric(horizontal: dp(context, space.s12)),
-        alignment: Alignment.centerLeft,
-        child: Text(textValue, style: valueStyle),
       );
     }
 
-    Widget _valueBox({required String textValue}) {
+    Widget _valueBox({required String textValue, VoidCallback? onTap}) {
       final w = dp(context, space.s120 + space.s16 + space.s1); // 137
       final bg = isDark ? colors.surfaceAlt : colors.background;
 
-      return Container(
-        height: fieldH,
-        width: w,
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(fieldR),
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          height: fieldH,
+          width: w,
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(fieldR),
+          ),
+          padding: EdgeInsets.symmetric(horizontal: dp(context, space.s12)),
+          alignment: Alignment.centerRight,
+          child: Text(textValue, style: valueStyle),
         ),
-        padding: EdgeInsets.symmetric(horizontal: dp(context, space.s12)),
-        alignment: Alignment.centerRight,
-        child: Text(textValue, style: valueStyle),
       );
     }
 
@@ -211,6 +229,8 @@ class ProfileScreen extends StatelessWidget {
     Widget normsBlock({
       required String topValue,
       required String bottomValue,
+      VoidCallback? onTapTop,
+      VoidCallback? onTapBottom,
     }) {
       final fieldBg = isDark ? colors.surfaceAlt : colors.background;
       final borderColor = fieldBg;
@@ -220,7 +240,7 @@ class ProfileScreen extends StatelessWidget {
       final betweenRows = pad4;
 
       return Container(
-        width: innerW,
+        width: double.infinity,
         decoration: BoxDecoration(
           border: Border.all(color: borderColor, width: borderW),
           borderRadius: BorderRadius.circular(fieldR),
@@ -241,7 +261,7 @@ class ProfileScreen extends StatelessWidget {
                       ),
                     ),
                   ),
-                  _valueBox(textValue: topValue),
+                  _valueBox(textValue: topValue, onTap: onTapTop),
                 ],
               ),
             ),
@@ -259,7 +279,7 @@ class ProfileScreen extends StatelessWidget {
                       ),
                     ),
                   ),
-                  _valueBox(textValue: bottomValue),
+                  _valueBox(textValue: bottomValue, onTap: onTapBottom),
                 ],
               ),
             ),
@@ -365,6 +385,172 @@ class ProfileScreen extends StatelessWidget {
       );
     }
 
+    DateTime? _tryParseDob(int stored) {
+      if (stored < 19000101) return null;
+      final s = stored.toString().padLeft(8, '0');
+      final yyyy = int.tryParse(s.substring(0, 4));
+      final mm = int.tryParse(s.substring(4, 6));
+      final dd = int.tryParse(s.substring(6, 8));
+      if (yyyy == null || mm == null || dd == null) return null;
+      return DateTime(yyyy, mm, dd);
+    }
+
+    Future<void> _pickDob(BuildContext context, UserProfile profile) async {
+      final now = DateTime.now();
+      final initial = _tryParseDob(profile.age) ?? DateTime(now.year - 30, 1, 1);
+
+      final picked = await showDatePicker(
+        context: context,
+        initialDate: initial,
+        firstDate: DateTime(1900, 1, 1),
+        lastDate: DateTime(now.year, 12, 31),
+      );
+
+      if (picked == null) return;
+
+      final stored = (picked.year * 10000) + (picked.month * 100) + picked.day;
+      context.read<ProfileCubit>().updateProfile(age: stored);
+    }
+
+    void _showNameInputSheet(BuildContext context, UserProfile profile) {
+      final controller = TextEditingController(text: profile.name.isEmpty ? '' : profile.name);
+
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (ctx) {
+          final sheetBg = colors.surface;
+          final sheetR = dp(context, radii.r10);
+          final bottomInset = MediaQuery.viewInsetsOf(ctx).bottom;
+
+          return SafeArea(
+            child: Padding(
+              padding: EdgeInsets.only(
+                left: dp(context, space.s12),
+                right: dp(context, space.s12),
+                bottom: dp(context, space.s12) + bottomInset,
+                top: dp(context, space.s12),
+              ),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: sheetBg,
+                  borderRadius: BorderRadius.circular(sheetR),
+                  boxShadow: [shadows.card],
+                ),
+                child: Padding(
+                  padding: EdgeInsets.all(dp(context, space.s12)),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text('Имя', style: labelStyle),
+                      SizedBox(height: dp(context, space.s8)),
+                      TextField(
+                        controller: controller,
+                        autofocus: true,
+                        style: valueStyle,
+                        decoration: InputDecoration(
+                          filled: true,
+                          fillColor: isDark ? colors.surfaceAlt : colors.background,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(fieldR),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      ),
+                      SizedBox(height: dp(context, space.s12)),
+                      ElevatedButton(
+                        onPressed: () {
+                          final v = controller.text.trim();
+                          context.read<ProfileCubit>().updateProfile(name: v);
+                          Navigator.of(ctx).pop();
+                        },
+                        child: const Text('Сохранить'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    }
+
+    void _showIntInputSheet(
+        BuildContext context, {
+          required String title,
+          required int initialValue,
+          required void Function(int value) onSubmit,
+        }) {
+      final controller = TextEditingController(text: initialValue.toString());
+
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (ctx) {
+          final sheetBg = colors.surface;
+          final sheetR = dp(context, radii.r10);
+          final bottomInset = MediaQuery.viewInsetsOf(ctx).bottom;
+
+          return SafeArea(
+            child: Padding(
+              padding: EdgeInsets.only(
+                left: dp(context, space.s12),
+                right: dp(context, space.s12),
+                bottom: dp(context, space.s12) + bottomInset,
+                top: dp(context, space.s12),
+              ),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: sheetBg,
+                  borderRadius: BorderRadius.circular(sheetR),
+                  boxShadow: [shadows.card],
+                ),
+                child: Padding(
+                  padding: EdgeInsets.all(dp(context, space.s12)),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(title, style: labelStyle),
+                      SizedBox(height: dp(context, space.s8)),
+                      TextField(
+                        controller: controller,
+                        keyboardType: TextInputType.number,
+                        autofocus: true,
+                        style: valueStyle,
+                        decoration: InputDecoration(
+                          filled: true,
+                          fillColor: isDark ? colors.surfaceAlt : colors.background,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(fieldR),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      ),
+                      SizedBox(height: dp(context, space.s12)),
+                      ElevatedButton(
+                        onPressed: () {
+                          final v = int.tryParse(controller.text.trim());
+                          if (v == null) return;
+                          onSubmit(v);
+                          Navigator.of(ctx).pop();
+                        },
+                        child: const Text('Сохранить'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    }
+
     void _showAccountLinkSheet(BuildContext context) {
       showModalBottomSheet(
         context: context,
@@ -442,6 +628,7 @@ class ProfileScreen extends StatelessWidget {
           }
 
           final profile = state.profile;
+          final displayedDob = _formatDob(profile.age) ?? demoDob;
           final isLoggedIn = profile.accountLinked;
 
           final cardBg = colors.surface;
@@ -459,7 +646,7 @@ class ProfileScreen extends StatelessWidget {
           final segActiveBg = colors.surface;
           final segText = colors.textPrimary;
 
-          final bottomPad = dp(context, space.s80);
+          final bottomPad = dp(context, space.s80) + MediaQuery.paddingOf(context).bottom + dp(context, space.s20);
 
           final accountLine = profile.accountEmail.trim().isNotEmpty
               ? profile.accountEmail.trim()
@@ -491,7 +678,7 @@ class ProfileScreen extends StatelessWidget {
                     children: [
                       // ---- Аккаунт
                       SizedBox(
-                        width: cardW,
+                        width: double.infinity,
                         child: DecoratedBox(
                           decoration: BoxDecoration(
                             color: cardBg,
@@ -524,15 +711,13 @@ class ProfileScreen extends StatelessWidget {
                                       if (!isLoggedIn) ...[
                                         Text('Вы не вошли в аккаунт', style: hintStyle),
                                         SizedBox(height: pad8),
-                                        Center(
-                                          child: SizedBox(
-                                            width: dp(context, space.w320 - space.s48), // 272
-                                            child: _primaryButton(
-                                              title: 'Войти',
-                                              bg: accountBtnBg,
-                                              fg: accountBtnFg,
-                                              onTap: () => _showAccountLinkSheet(context),
-                                            ),
+                                        SizedBox(
+                                          width: double.infinity,
+                                          child: _primaryButton(
+                                            title: 'Войти',
+                                            bg: accountBtnBg,
+                                            fg: accountBtnFg,
+                                            onTap: () => _showAccountLinkSheet(context),
                                           ),
                                         ),
                                       ] else ...[
@@ -540,15 +725,13 @@ class ProfileScreen extends StatelessWidget {
                                         SizedBox(height: pad4),
                                         Text(accountLine, style: valueStyle),
                                         SizedBox(height: pad8),
-                                        Center(
-                                          child: SizedBox(
-                                            width: dp(context, space.w320 - space.s48), // 272
-                                            child: _primaryButton(
-                                              title: 'Выйти',
-                                              bg: accountBtnBg,
-                                              fg: accountBtnFg,
-                                              onTap: () => context.read<ProfileCubit>().unlinkAccount(),
-                                            ),
+                                        SizedBox(
+                                          width: double.infinity,
+                                          child: _primaryButton(
+                                            title: 'Выйти',
+                                            bg: accountBtnBg,
+                                            fg: accountBtnFg,
+                                            onTap: () => context.read<ProfileCubit>().unlinkAccount(),
                                           ),
                                         ),
                                       ],
@@ -565,7 +748,7 @@ class ProfileScreen extends StatelessWidget {
 
                       // ---- Профиль
                       SizedBox(
-                        width: cardW,
+                        width: double.infinity,
                         child: DecoratedBox(
                           decoration: BoxDecoration(
                             color: cardBg,
@@ -579,7 +762,10 @@ class ProfileScreen extends StatelessWidget {
                               children: [
                                 Text('Имя', style: labelStyle),
                                 SizedBox(height: pad6),
-                                _wideField(textValue: profile.name.isEmpty ? 'Дмитрий' : profile.name),
+                                _wideField(
+                                  textValue: profile.name.isEmpty ? 'Дмитрий' : profile.name,
+                                  onTap: () => _showNameInputSheet(context, profile),
+                                ),
 
                                 SizedBox(height: pad10),
 
@@ -598,8 +784,7 @@ class ProfileScreen extends StatelessWidget {
                                 SizedBox(height: pad6),
                                 Row(
                                   children: [
-                                    SizedBox(
-                                      width: dp(context, (space.w320 - space.s40) / 2), // 140
+                                    Expanded(
                                       child: Container(
                                         height: fieldH,
                                         decoration: BoxDecoration(
@@ -630,8 +815,11 @@ class ProfileScreen extends StatelessWidget {
                                         ),
                                       ),
                                     ),
-                                    const Spacer(),
-                                    _valueBox(textValue: demoDob),
+                                    SizedBox(width: dp(context, space.s20)),
+                                    _valueBox(
+                                      textValue: displayedDob,
+                                      onTap: () => _pickDob(context, profile),
+                                    ),
                                   ],
                                 ),
 
@@ -642,20 +830,30 @@ class ProfileScreen extends StatelessWidget {
                                 normsBlock(
                                   topValue: profile.targetSystolic.toString(),
                                   bottomValue: profile.targetDiastolic.toString(),
+                                  onTapTop: () => _showIntInputSheet(
+                                    context,
+                                    title: 'Верхнее',
+                                    initialValue: profile.targetSystolic,
+                                    onSubmit: (v) => context.read<ProfileCubit>().updateProfile(targetSystolic: v),
+                                  ),
+                                  onTapBottom: () => _showIntInputSheet(
+                                    context,
+                                    title: 'Нижнее',
+                                    initialValue: profile.targetDiastolic,
+                                    onSubmit: (v) => context.read<ProfileCubit>().updateProfile(targetDiastolic: v),
+                                  ),
                                 ),
 
                                 SizedBox(height: pad12),
 
-                                Center(
-                                  child: SizedBox(
-                                    width: dp(context, space.w320 - space.s48), // 272
-                                    child: _primaryButton(
-                                      title: 'Убрать рекламу',
-                                      subtitle: 'Разовый платеж 2,99 € -  навсегда',
-                                      bg: isDark ? AppPalette.dark900 : AppPalette.blue900,
-                                      fg: isDark ? colors.textPrimary : colors.textOnBrand,
-                                      onTap: () {},
-                                    ),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: _primaryButton(
+                                    title: 'Убрать рекламу',
+                                    subtitle: 'Разовый платеж 2,99 € -  навсегда',
+                                    bg: isDark ? AppPalette.dark900 : AppPalette.blue900,
+                                    fg: isDark ? colors.textPrimary : colors.textOnBrand,
+                                    onTap: () {},
                                   ),
                                 ),
                               ],
@@ -664,8 +862,8 @@ class ProfileScreen extends StatelessWidget {
                         ),
                       ),
 
-                      SizedBox(height: pad12),
-                      Text('Политика конфиденциальности', style: privacyStyle, textAlign: TextAlign.center),
+                      //SizedBox(height: pad12),
+                      //Text('Политика конфиденциальности', style: privacyStyle, textAlign: TextAlign.center),
                     ],
                   ),
                 ),

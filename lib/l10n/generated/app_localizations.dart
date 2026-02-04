@@ -176,6 +176,12 @@ abstract class AppLocalizations {
   /// **'Тема'**
   String get theme;
 
+  /// No description provided for @language.
+  ///
+  /// In ru, this message translates to:
+  /// **'Язык'**
+  String get language;
+
   /// No description provided for @light.
   ///
   /// In ru, this message translates to:
