@@ -51,6 +51,7 @@ flutter:
   assets:
     - assets/
     - assets/icons/tags/
+    - assets/fonts/
   fonts:
     - family: Inter
       fonts:

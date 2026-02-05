@@ -1,4 +1,4 @@
-// settings_cubit.dart (минимальная замена: добавлен период как параметр exportData)
+// settings_cubit.dart
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -18,32 +18,35 @@ class SettingsCubit extends Cubit<SettingsState> {
   final IsarService _isarService;
   final PressureRepository _pressureRepository;
   final ExportService _exportService;
+  final NotificationService _notificationService;
 
   StreamSubscription<AppSettings>? _settingsSub;
 
-  SettingsCubit({
-    required IsarService isarService,
-    required PressureRepository pressureRepository,
-    required ExportService exportService,
-  })  : _isarService = isarService,
-        _pressureRepository = pressureRepository,
-        _exportService = exportService,
-        super(SettingsState(AppSettings()));
+  SettingsCubit(
+      this._isarService,
+      this._pressureRepository,
+      this._exportService,
+      this._notificationService,
+      ) : super(SettingsState(AppSettings())) {
+    _bind();
+  }
 
-  Future<void> init() async {
-    // гарантия наличия singleton настроек
-    final s = await _isarService.getOrCreateSettings();
-    emit(SettingsState(s));
+  Future<void> _bind() async {
+    await _isarService.getOrCreateSettings();
 
-    _settingsSub?.cancel();
+    await _settingsSub?.cancel();
     _settingsSub = _isarService.watchSettings().listen((settings) {
-      emit(SettingsState(settings));
+      emit(SettingsState(
+        settings,
+        errorMessage: state.errorMessage,
+        isExporting: state.isExporting,
+      ));
     });
   }
 
   @override
-  Future<void> close() {
-    _settingsSub?.cancel();
+  Future<void> close() async {
+    await _settingsSub?.cancel();
     return super.close();
   }
 
@@ -64,7 +67,7 @@ class SettingsCubit extends Cubit<SettingsState> {
   Future<void> setThemeMode(AppThemeMode mode) async {
     final s = state.settings;
     final updated = AppSettings(
-      themeMode: mode, // ✅ ВОТ ЭТО БЫЛО НЕПРАВИЛЬНО
+      themeMode: mode, // ✅ ВОТ ЭТО и ломало переключение
       languageCode: s.languageCode,
       reminders: s.reminders,
       notificationsEnabled: s.notificationsEnabled,
@@ -95,17 +98,20 @@ class SettingsCubit extends Cubit<SettingsState> {
       accountEmail: s.accountEmail,
       accountProvider: s.accountProvider,
     );
+
     await _isarService.saveSettings(updated);
 
-    // обновим планировщик уведомлений
-    await NotificationService().scheduleReminders(newList);
+    if (s.notificationsEnabled) {
+      await _notificationService.scheduleDailyNotification(timeStr.hashCode, time);
+    }
   }
 
-  Future<void> removeReminder(String timeStr) async {
+  Future<void> removeReminder(int index) async {
     final s = state.settings;
-    if (!s.reminders.contains(timeStr)) return;
+    if (index < 0 || index >= s.reminders.length) return;
 
-    final newList = List<String>.from(s.reminders)..remove(timeStr);
+    final timeStr = s.reminders[index];
+    final newList = List<String>.from(s.reminders)..removeAt(index);
 
     final updated = AppSettings(
       themeMode: s.themeMode,
@@ -116,85 +122,126 @@ class SettingsCubit extends Cubit<SettingsState> {
       accountEmail: s.accountEmail,
       accountProvider: s.accountProvider,
     );
+
     await _isarService.saveSettings(updated);
 
-    await NotificationService().scheduleReminders(newList);
+    if (s.notificationsEnabled) {
+      await _notificationService.cancelNotification(timeStr.hashCode);
+    }
   }
 
   Future<void> toggleNotifications(bool enabled) async {
     final s = state.settings;
 
+    if (enabled) {
+      final granted = await _notificationService.requestPermissions();
+      if (!granted) {
+        final message = s.languageCode == 'ru'
+            ? 'Разрешение на уведомления не получено'
+            : 'Notification permission not granted';
+        emit(state.copyWith(errorMessage: message));
+        emit(state.copyWith(errorMessage: null));
+        return;
+      }
+    }
+
+    final reminders = (enabled && s.reminders.isEmpty)
+        ? <String>['08:00', '20:00']
+        : List<String>.from(s.reminders);
+
+    reminders.sort();
+
     final updated = AppSettings(
       themeMode: s.themeMode,
       languageCode: s.languageCode,
-      reminders: s.reminders,
+      reminders: reminders,
       notificationsEnabled: enabled,
       accountLinked: s.accountLinked,
       accountEmail: s.accountEmail,
       accountProvider: s.accountProvider,
     );
+
     await _isarService.saveSettings(updated);
 
     if (enabled) {
-      await NotificationService().scheduleReminders(s.reminders);
+      await _syncAllNotifications(reminders);
     } else {
-      await NotificationService().cancelAll();
+      await _notificationService.cancelAllNotifications();
     }
   }
 
-  Future<void> exportData({
-    required ExportFormat format,
-    required ExportPeriod period,
-  }) async {
+  Future<void> _syncAllNotifications(List<String> reminders) async {
+    await _notificationService.cancelAllNotifications();
+
+    for (final timeStr in reminders) {
+      final parts = timeStr.split(':');
+      final time = TimeOfDay(
+        hour: int.parse(parts[0]),
+        minute: int.parse(parts[1]),
+      );
+      await _notificationService.scheduleDailyNotification(timeStr.hashCode, time);
+    }
+  }
+
+  /// periodDays используется для PDF (например, 14 дней), для CSV можно передавать 0.
+  Future<void> exportData(ExportFormat format, {int pdfPeriodDays = 14}) async {
+    final records = await _pressureRepository.getAllRecords();
+
+    if (records.isEmpty) {
+      final message = state.settings.languageCode == 'ru'
+          ? 'Нет данных для экспорта'
+          : 'No data to export';
+      emit(state.copyWith(errorMessage: message));
+      emit(state.copyWith(errorMessage: null));
+      return;
+    }
+
+    UserProfile? profile;
     try {
-      emit(state.copyWith(isExporting: true, errorMessage: null));
-      await _exportService.export(format: format, period: period);
-      emit(state.copyWith(isExporting: false));
+      profile = await _isarService.getOrCreateProfile();
+    } catch (_) {
+      profile = null;
+    }
+
+    emit(state.copyWith(isExporting: true));
+    try {
+      await _exportService.exportData(
+        records,
+        format,
+        state.settings.languageCode,
+        profile: profile,
+        periodDays: format == ExportFormat.pdf ? pdfPeriodDays : 0,
+      );
     } catch (e) {
-      emit(state.copyWith(isExporting: false, errorMessage: e.toString()));
+      final message = state.settings.languageCode == 'ru'
+          ? 'Ошибка при экспорте: $e'
+          : 'Export error: $e';
+      emit(state.copyWith(errorMessage: message));
+      emit(state.copyWith(errorMessage: null));
+    } finally {
+      emit(state.copyWith(isExporting: false));
     }
   }
 
   Future<void> clearAllData() async {
-    try {
-      await _pressureRepository.clearAll();
-    } catch (_) {}
+    await _pressureRepository.deleteAllRecords();
   }
 
-  Future<void> rateApp(String packageName) async {
-    try {
-      final inAppReview = InAppReview.instance;
-      if (await inAppReview.isAvailable()) {
-        await inAppReview.requestReview();
-        return;
-      }
-    } catch (_) {}
-
-    final uriMarket = Uri.parse('market://details?id=$packageName');
-    final uriWeb = Uri.parse('https://play.google.com/store/apps/details?id=$packageName');
-
-    if (await canLaunchUrl(uriMarket)) {
-      await launchUrl(uriMarket);
-    } else if (await canLaunchUrl(uriWeb)) {
-      await launchUrl(uriWeb, mode: LaunchMode.externalApplication);
+  Future<void> contactSupport() async {
+    final Uri emailLaunchUri = Uri(
+      scheme: 'mailto',
+      path: 'your_email@mail.com',
+      query: 'subject=Blood Pressure Diary Feedback',
+    );
+    if (await canLaunchUrl(emailLaunchUri)) {
+      await launchUrl(emailLaunchUri);
     }
   }
 
-  Future<void> writeToUs({
-    required String email,
-    required String subject,
-    required String body,
-  }) async {
-    final uri = Uri(
-      scheme: 'mailto',
-      path: email,
-      queryParameters: {
-        'subject': subject,
-        'body': body,
-      },
-    );
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri);
+  Future<void> rateApp() async {
+    final inAppReview = InAppReview.instance;
+    if (await inAppReview.isAvailable()) {
+      await inAppReview.requestReview();
     }
   }
 }

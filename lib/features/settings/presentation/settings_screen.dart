@@ -14,6 +14,7 @@ import 'package:blood_pressure_diary/features/settings/data/models/settings_mode
 import 'package:blood_pressure_diary/features/settings/presentation/bloc/settings_cubit.dart';
 import 'package:blood_pressure_diary/features/settings/presentation/bloc/settings_state.dart';
 import 'package:blood_pressure_diary/l10n/generated/app_localizations.dart';
+import 'package:blood_pressure_diary/core/utils/launcher_utils.dart';
 
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -434,7 +435,7 @@ class SettingsScreen extends StatelessWidget {
               required String value,
               required double h,
             }) {
-              final removable = index >= 2;
+              final removable = index >= 1 && enabled;
 
               return SizedBox(
                 height: h,
@@ -759,10 +760,21 @@ class SettingsScreen extends StatelessWidget {
                         SizedBox(height: gap8),
                         actionButton(
                           title: l10n.contactSupport,
-                          onTap: () => context.read<SettingsCubit>().contactSupport(),
+                          onTap: () async {
+                            await launchEmail(
+                              to: 'resistor.rs@gmail.com',
+                              subject: 'Pressure Diary — обратная связь',
+                              body: 'Опишите проблему или предложение.\n',
+                            );
+                          },
                         ),
                         SizedBox(height: gap8),
-                        actionButton(title: l10n.rateApp, onTap: () => context.read<SettingsCubit>().rateApp()),
+                        actionButton(
+                          title: l10n.rateApp,
+                          onTap: () async {
+                            await rateApp(androidPackageName: 'com.dmitry.blood_pressure_diary');
+                          },
+                        ),
                         SizedBox(height: gap8),
                         actionButton(
                           title: Localizations.localeOf(context).languageCode == 'ru'
@@ -833,13 +845,13 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
-  void _showExportBottomSheet(BuildContext context, AppLocalizations l10n) {
+  void _showExportBottomSheet(BuildContext rootContext, AppLocalizations l10n) {
     showModalBottomSheet(
-      context: context,
+      context: rootContext,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) => SafeArea(
+      builder: (sheetCtx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -851,18 +863,20 @@ class SettingsScreen extends StatelessWidget {
               leading: const Icon(Icons.picture_as_pdf_outlined),
               title: Text(l10n.exportPDF),
               onTap: () async {
-                Navigator.pop(context);
-                final days = await _showPdfPeriodSheet(context, l10n);
-                if (days == null || !context.mounted) return;
-                context.read<SettingsCubit>().exportData(ExportFormat.pdf, pdfPeriodDays: days);
+                Navigator.pop(sheetCtx);
+                final days = await _showPdfPeriodSheet(rootContext, l10n);
+                if (days == null || !rootContext.mounted) return;
+                await Future.delayed(const Duration(milliseconds: 150));
+                await rootContext.read<SettingsCubit>().exportData(ExportFormat.pdf, pdfPeriodDays: days);
               },
             ),
             ListTile(
               leading: const Icon(Icons.description_outlined),
               title: Text(l10n.exportCSV),
-              onTap: () {
-                Navigator.pop(context);
-                context.read<SettingsCubit>().exportData(ExportFormat.csv);
+              onTap: () async {
+                Navigator.pop(sheetCtx);
+                await Future.delayed(const Duration(milliseconds: 150));
+                await rootContext.read<SettingsCubit>().exportData(ExportFormat.csv);
               },
             ),
             const SizedBox(height: 8),
