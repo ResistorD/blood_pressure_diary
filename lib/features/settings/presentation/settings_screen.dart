@@ -1,4 +1,3 @@
-// settings_screen.dart (полная замена — выбор периода PDF + Privacy Policy + всё остальное без изменений)
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -14,7 +13,6 @@ import 'package:blood_pressure_diary/features/settings/data/models/settings_mode
 import 'package:blood_pressure_diary/features/settings/presentation/bloc/settings_cubit.dart';
 import 'package:blood_pressure_diary/features/settings/presentation/bloc/settings_state.dart';
 import 'package:blood_pressure_diary/l10n/generated/app_localizations.dart';
-import 'package:blood_pressure_diary/core/utils/launcher_utils.dart';
 
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -30,7 +28,7 @@ class SettingsScreen extends StatelessWidget {
     final barH = dp(context, s.s72 - s.s2 - s.s1);
     final outer = dp(context, s.s80 + s.s6);
     final lift = outer / 2;
-    return barH + lift + safeBottom + dp(context, s.s12);
+    return barH + safeBottom + dp(context, s.s8);
   }
 
   Future<void> _runBlocking(BuildContext context, Future<void> Function() action) async {
@@ -107,89 +105,6 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
-  Future<int?> _showPdfPeriodSheet(BuildContext context, AppLocalizations l10n) {
-    final isRu = Localizations.localeOf(context).languageCode == 'ru';
-
-    return showModalBottomSheet<int>(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) {
-        Widget item(int days, String title) {
-          return ListTile(
-            title: Text(title),
-            onTap: () => Navigator.pop(ctx, days),
-          );
-        }
-
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Text(
-                  l10n.exportPDF,
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-              ),
-              item(3, isRu ? '3 дня (Free)' : '3 days (Free)'),
-              item(14, isRu ? '14 дней' : '14 days'),
-              item(30, isRu ? '30 дней' : '30 days'),
-              item(90, isRu ? '90 дней' : '90 days'),
-              const SizedBox(height: 8),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  void _showPrivacyPolicy(BuildContext context, AppLocalizations l10n) {
-    final isRu = Localizations.localeOf(context).languageCode == 'ru';
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    isRu ? 'Политика конфиденциальности' : 'Privacy Policy',
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    isRu
-                        ? '1) Приложение хранит измерения давления и настройки локально на вашем устройстве.\n\n'
-                        '2) Если вы указываете e-mail, он используется только для отправки отчётов и резервных копий по вашему запросу.\n\n'
-                        '3) Мы не передаём ваши медицинские данные третьим лицам и не используем их для рекламы.\n\n'
-                        '4) Уведомления используются только для напоминаний об измерениях (если вы их включили).'
-                        : '1) The app stores blood pressure measurements and settings locally on your device.\n\n'
-                        '2) If you provide an email, it is used only to send reports and backups upon your request.\n\n'
-                        '3) We do not share your health data with third parties and do not use it for advertising.\n\n'
-                        '4) Notifications are used only for measurement reminders (if enabled).',
-                    style: const TextStyle(fontSize: 14),
-                  ),
-                  const SizedBox(height: 24),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
@@ -207,6 +122,8 @@ class SettingsScreen extends StatelessWidget {
     final headerH = dp(context, space.s128);
     final side = dp(context, space.s20);
 
+    final cardW = dp(context, space.w320);
+    final innerW = cardW - dp(context, space.s24); // 296
     final cardR = dp(context, radii.r10);
 
     final fieldH = dp(context, space.s48);
@@ -217,6 +134,7 @@ class SettingsScreen extends StatelessWidget {
     final h43 = dp(context, space.s40 + space.s2 + space.s1);
     final h44 = dp(context, space.s40 + space.s4);
 
+    // ---- Required vertical gaps (6 total)
     final gap16 = dp(context, space.s16);
     final gap8 = dp(context, space.s8);
 
@@ -338,7 +256,7 @@ class SettingsScreen extends StatelessWidget {
 
           Widget cardAuto({required Widget child}) {
             return SizedBox(
-              width: double.infinity,
+              width: cardW,
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   color: cardBg,
@@ -352,7 +270,7 @@ class SettingsScreen extends StatelessWidget {
 
           Widget cardFixed({required double height, required Widget child}) {
             return SizedBox(
-              width: double.infinity,
+              width: cardW,
               height: height,
               child: DecoratedBox(
                 decoration: BoxDecoration(
@@ -435,7 +353,7 @@ class SettingsScreen extends StatelessWidget {
               required String value,
               required double h,
             }) {
-              final removable = index >= 1 && enabled;
+              final removable = index >= 2;
 
               return SizedBox(
                 height: h,
@@ -467,7 +385,7 @@ class SettingsScreen extends StatelessWidget {
             return Opacity(
               opacity: enabled ? 1.0 : 0.55,
               child: Container(
-                width: double.infinity,
+                width: innerW,
                 decoration: BoxDecoration(
                   border: Border.all(color: borderColor, width: borderW),
                   borderRadius: BorderRadius.circular(cardR),
@@ -567,7 +485,7 @@ class SettingsScreen extends StatelessWidget {
                       Text(l10n.theme, style: labelStyle),
                       SizedBox(height: dp(context, space.s6)),
                       Container(
-                        width: double.infinity,
+                        width: innerW,
                         height: fieldH,
                         decoration: BoxDecoration(
                           color: fieldBg,
@@ -592,65 +510,29 @@ class SettingsScreen extends StatelessWidget {
             );
           }
 
-          Future<String?> _showLanguageSheet(
-              BuildContext context,
-              AppLocalizations l10n,
-              String current,
-              ) {
-            return showModalBottomSheet<String>(
-              context: context,
-              builder: (_) {
-                Widget item(String code, String title) {
-                  return ListTile(
-                    title: Text(title),
-                    trailing: current == code ? const Icon(Icons.check) : null,
-                    onTap: () => Navigator.of(context).pop(code),
-                  );
-                }
-
-                return SafeArea(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      item('ru', 'Русский'),
-                      item('en', 'English'),
-                    ],
-                  ),
-                );
-              },
-            );
-          }
 
           Widget languageCard() {
-            final s = state.settings;
-
-            String title;
-            switch (s.languageCode) {
-              case 'ru':
-                title = 'Русский';
-                break;
-              case 'en':
-                title = 'English';
-                break;
-              default:
-                title = 'English';
+            String titleFor(String code) {
+              switch (code) {
+                case 'ru':
+                  return 'Русский';
+                case 'en':
+                  return 'English';
+                default:
+                  return code;
+              }
             }
 
-            return InkWell(
-              borderRadius: BorderRadius.circular(cardR),
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
               onTap: () async {
                 final chosen = await _showLanguageSheet(context, l10n, s.languageCode);
-                if (!context.mounted) return;
-                if (chosen != null && chosen != s.languageCode) {
+                if (chosen != null && context.mounted) {
                   context.read<SettingsCubit>().changeLanguage(chosen);
                 }
               },
-              child: Container(
-                decoration: BoxDecoration(
-                  color: cardBg,
-                  borderRadius: BorderRadius.circular(cardR),
-                  boxShadow: [shadows.card],
-                ),
+              child: cardFixed(
+                height: h92,
                 child: Padding(
                   padding: EdgeInsets.all(dp(context, space.s12)),
                   child: Column(
@@ -659,7 +541,7 @@ class SettingsScreen extends StatelessWidget {
                       Text(l10n.language, style: labelStyle),
                       SizedBox(height: dp(context, space.s6)),
                       Container(
-                        width: double.infinity,
+                        width: innerW,
                         height: fieldH,
                         decoration: BoxDecoration(
                           color: fieldBg,
@@ -668,7 +550,7 @@ class SettingsScreen extends StatelessWidget {
                         padding: EdgeInsets.symmetric(horizontal: dp(context, space.s12)),
                         child: Row(
                           children: [
-                            Expanded(child: Text(title, style: itemStyle)),
+                            Expanded(child: Text(titleFor(s.languageCode), style: itemStyle)),
                             Icon(
                               Icons.keyboard_arrow_down,
                               color: colors.textPrimary,
@@ -689,7 +571,7 @@ class SettingsScreen extends StatelessWidget {
               behavior: HitTestBehavior.opaque,
               onTap: onTap,
               child: SizedBox(
-                width: double.infinity,
+                width: cardW,
                 height: h47,
                 child: DecoratedBox(
                   decoration: BoxDecoration(
@@ -747,43 +629,36 @@ class SettingsScreen extends StatelessWidget {
                         SizedBox(height: gap16),
                         languageCard(),
                         SizedBox(height: gap16),
+
                         actionButton(title: 'Резервная копия (JSON)', onTap: () => _backupToJson(context)),
                         SizedBox(height: gap8),
                         actionButton(title: 'Восстановить из копии', onTap: () => _restoreFromJson(context)),
                         SizedBox(height: gap8),
+
                         actionButton(title: l10n.clearData, onTap: () => _showClearDataDialog(context, l10n)),
                         SizedBox(height: gap8),
                         actionButton(
-                          title: l10n.export,
+                          title: '${l10n.export} (CSV)',
                           onTap: state.isExporting ? () {} : () => _showExportBottomSheet(context, l10n),
                         ),
                         SizedBox(height: gap8),
                         actionButton(
                           title: l10n.contactSupport,
-                          onTap: () async {
-                            await launchEmail(
-                              to: 'resistor.rs@gmail.com',
-                              subject: 'Pressure Diary — обратная связь',
-                              body: 'Опишите проблему или предложение.\n',
-                            );
-                          },
+                          onTap: () => context.read<SettingsCubit>().contactSupport(),
                         ),
                         SizedBox(height: gap8),
-                        actionButton(
-                          title: l10n.rateApp,
-                          onTap: () async {
-                            await rateApp(androidPackageName: 'com.dmitry.blood_pressure_diary');
-                          },
+                        actionButton(title: l10n.rateApp, onTap: () => context.read<SettingsCubit>().rateApp()),
+                        Padding(
+                          padding: EdgeInsets.only(top: gap16),
+                          child: Center(
+                            child: Text(
+                              '${l10n.versionLabel} ${state.appVersion ?? '—'}',
+                              style: versionStyle,
+                            ),
+                          ),
                         ),
-                        SizedBox(height: gap8),
-                        actionButton(
-                          title: Localizations.localeOf(context).languageCode == 'ru'
-                              ? 'Политика конфиденциальности'
-                              : 'Privacy Policy',
-                          onTap: () => _showPrivacyPolicy(context, l10n),
-                        ),
-                        SizedBox(height: gap8),
-                        Center(child: Text(l10n.version('1.0.0'), style: versionStyle)),
+
+                        SizedBox(height: gap16),
                       ],
                     ),
                   ),
@@ -845,13 +720,44 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
-  void _showExportBottomSheet(BuildContext rootContext, AppLocalizations l10n) {
-    showModalBottomSheet(
-      context: rootContext,
+
+  Future<String?> _showLanguageSheet(BuildContext context, AppLocalizations l10n, String current) {
+    return showModalBottomSheet<String>(
+      context: context,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (sheetCtx) => SafeArea(
+      builder: (ctx) {
+        Widget item(String code, String title) {
+          final selected = code == current;
+          return ListTile(
+            title: Text(title),
+            trailing: selected ? const Icon(Icons.check) : null,
+            onTap: () => Navigator.pop(ctx, code),
+          );
+        }
+
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              item('ru', 'Русский'),
+              item('en', 'English'),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showExportBottomSheet(BuildContext context, AppLocalizations l10n) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -862,21 +768,17 @@ class SettingsScreen extends StatelessWidget {
             ListTile(
               leading: const Icon(Icons.picture_as_pdf_outlined),
               title: Text(l10n.exportPDF),
-              onTap: () async {
-                Navigator.pop(sheetCtx);
-                final days = await _showPdfPeriodSheet(rootContext, l10n);
-                if (days == null || !rootContext.mounted) return;
-                await Future.delayed(const Duration(milliseconds: 150));
-                await rootContext.read<SettingsCubit>().exportData(ExportFormat.pdf, pdfPeriodDays: days);
+              onTap: () {
+                Navigator.pop(context);
+                context.read<SettingsCubit>().exportData(ExportFormat.pdf);
               },
             ),
             ListTile(
               leading: const Icon(Icons.description_outlined),
               title: Text(l10n.exportCSV),
-              onTap: () async {
-                Navigator.pop(sheetCtx);
-                await Future.delayed(const Duration(milliseconds: 150));
-                await rootContext.read<SettingsCubit>().exportData(ExportFormat.csv);
+              onTap: () {
+                Navigator.pop(context);
+                context.read<SettingsCubit>().exportData(ExportFormat.csv);
               },
             ),
             const SizedBox(height: 8),

@@ -1,18 +1,14 @@
-// settings_cubit.dart
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:in_app_review/in_app_review.dart';
-import 'package:url_launcher/url_launcher.dart';
-
 import 'package:blood_pressure_diary/core/database/isar_service.dart';
-import 'package:blood_pressure_diary/core/database/models/user_profile.dart';
 import 'package:blood_pressure_diary/core/repositories/pressure_repository.dart';
-import 'package:blood_pressure_diary/core/services/export_service.dart';
-import 'package:blood_pressure_diary/core/services/notification_service.dart';
 import 'package:blood_pressure_diary/features/settings/data/models/settings_model.dart';
 import 'package:blood_pressure_diary/features/settings/presentation/bloc/settings_state.dart';
+import 'package:blood_pressure_diary/core/services/export_service.dart';
+import 'package:blood_pressure_diary/core/services/notification_service.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:in_app_review/in_app_review.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 class SettingsCubit extends Cubit<SettingsState> {
   final IsarService _isarService;
@@ -20,123 +16,121 @@ class SettingsCubit extends Cubit<SettingsState> {
   final ExportService _exportService;
   final NotificationService _notificationService;
 
-  StreamSubscription<AppSettings>? _settingsSub;
-
   SettingsCubit(
       this._isarService,
       this._pressureRepository,
       this._exportService,
       this._notificationService,
       ) : super(SettingsState(AppSettings())) {
-    _bind();
+    _loadSettings();
+    _loadAppVersion();
   }
 
-  Future<void> _bind() async {
-    await _isarService.getOrCreateSettings();
-
-    await _settingsSub?.cancel();
-    _settingsSub = _isarService.watchSettings().listen((settings) {
-      emit(SettingsState(
-        settings,
-        errorMessage: state.errorMessage,
-        isExporting: state.isExporting,
-      ));
-    });
+  Future<void> _loadSettings() async {
+    // ✅ Надёжно: всегда получаем singleton-настройки из Isar
+    final settings = await _isarService.getOrCreateSettings();
+    emit(SettingsState(settings, appVersion: state.appVersion));
   }
 
-  @override
-  Future<void> close() async {
-    await _settingsSub?.cancel();
-    return super.close();
+  Future<void> _loadAppVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      emit(state.copyWith(appVersion: info.version));
+    } catch (_) {
+      // If platform info is unavailable, keep version null.
+    }
   }
 
   Future<void> changeLanguage(String langCode) async {
-    final s = state.settings;
-    final updated = AppSettings(
-      themeMode: s.themeMode,
+    final newSettings = AppSettings(
+      themeMode: state.settings.themeMode,
       languageCode: langCode,
-      reminders: s.reminders,
-      notificationsEnabled: s.notificationsEnabled,
-      accountLinked: s.accountLinked,
-      accountEmail: s.accountEmail,
-      accountProvider: s.accountProvider,
+      reminders: state.settings.reminders,
+      notificationsEnabled: state.settings.notificationsEnabled,
+      accountLinked: state.settings.accountLinked,
+      accountEmail: state.settings.accountEmail,
+      accountProvider: state.settings.accountProvider,
     );
-    await _isarService.saveSettings(updated);
+
+    await _isarService.saveSettings(newSettings);
+    emit(state.copyWith(settings: newSettings));
   }
 
   Future<void> setThemeMode(AppThemeMode mode) async {
-    final s = state.settings;
-    final updated = AppSettings(
-      themeMode: mode, // ✅ ВОТ ЭТО и ломало переключение
-      languageCode: s.languageCode,
-      reminders: s.reminders,
-      notificationsEnabled: s.notificationsEnabled,
-      accountLinked: s.accountLinked,
-      accountEmail: s.accountEmail,
-      accountProvider: s.accountProvider,
+    final newSettings = AppSettings(
+      themeMode: mode,
+      languageCode: state.settings.languageCode,
+      reminders: state.settings.reminders,
+      notificationsEnabled: state.settings.notificationsEnabled,
+      accountLinked: state.settings.accountLinked,
+      accountEmail: state.settings.accountEmail,
+      accountProvider: state.settings.accountProvider,
     );
-    await _isarService.saveSettings(updated);
+
+    await _isarService.saveSettings(newSettings);
+    emit(state.copyWith(settings: newSettings));
   }
 
   Future<void> addReminder(TimeOfDay time) async {
     final hour = time.hour.toString().padLeft(2, '0');
     final minute = time.minute.toString().padLeft(2, '0');
-    final timeStr = '$hour:$minute';
+    final timeStr = "$hour:$minute";
 
-    final s = state.settings;
-    if (s.reminders.contains(timeStr)) return;
+    if (state.settings.reminders.contains(timeStr)) return;
 
-    final newList = List<String>.from(s.reminders)..add(timeStr);
+    final newList = List<String>.from(state.settings.reminders)..add(timeStr);
     newList.sort();
 
-    final updated = AppSettings(
-      themeMode: s.themeMode,
-      languageCode: s.languageCode,
+    final newSettings = AppSettings(
+      themeMode: state.settings.themeMode,
+      languageCode: state.settings.languageCode,
       reminders: newList,
-      notificationsEnabled: s.notificationsEnabled,
-      accountLinked: s.accountLinked,
-      accountEmail: s.accountEmail,
-      accountProvider: s.accountProvider,
+      notificationsEnabled: state.settings.notificationsEnabled,
+      accountLinked: state.settings.accountLinked,
+      accountEmail: state.settings.accountEmail,
+      accountProvider: state.settings.accountProvider,
     );
 
-    await _isarService.saveSettings(updated);
+    await _isarService.saveSettings(newSettings);
 
-    if (s.notificationsEnabled) {
-      await _notificationService.scheduleDailyNotification(timeStr.hashCode, time);
+    if (state.settings.notificationsEnabled) {
+      final id = timeStr.hashCode;
+      await _notificationService.scheduleDailyNotification(id, time);
     }
+
+    emit(state.copyWith(settings: newSettings));
   }
 
   Future<void> removeReminder(int index) async {
-    final s = state.settings;
-    if (index < 0 || index >= s.reminders.length) return;
+    if (index < 0 || index >= state.settings.reminders.length) return;
 
-    final timeStr = s.reminders[index];
-    final newList = List<String>.from(s.reminders)..removeAt(index);
+    final timeStr = state.settings.reminders[index];
+    final newList = List<String>.from(state.settings.reminders)..removeAt(index);
 
-    final updated = AppSettings(
-      themeMode: s.themeMode,
-      languageCode: s.languageCode,
+    final newSettings = AppSettings(
+      themeMode: state.settings.themeMode,
+      languageCode: state.settings.languageCode,
       reminders: newList,
-      notificationsEnabled: s.notificationsEnabled,
-      accountLinked: s.accountLinked,
-      accountEmail: s.accountEmail,
-      accountProvider: s.accountProvider,
+      notificationsEnabled: state.settings.notificationsEnabled,
+      accountLinked: state.settings.accountLinked,
+      accountEmail: state.settings.accountEmail,
+      accountProvider: state.settings.accountProvider,
     );
 
-    await _isarService.saveSettings(updated);
+    await _isarService.saveSettings(newSettings);
 
-    if (s.notificationsEnabled) {
+    if (state.settings.notificationsEnabled) {
       await _notificationService.cancelNotification(timeStr.hashCode);
     }
+
+    emit(state.copyWith(settings: newSettings));
   }
 
   Future<void> toggleNotifications(bool enabled) async {
-    final s = state.settings;
-
     if (enabled) {
       final granted = await _notificationService.requestPermissions();
       if (!granted) {
-        final message = s.languageCode == 'ru'
+        final message = state.settings.languageCode == 'ru'
             ? 'Разрешение на уведомления не получено'
             : 'Notification permission not granted';
         emit(state.copyWith(errorMessage: message));
@@ -145,77 +139,51 @@ class SettingsCubit extends Cubit<SettingsState> {
       }
     }
 
-    final reminders = (enabled && s.reminders.isEmpty)
-        ? <String>['08:00', '20:00']
-        : List<String>.from(s.reminders);
-
-    reminders.sort();
-
-    final updated = AppSettings(
-      themeMode: s.themeMode,
-      languageCode: s.languageCode,
-      reminders: reminders,
+    final newSettings = AppSettings(
+      themeMode: state.settings.themeMode,
+      languageCode: state.settings.languageCode,
+      reminders: state.settings.reminders,
       notificationsEnabled: enabled,
-      accountLinked: s.accountLinked,
-      accountEmail: s.accountEmail,
-      accountProvider: s.accountProvider,
+      accountLinked: state.settings.accountLinked,
+      accountEmail: state.settings.accountEmail,
+      accountProvider: state.settings.accountProvider,
     );
 
-    await _isarService.saveSettings(updated);
+    await _isarService.saveSettings(newSettings);
 
     if (enabled) {
-      await _syncAllNotifications(reminders);
+      await _syncAllNotifications(state.settings.reminders);
     } else {
       await _notificationService.cancelAllNotifications();
     }
+
+    emit(state.copyWith(settings: newSettings));
   }
 
   Future<void> _syncAllNotifications(List<String> reminders) async {
     await _notificationService.cancelAllNotifications();
-
     for (final timeStr in reminders) {
       final parts = timeStr.split(':');
-      final time = TimeOfDay(
-        hour: int.parse(parts[0]),
-        minute: int.parse(parts[1]),
-      );
+      final time = TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
       await _notificationService.scheduleDailyNotification(timeStr.hashCode, time);
     }
   }
 
-  /// periodDays используется для PDF (например, 14 дней), для CSV можно передавать 0.
-  Future<void> exportData(ExportFormat format, {int pdfPeriodDays = 14}) async {
+  Future<void> exportData(ExportFormat format) async {
     final records = await _pressureRepository.getAllRecords();
 
     if (records.isEmpty) {
-      final message = state.settings.languageCode == 'ru'
-          ? 'Нет данных для экспорта'
-          : 'No data to export';
+      final message = state.settings.languageCode == 'ru' ? 'Нет данных для экспорта' : 'No data to export';
       emit(state.copyWith(errorMessage: message));
       emit(state.copyWith(errorMessage: null));
       return;
     }
 
-    UserProfile? profile;
-    try {
-      profile = await _isarService.getOrCreateProfile();
-    } catch (_) {
-      profile = null;
-    }
-
     emit(state.copyWith(isExporting: true));
     try {
-      await _exportService.exportData(
-        records,
-        format,
-        state.settings.languageCode,
-        profile: profile,
-        periodDays: format == ExportFormat.pdf ? pdfPeriodDays : 0,
-      );
+      await _exportService.exportData(records, format, state.settings.languageCode);
     } catch (e) {
-      final message = state.settings.languageCode == 'ru'
-          ? 'Ошибка при экспорте: $e'
-          : 'Export error: $e';
+      final message = state.settings.languageCode == 'ru' ? 'Ошибка при экспорте: $e' : 'Export error: $e';
       emit(state.copyWith(errorMessage: message));
       emit(state.copyWith(errorMessage: null));
     } finally {
@@ -239,9 +207,11 @@ class SettingsCubit extends Cubit<SettingsState> {
   }
 
   Future<void> rateApp() async {
-    final inAppReview = InAppReview.instance;
+    final InAppReview inAppReview = InAppReview.instance;
     if (await inAppReview.isAvailable()) {
       await inAppReview.requestReview();
+    } else {
+      await inAppReview.openStoreListing();
     }
   }
 }

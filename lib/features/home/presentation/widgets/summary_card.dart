@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/scale.dart';
 import '../../data/blood_pressure_model.dart';
+import 'package:blood_pressure_diary/core/utils/l10n_extensions.dart';
 
 class SummaryCard extends StatelessWidget {
   final BloodPressureRecord? record;

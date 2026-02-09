@@ -9,121 +9,201 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
-  String get settings => 'Settings';
+  String get backupJson => 'Backup (JSON)';
 
   @override
-  String get selectLanguage => 'Select Language';
+  String get restoreFromBackup => 'Restore from backup';
 
   @override
-  String get appTitle => 'Blood Pressure Diary';
+  String get restoreDialogTitle => 'Restore from backup';
 
   @override
-  String get notifications => 'Notifications';
+  String get restoreDialogBody =>
+      'This action will replace all current app data (profile, settings, and pressure records). Continue?';
 
   @override
-  String get clearData => 'Clear Data';
+  String get restoreAction => 'Restore';
 
   @override
-  String get aboutApp => 'About App';
+  String get dataRestoredSnack => 'Data restored';
 
   @override
-  String version(String version) {
-    return 'Version $version';
+  String get reminderMorning => 'Morning';
+
+  @override
+  String get reminderEvening => 'Evening';
+
+  @override
+  String get reminderTime => 'Time';
+
+  @override
+  String get languageRu => 'Russian';
+
+  @override
+  String get languageEn => 'English';
+
+  @override
+  String get noRecordsForPeriod => 'No records for the selected period';
+
+  @override
+  String get noDataForPeriod => 'No data for this period';
+
+  @override
+  String get noData => 'No data';
+
+  @override
+  String get chartsTitle => 'Charts';
+
+  @override
+  String get tabPressure => 'Pressure';
+
+  @override
+  String get tabPulse => 'Pulse';
+
+  @override
+  String get periodWeek => 'Week';
+
+  @override
+  String get periodMonth => 'Month';
+
+  @override
+  String get periodAll => 'All';
+
+  @override
+  String get avgLabel => 'Avg:';
+
+  @override
+  String get maxLabelShort => 'Max:';
+
+  @override
+  String get minLabelShort => 'Min:';
+
+  @override
+  String get bpmUnit => 'bpm';
+
+  @override
+  String get tagHeader => 'Tags';
+
+  @override
+  String tagHeaderWithCount(int count) {
+    return 'Tags ($count)';
   }
 
   @override
-  String get functionInDevelopment => 'Function in development';
+  String get tagAfterCoffee => 'After coffee';
 
   @override
-  String get deleteRecordQ => 'Delete record?';
+  String get tagAlcohol => 'Alcohol';
 
   @override
-  String get cannotUndo => 'This action cannot be undone.';
+  String get tagAfterMeal => 'After meal';
 
   @override
-  String get cancel => 'Cancel';
+  String get tagAfterWalk => 'After walk';
 
   @override
-  String get delete => 'Delete';
+  String get tagAfterTraining => 'After workout';
 
   @override
-  String get theme => 'Theme';
+  String get tagStress => 'Stress';
 
   @override
-  String get language => 'Язык';
+  String get tagBadSleep => 'Poor sleep';
 
   @override
-  String get light => 'Light';
+  String get tagHeadache => 'Headache';
 
   @override
-  String get dark => 'Dark';
+  String get tagTookMeds => 'Took meds';
 
   @override
-  String get system => 'System';
+  String get tagMissedDose => 'Missed dose';
 
   @override
-  String get reminders => 'Reminders';
+  String get bpLevelLow => 'Low';
 
   @override
-  String get addReminder => 'Add time';
+  String get bpLevelNormal => 'Normal';
 
   @override
-  String get clearDataConfirm =>
-      'Are you sure you want to delete all records? This action cannot be undone.';
+  String get bpLevelElevated => 'Elevated';
 
   @override
-  String get yes => 'Yes';
+  String get bpLevelHtn1 => 'Hypertension 1';
 
   @override
-  String get no => 'No';
+  String get bpLevelHtn2 => 'Hypertension 2';
 
   @override
-  String get export => 'Export Data';
+  String get bpLevelCrisis => 'Crisis';
 
   @override
-  String get exportCSV => 'CSV Spreadsheet';
+  String get notifTitleMeasureNow => 'Time to measure blood pressure';
 
   @override
-  String get exportPDF => 'PDF Report';
+  String get notifBodyDontForget =>
+      'Don’t forget to log your measurements to track your health.';
 
   @override
-  String get contactSupport => 'Contact Support';
+  String get notifChannelName => 'Blood pressure reminders';
 
   @override
-  String get rateApp => 'Rate App';
+  String get notifChannelDescription =>
+      'Daily reminders to measure blood pressure';
 
   @override
-  String get supportEmail => 'your_email@mail.com';
+  String get profileAccount => 'Account';
 
   @override
-  String get profile => 'Profile';
+  String get profileConnect => 'Connect';
 
   @override
-  String get name => 'Name';
+  String get profileNotSignedIn => 'You are not signed in';
 
   @override
-  String get age => 'Age';
+  String get profileSignIn => 'Sign in';
 
   @override
-  String get gender => 'Gender';
+  String get profileLinked => 'Account connected';
 
   @override
-  String get weight => 'Weight';
+  String get profileSignOut => 'Sign out';
 
   @override
-  String get male => 'Male';
+  String get profileChooseSignIn => 'Choose a sign-in method';
 
   @override
-  String get female => 'Female';
+  String get profileSystolicLabel => 'Systolic';
 
   @override
-  String get other => 'Other';
+  String get profileDiastolicLabel => 'Diastolic';
 
   @override
-  String get myGoal => 'My Goal';
+  String get premiumRemoveAds => 'Remove ads';
 
   @override
-  String get targetPressure => 'Target Pressure';
+  String get premiumSubtitleOneTime => 'One-time payment €2.99 — forever';
+
+  @override
+  String get dobLabel => 'Date of birth';
+
+  @override
+  String get genderShortMale => 'M';
+
+  @override
+  String get genderShortFemale => 'F';
+
+  @override
+  String get appTitle => 'BP Diary';
+
+  @override
+  String get yourCondition => 'Your condition';
+
+  @override
+  String get normalStatus => 'Normal';
+
+  @override
+  String get history => 'History';
 
   @override
   String get systolic => 'Systolic';
@@ -132,14 +212,40 @@ class AppLocalizationsEn extends AppLocalizations {
   String get diastolic => 'Diastolic';
 
   @override
-  String get premium => 'Premium';
+  String get pulse => 'Pulse';
 
   @override
-  String get oneTimePayment => 'One-time payment 2,99 €';
-
-  @override
-  String get buyPremium => 'Buy Premium';
+  String get addRecord => 'New Record';
 
   @override
   String get save => 'Save';
+
+  @override
+  String get cancel => 'Cancel';
+
+  @override
+  String get settings => 'Settings';
+
+  @override
+  String get profile => 'Profile';
+
+  @override
+  String get language => 'Language';
+
+  @override
+  String get theme => 'Theme';
+
+  @override
+  String get unitMmHg => 'mmHg';
+
+  @override
+  String get unitBpm => 'bpm';
+
+  @override
+  String get noRecords => 'No records yet';
+
+  @override
+  String lastMeasurement(String date) {
+    return 'Last measurement: $date';
+  }
 }

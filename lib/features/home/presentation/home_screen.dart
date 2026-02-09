@@ -73,7 +73,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final outer = dp(context, space.s80 + space.s6);
     final lift = outer / 2;
 
-    return barH + lift + safeBottom + dp(context, space.s12);
+    return barH + safeBottom + dp(context, space.s8);
   }
 
   @override

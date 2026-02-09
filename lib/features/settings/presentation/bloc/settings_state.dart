@@ -5,18 +5,27 @@ class SettingsState extends Equatable {
   final AppSettings settings;
   final String? errorMessage;
   final bool isExporting;
+  /// App version from platform package info (e.g. "1.0.0").
+  final String? appVersion;
 
-  const SettingsState(this.settings, {this.errorMessage, this.isExporting = false});
+  const SettingsState(
+      this.settings, {
+        this.errorMessage,
+        this.isExporting = false,
+        this.appVersion,
+      });
 
   SettingsState copyWith({
     AppSettings? settings,
     String? errorMessage,
     bool? isExporting,
+    String? appVersion,
   }) {
     return SettingsState(
       settings ?? this.settings,
       errorMessage: errorMessage,
       isExporting: isExporting ?? this.isExporting,
+      appVersion: appVersion ?? this.appVersion,
     );
   }
 
@@ -31,5 +40,6 @@ class SettingsState extends Equatable {
     settings.accountProvider,
     errorMessage,
     isExporting,
+    appVersion,
   ];
 }

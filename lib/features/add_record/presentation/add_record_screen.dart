@@ -179,7 +179,8 @@ class _AddRecordViewState extends State<_AddRecordView> {
     final outer = dp(context, space.s80 + space.s6);
     final lift = outer / 2;
 
-    return dp(context, space.s96) + barH + lift + safeBottom + dp(context, space.s12) + keyboard;
+    return barH + lift;
+    //return dp(context, space.s96) + barH + lift + safeBottom + dp(context, space.s12) + keyboard;
   }
 
   Widget _threeColGridSpan23({

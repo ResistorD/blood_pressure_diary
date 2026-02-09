@@ -1,29 +1,41 @@
+import 'package:flutter/cupertino.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:io' show Platform;
+
+/// Вспомогательная функция для корректного кодирования параметров mailto.
+/// Заменяет '+' на '%20', чтобы в теле письма не было плюсов вместо пробелов.
+String _encodeQueryParameters(Map<String, String> params) {
+  return params.entries
+      .map((e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}')
+      .join('&')
+      .replaceAll('+', '%20');
+}
 
 Future<void> launchEmail({
   required String to,
   required String subject,
-  String? body,
+  required String body,
 }) async {
-  final uri = Uri(
+  // Используем ручную сборку query вместо queryParameters
+  final Uri emailLaunchUri = Uri(
     scheme: 'mailto',
     path: to,
-    queryParameters: <String, String>{
+    query: _encodeQueryParameters(<String, String>{
       'subject': subject,
-      if (body != null && body.trim().isNotEmpty) 'body': body,
-    },
+      'body': body,
+    }),
   );
 
-  if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-    // можно показать SnackBar/Toast — как у тебя принято в проекте
-    throw Exception('Could not launch email client');
+  // mode: LaunchMode.externalApplication важен для стабильности на Android
+  final ok = await launchUrl(emailLaunchUri, mode: LaunchMode.externalApplication);
+  if (!ok) {
+    debugPrint('Could not launch email to $to');
   }
 }
 
 Future<void> rateApp({
   required String androidPackageName,
-  String? iosAppId, // когда появится
+  String? iosAppId,
 }) async {
   if (Platform.isAndroid) {
     final marketUri = Uri.parse('market://details?id=$androidPackageName');
@@ -37,11 +49,9 @@ Future<void> rateApp({
   }
 
   if (Platform.isIOS) {
-    if (iosAppId == null || iosAppId.isEmpty) {
-      // пока не опубликовано — можно просто молча игнорить или показать подсказку
-      throw Exception('iOS App ID is not set yet');
+    if (iosAppId != null && iosAppId.isNotEmpty) {
+      final url = Uri.parse('https://apps.apple.com/app/id$iosAppId?action=write-review');
+      await launchUrl(url, mode: LaunchMode.externalApplication);
     }
-    final uri = Uri.parse('https://apps.apple.com/app/id$iosAppId?action=write-review');
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 }

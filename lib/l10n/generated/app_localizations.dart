@@ -98,17 +98,365 @@ abstract class AppLocalizations {
     Locale('ru'),
   ];
 
-  /// No description provided for @settings.
+  /// No description provided for @backupJson.
   ///
   /// In ru, this message translates to:
-  /// **'Настройки'**
-  String get settings;
+  /// **'Резервная копия (JSON)'**
+  String get backupJson;
 
-  /// No description provided for @selectLanguage.
+  /// No description provided for @restoreFromBackup.
   ///
   /// In ru, this message translates to:
-  /// **'Выбор языка'**
-  String get selectLanguage;
+  /// **'Восстановить из копии'**
+  String get restoreFromBackup;
+
+  /// No description provided for @restoreDialogTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Восстановление из копии'**
+  String get restoreDialogTitle;
+
+  /// No description provided for @restoreDialogBody.
+  ///
+  /// In ru, this message translates to:
+  /// **'Это действие заменит все текущие данные приложения (профиль, настройки и записи давления). Продолжить?'**
+  String get restoreDialogBody;
+
+  /// No description provided for @restoreAction.
+  ///
+  /// In ru, this message translates to:
+  /// **'Восстановить'**
+  String get restoreAction;
+
+  /// No description provided for @dataRestoredSnack.
+  ///
+  /// In ru, this message translates to:
+  /// **'Данные восстановлены'**
+  String get dataRestoredSnack;
+
+  /// No description provided for @reminderMorning.
+  ///
+  /// In ru, this message translates to:
+  /// **'Утро'**
+  String get reminderMorning;
+
+  /// No description provided for @reminderEvening.
+  ///
+  /// In ru, this message translates to:
+  /// **'Вечер'**
+  String get reminderEvening;
+
+  /// No description provided for @reminderTime.
+  ///
+  /// In ru, this message translates to:
+  /// **'Время'**
+  String get reminderTime;
+
+  /// No description provided for @languageRu.
+  ///
+  /// In ru, this message translates to:
+  /// **'Русский'**
+  String get languageRu;
+
+  /// No description provided for @languageEn.
+  ///
+  /// In ru, this message translates to:
+  /// **'English'**
+  String get languageEn;
+
+  /// No description provided for @noRecordsForPeriod.
+  ///
+  /// In ru, this message translates to:
+  /// **'Нет записей за выбранный период'**
+  String get noRecordsForPeriod;
+
+  /// No description provided for @noDataForPeriod.
+  ///
+  /// In ru, this message translates to:
+  /// **'Нет данных за этот период'**
+  String get noDataForPeriod;
+
+  /// No description provided for @noData.
+  ///
+  /// In ru, this message translates to:
+  /// **'Нет данных'**
+  String get noData;
+
+  /// No description provided for @chartsTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Графики'**
+  String get chartsTitle;
+
+  /// No description provided for @tabPressure.
+  ///
+  /// In ru, this message translates to:
+  /// **'Давление'**
+  String get tabPressure;
+
+  /// No description provided for @tabPulse.
+  ///
+  /// In ru, this message translates to:
+  /// **'Пульс'**
+  String get tabPulse;
+
+  /// No description provided for @periodWeek.
+  ///
+  /// In ru, this message translates to:
+  /// **'Неделя'**
+  String get periodWeek;
+
+  /// No description provided for @periodMonth.
+  ///
+  /// In ru, this message translates to:
+  /// **'Месяц'**
+  String get periodMonth;
+
+  /// No description provided for @periodAll.
+  ///
+  /// In ru, this message translates to:
+  /// **'Все'**
+  String get periodAll;
+
+  /// No description provided for @avgLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Среднее:'**
+  String get avgLabel;
+
+  /// No description provided for @maxLabelShort.
+  ///
+  /// In ru, this message translates to:
+  /// **'Макс.:'**
+  String get maxLabelShort;
+
+  /// No description provided for @minLabelShort.
+  ///
+  /// In ru, this message translates to:
+  /// **'Мин.:'**
+  String get minLabelShort;
+
+  /// No description provided for @bpmUnit.
+  ///
+  /// In ru, this message translates to:
+  /// **'уд/мин'**
+  String get bpmUnit;
+
+  /// No description provided for @tagHeader.
+  ///
+  /// In ru, this message translates to:
+  /// **'Теги'**
+  String get tagHeader;
+
+  /// No description provided for @tagHeaderWithCount.
+  ///
+  /// In ru, this message translates to:
+  /// **'Теги ({count})'**
+  String tagHeaderWithCount(int count);
+
+  /// No description provided for @tagAfterCoffee.
+  ///
+  /// In ru, this message translates to:
+  /// **'После кофе'**
+  String get tagAfterCoffee;
+
+  /// No description provided for @tagAlcohol.
+  ///
+  /// In ru, this message translates to:
+  /// **'Алкоголь'**
+  String get tagAlcohol;
+
+  /// No description provided for @tagAfterMeal.
+  ///
+  /// In ru, this message translates to:
+  /// **'После еды'**
+  String get tagAfterMeal;
+
+  /// No description provided for @tagAfterWalk.
+  ///
+  /// In ru, this message translates to:
+  /// **'После прогулки'**
+  String get tagAfterWalk;
+
+  /// No description provided for @tagAfterTraining.
+  ///
+  /// In ru, this message translates to:
+  /// **'После тренировки'**
+  String get tagAfterTraining;
+
+  /// No description provided for @tagStress.
+  ///
+  /// In ru, this message translates to:
+  /// **'Стресс'**
+  String get tagStress;
+
+  /// No description provided for @tagBadSleep.
+  ///
+  /// In ru, this message translates to:
+  /// **'Плохой сон'**
+  String get tagBadSleep;
+
+  /// No description provided for @tagHeadache.
+  ///
+  /// In ru, this message translates to:
+  /// **'Головная боль'**
+  String get tagHeadache;
+
+  /// No description provided for @tagTookMeds.
+  ///
+  /// In ru, this message translates to:
+  /// **'Принял лекарство'**
+  String get tagTookMeds;
+
+  /// No description provided for @tagMissedDose.
+  ///
+  /// In ru, this message translates to:
+  /// **'Пропустил приём'**
+  String get tagMissedDose;
+
+  /// No description provided for @bpLevelLow.
+  ///
+  /// In ru, this message translates to:
+  /// **'Понижено'**
+  String get bpLevelLow;
+
+  /// No description provided for @bpLevelNormal.
+  ///
+  /// In ru, this message translates to:
+  /// **'Норма'**
+  String get bpLevelNormal;
+
+  /// No description provided for @bpLevelElevated.
+  ///
+  /// In ru, this message translates to:
+  /// **'Повышено'**
+  String get bpLevelElevated;
+
+  /// No description provided for @bpLevelHtn1.
+  ///
+  /// In ru, this message translates to:
+  /// **'Гипертония 1'**
+  String get bpLevelHtn1;
+
+  /// No description provided for @bpLevelHtn2.
+  ///
+  /// In ru, this message translates to:
+  /// **'Гипертония 2'**
+  String get bpLevelHtn2;
+
+  /// No description provided for @bpLevelCrisis.
+  ///
+  /// In ru, this message translates to:
+  /// **'Кризис'**
+  String get bpLevelCrisis;
+
+  /// No description provided for @notifTitleMeasureNow.
+  ///
+  /// In ru, this message translates to:
+  /// **'Пора измерить давление'**
+  String get notifTitleMeasureNow;
+
+  /// No description provided for @notifBodyDontForget.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не забудьте внести данные в дневник для контроля здоровья.'**
+  String get notifBodyDontForget;
+
+  /// No description provided for @notifChannelName.
+  ///
+  /// In ru, this message translates to:
+  /// **'Напоминания о давлении'**
+  String get notifChannelName;
+
+  /// No description provided for @notifChannelDescription.
+  ///
+  /// In ru, this message translates to:
+  /// **'Ежедневные уведомления о необходимости замера давления'**
+  String get notifChannelDescription;
+
+  /// No description provided for @profileAccount.
+  ///
+  /// In ru, this message translates to:
+  /// **'Аккаунт'**
+  String get profileAccount;
+
+  /// No description provided for @profileConnect.
+  ///
+  /// In ru, this message translates to:
+  /// **'Подключить'**
+  String get profileConnect;
+
+  /// No description provided for @profileNotSignedIn.
+  ///
+  /// In ru, this message translates to:
+  /// **'Вы не вошли в аккаунт'**
+  String get profileNotSignedIn;
+
+  /// No description provided for @profileSignIn.
+  ///
+  /// In ru, this message translates to:
+  /// **'Войти'**
+  String get profileSignIn;
+
+  /// No description provided for @profileLinked.
+  ///
+  /// In ru, this message translates to:
+  /// **'Аккаунт подключен'**
+  String get profileLinked;
+
+  /// No description provided for @profileSignOut.
+  ///
+  /// In ru, this message translates to:
+  /// **'Выйти'**
+  String get profileSignOut;
+
+  /// No description provided for @profileChooseSignIn.
+  ///
+  /// In ru, this message translates to:
+  /// **'Выберите способ входа'**
+  String get profileChooseSignIn;
+
+  /// No description provided for @profileSystolicLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Верхнее'**
+  String get profileSystolicLabel;
+
+  /// No description provided for @profileDiastolicLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Нижнее'**
+  String get profileDiastolicLabel;
+
+  /// No description provided for @premiumRemoveAds.
+  ///
+  /// In ru, this message translates to:
+  /// **'Убрать рекламу'**
+  String get premiumRemoveAds;
+
+  /// No description provided for @premiumSubtitleOneTime.
+  ///
+  /// In ru, this message translates to:
+  /// **'Разовый платеж 2,99 € -  навсегда'**
+  String get premiumSubtitleOneTime;
+
+  /// No description provided for @dobLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Дата рождения'**
+  String get dobLabel;
+
+  /// No description provided for @genderShortMale.
+  ///
+  /// In ru, this message translates to:
+  /// **'Муж.'**
+  String get genderShortMale;
+
+  /// No description provided for @genderShortFemale.
+  ///
+  /// In ru, this message translates to:
+  /// **'Жен.'**
+  String get genderShortFemale;
 
   /// No description provided for @appTitle.
   ///
@@ -116,47 +464,53 @@ abstract class AppLocalizations {
   /// **'Дневник давления'**
   String get appTitle;
 
-  /// No description provided for @notifications.
+  /// No description provided for @yourCondition.
   ///
   /// In ru, this message translates to:
-  /// **'Уведомления'**
-  String get notifications;
+  /// **'Ваше состояние'**
+  String get yourCondition;
 
-  /// No description provided for @clearData.
+  /// No description provided for @normalStatus.
   ///
   /// In ru, this message translates to:
-  /// **'Очистить данные'**
-  String get clearData;
+  /// **'В норме'**
+  String get normalStatus;
 
-  /// No description provided for @aboutApp.
+  /// No description provided for @history.
   ///
   /// In ru, this message translates to:
-  /// **'О приложении'**
-  String get aboutApp;
+  /// **'История'**
+  String get history;
 
-  /// No description provided for @version.
+  /// No description provided for @systolic.
   ///
   /// In ru, this message translates to:
-  /// **'Версия {version}'**
-  String version(String version);
+  /// **'Верхнее'**
+  String get systolic;
 
-  /// No description provided for @functionInDevelopment.
+  /// No description provided for @diastolic.
   ///
   /// In ru, this message translates to:
-  /// **'Функция в разработке'**
-  String get functionInDevelopment;
+  /// **'Нижнее'**
+  String get diastolic;
 
-  /// No description provided for @deleteRecordQ.
+  /// No description provided for @pulse.
   ///
   /// In ru, this message translates to:
-  /// **'Удалить запись?'**
-  String get deleteRecordQ;
+  /// **'Пульс'**
+  String get pulse;
 
-  /// No description provided for @cannotUndo.
+  /// No description provided for @addRecord.
   ///
   /// In ru, this message translates to:
-  /// **'Это действие нельзя отменить.'**
-  String get cannotUndo;
+  /// **'Новая запись'**
+  String get addRecord;
+
+  /// No description provided for @save.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сохранить'**
+  String get save;
 
   /// No description provided for @cancel.
   ///
@@ -164,107 +518,11 @@ abstract class AppLocalizations {
   /// **'Отмена'**
   String get cancel;
 
-  /// No description provided for @delete.
+  /// No description provided for @settings.
   ///
   /// In ru, this message translates to:
-  /// **'Удалить'**
-  String get delete;
-
-  /// No description provided for @theme.
-  ///
-  /// In ru, this message translates to:
-  /// **'Тема'**
-  String get theme;
-
-  /// No description provided for @language.
-  ///
-  /// In ru, this message translates to:
-  /// **'Язык'**
-  String get language;
-
-  /// No description provided for @light.
-  ///
-  /// In ru, this message translates to:
-  /// **'Светлая'**
-  String get light;
-
-  /// No description provided for @dark.
-  ///
-  /// In ru, this message translates to:
-  /// **'Темная'**
-  String get dark;
-
-  /// No description provided for @system.
-  ///
-  /// In ru, this message translates to:
-  /// **'Системная'**
-  String get system;
-
-  /// No description provided for @reminders.
-  ///
-  /// In ru, this message translates to:
-  /// **'Напоминания'**
-  String get reminders;
-
-  /// No description provided for @addReminder.
-  ///
-  /// In ru, this message translates to:
-  /// **'Добавить время'**
-  String get addReminder;
-
-  /// No description provided for @clearDataConfirm.
-  ///
-  /// In ru, this message translates to:
-  /// **'Вы уверены, что хотите удалить все записи? Это действие нельзя отменить.'**
-  String get clearDataConfirm;
-
-  /// No description provided for @yes.
-  ///
-  /// In ru, this message translates to:
-  /// **'Да'**
-  String get yes;
-
-  /// No description provided for @no.
-  ///
-  /// In ru, this message translates to:
-  /// **'Нет'**
-  String get no;
-
-  /// No description provided for @export.
-  ///
-  /// In ru, this message translates to:
-  /// **'Экспорт данных'**
-  String get export;
-
-  /// No description provided for @exportCSV.
-  ///
-  /// In ru, this message translates to:
-  /// **'CSV Таблица'**
-  String get exportCSV;
-
-  /// No description provided for @exportPDF.
-  ///
-  /// In ru, this message translates to:
-  /// **'PDF Отчет'**
-  String get exportPDF;
-
-  /// No description provided for @contactSupport.
-  ///
-  /// In ru, this message translates to:
-  /// **'Написать нам'**
-  String get contactSupport;
-
-  /// No description provided for @rateApp.
-  ///
-  /// In ru, this message translates to:
-  /// **'Оценить приложение'**
-  String get rateApp;
-
-  /// No description provided for @supportEmail.
-  ///
-  /// In ru, this message translates to:
-  /// **'your_email@mail.com'**
-  String get supportEmail;
+  /// **'Настройки'**
+  String get settings;
 
   /// No description provided for @profile.
   ///
@@ -272,95 +530,41 @@ abstract class AppLocalizations {
   /// **'Профиль'**
   String get profile;
 
-  /// No description provided for @name.
+  /// No description provided for @language.
   ///
   /// In ru, this message translates to:
-  /// **'Имя'**
-  String get name;
+  /// **'Язык'**
+  String get language;
 
-  /// No description provided for @age.
+  /// No description provided for @theme.
   ///
   /// In ru, this message translates to:
-  /// **'Возраст'**
-  String get age;
+  /// **'Тема'**
+  String get theme;
 
-  /// No description provided for @gender.
+  /// No description provided for @unitMmHg.
   ///
   /// In ru, this message translates to:
-  /// **'Пол'**
-  String get gender;
+  /// **'мм рт. ст.'**
+  String get unitMmHg;
 
-  /// No description provided for @weight.
+  /// No description provided for @unitBpm.
   ///
   /// In ru, this message translates to:
-  /// **'Вес'**
-  String get weight;
+  /// **'уд/мин'**
+  String get unitBpm;
 
-  /// No description provided for @male.
+  /// No description provided for @noRecords.
   ///
   /// In ru, this message translates to:
-  /// **'Мужской'**
-  String get male;
+  /// **'Записей пока нет'**
+  String get noRecords;
 
-  /// No description provided for @female.
+  /// No description provided for @lastMeasurement.
   ///
   /// In ru, this message translates to:
-  /// **'Женский'**
-  String get female;
-
-  /// No description provided for @other.
-  ///
-  /// In ru, this message translates to:
-  /// **'Другой'**
-  String get other;
-
-  /// No description provided for @myGoal.
-  ///
-  /// In ru, this message translates to:
-  /// **'Моя цель'**
-  String get myGoal;
-
-  /// No description provided for @targetPressure.
-  ///
-  /// In ru, this message translates to:
-  /// **'Целевое давление'**
-  String get targetPressure;
-
-  /// No description provided for @systolic.
-  ///
-  /// In ru, this message translates to:
-  /// **'Систолическое'**
-  String get systolic;
-
-  /// No description provided for @diastolic.
-  ///
-  /// In ru, this message translates to:
-  /// **'Диастолическое'**
-  String get diastolic;
-
-  /// No description provided for @premium.
-  ///
-  /// In ru, this message translates to:
-  /// **'Премиум'**
-  String get premium;
-
-  /// No description provided for @oneTimePayment.
-  ///
-  /// In ru, this message translates to:
-  /// **'Разовый платеж 2,99 €'**
-  String get oneTimePayment;
-
-  /// No description provided for @buyPremium.
-  ///
-  /// In ru, this message translates to:
-  /// **'Купить Премиум'**
-  String get buyPremium;
-
-  /// No description provided for @save.
-  ///
-  /// In ru, this message translates to:
-  /// **'Сохранить'**
-  String get save;
+  /// **'Последнее замер: {date}'**
+  String lastMeasurement(String date);
 }
 
 class _AppLocalizationsDelegate

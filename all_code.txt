@@ -2168,11 +2168,9 @@ class BackupService {
     return r;
   }
 }
-// export_service.dart вЂ” РїРѕР»РЅР°СЏ Р·Р°РјРµРЅР° (CSV + PDF doctor report)
 import 'dart:io';
-
 import 'package:csv/csv.dart';
-import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/services.dart' show rootBundle, Uint8List;
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
@@ -2205,485 +2203,265 @@ class ExportService {
     );
   }
 
+  // --- Р’РћРЎРЎРўРђРќРћР’Р›Р•РќРќР«Р™ CSV ---
   Future<void> _exportToCSV(List<BloodPressureRecord> records) async {
-    final rows = <List<dynamic>>[
-      ['Date', 'Time', 'Systolic', 'Diastolic', 'Pulse', 'Note'],
+    List<List<dynamic>> rows = [
+      ["Date", "Time", "Systolic", "Diastolic", "Pulse", "Note"]
     ];
 
-    for (final r in records) {
+    for (var record in records) {
       rows.add([
-        DateFormat('dd.MM.yyyy').format(r.dateTime),
-        DateFormat('HH:mm').format(r.dateTime),
-        r.systolic,
-        r.diastolic,
-        r.pulse,
-        (r.note ?? '').trim(),
+        DateFormat('dd.MM.yyyy').format(record.dateTime),
+        DateFormat('HH:mm').format(record.dateTime),
+        record.systolic,
+        record.diastolic,
+        record.pulse,
+        record.note ?? ""
       ]);
     }
 
-    final csvContent = const ListToCsvConverter().convert(rows);
+    String csv = const ListToCsvConverter().convert(rows);
     final dir = await getTemporaryDirectory();
-    final file = File('${dir.path}/blood_pressure_export.csv');
-    await file.writeAsString(csvContent, flush: true);
+    final file = File('${dir.path}/blood_pressure_export_${DateTime.now().millisecondsSinceEpoch}.csv');
 
-    await Share.shareXFiles(
-      [XFile(file.path)],
-      text: 'Blood Pressure Export (CSV)',
-    );
+    await file.writeAsBytes(Uint8List.fromList(csv.codeUnits));
+    await Share.shareXFiles([XFile(file.path)]);
   }
 
-  // --------------------- PDF v1 (Doctor report, no charts) ---------------------
-
-  static const _kMorningStart = 6 * 60;
-  static const _kMorningEnd = 11 * 60;
-
-  static const _kDayStart = 12 * 60;
-  static const _kDayEnd = 17 * 60;
-
-  static const _kEveningStart = 18 * 60;
-  static const _kEveningEnd = 22 * 60;
-
-  int _toMinutes(DateTime dt) => dt.hour * 60 + dt.minute;
-
-  String _fmtDate(DateTime dt) => DateFormat('dd.MM.yyyy').format(dt);
-  String _fmtTime(DateTime dt) => DateFormat('HH:mm').format(dt);
-
-  DateTime? _tryParseDobFromProfile(UserProfile? profile) {
-    if (profile == null) return null;
-
-    // РџРѕРґСЃС‚СЂРѕР№ РїРѕРґ С‚РІРѕСЋ РјРѕРґРµР»СЊ РїСЂРѕС„РёР»СЏ:
-    // 1) РµСЃР»Рё РµСЃС‚СЊ profile.birthDate (DateTime?) вЂ” РёСЃРїРѕР»СЊР·СѓР№ РµРіРѕ
-    // 2) РµСЃР»Рё РµСЃС‚СЊ СЃС‚СЂРѕРєР° dob/birthDateStr вЂ” РїР°СЂСЃРёРј
-    try {
-      final dynamic p = profile;
-
-      final bd = p.birthDate;
-      if (bd is DateTime) return bd;
-
-      final s = (p.birthDateStr ?? p.dob ?? p.birthDate ?? '')?.toString() ?? '';
-      final txt = s.trim();
-      if (txt.isEmpty) return null;
-
-      // РїРѕРґРґРµСЂР¶РёРј dd.MM.yyyy / yyyy-MM-dd
-      if (RegExp(r'^\d{2}\.\d{2}\.\d{4}$').hasMatch(txt)) {
-        return DateFormat('dd.MM.yyyy').parseStrict(txt);
-      }
-      if (RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(txt)) {
-        return DateFormat('yyyy-MM-dd').parseStrict(txt);
-      }
-    } catch (_) {
-      // РёРіРЅРѕСЂ
-    }
-    return null;
-  }
-
-  int? _computeAge(UserProfile? profile) {
-    final dob = _tryParseDobFromProfile(profile);
-    if (dob == null) return null;
-
-    final now = DateTime.now();
-    var age = now.year - dob.year;
-    final hadBirthday = (now.month > dob.month) ||
-        (now.month == dob.month && now.day >= dob.day);
-    if (!hadBirthday) age--;
-    if (age < 0 || age > 130) return null;
-    return age;
-  }
-
-  List<BloodPressureRecord> _filterByPeriod(List<BloodPressureRecord> records, int periodDays) {
-    if (records.isEmpty) return const [];
-    final cutoff = DateTime.now().subtract(Duration(days: periodDays));
-    return records.where((r) => r.dateTime.isAfter(cutoff)).toList();
-  }
-
-  _Stats _calcStats(List<BloodPressureRecord> list, int targetSys, int targetDia) {
-    if (list.isEmpty) return _Stats.empty();
-
-    int sumSys = 0, sumDia = 0;
-    int minSys = 1 << 30, minDia = 1 << 30;
-    int maxSys = -1, maxDia = -1;
-    int out = 0;
-
-    for (final r in list) {
-      final s = r.systolic;
-      final d = r.diastolic;
-
-      sumSys += s;
-      sumDia += d;
-
-      if (s < minSys) minSys = s;
-      if (d < minDia) minDia = d;
-      if (s > maxSys) maxSys = s;
-      if (d > maxDia) maxDia = d;
-
-      if (s > targetSys || d > targetDia) out++;
-    }
-
-    final n = list.length;
-    final avgSys = (sumSys / n).round();
-    final avgDia = (sumDia / n).round();
-
-    return _Stats(
-      n: n,
-      avgSys: avgSys,
-      avgDia: avgDia,
-      minSys: minSys,
-      maxSys: maxSys,
-      minDia: minDia,
-      maxDia: maxDia,
-      outOfRangeCount: out,
-      outOfRangePct: n == 0 ? 0 : (out * 100.0 / n),
-    );
-  }
-
-  Map<String, _BucketStats> _calcBuckets(List<BloodPressureRecord> list) {
-    final buckets = <String, List<BloodPressureRecord>>{
-      'morning': [],
-      'day': [],
-      'evening': [],
-      'night': [],
-    };
-
-    for (final r in list) {
-      final m = _toMinutes(r.dateTime);
-
-      if (m >= _kMorningStart && m < _kMorningEnd) {
-        buckets['morning']!.add(r);
-      } else if (m >= _kDayStart && m < _kDayEnd) {
-        buckets['day']!.add(r);
-      } else if (m >= _kEveningStart && m < _kEveningEnd) {
-        buckets['evening']!.add(r);
-      } else {
-        buckets['night']!.add(r);
-      }
-    }
-
-    _BucketStats build(List<BloodPressureRecord> xs) {
-      if (xs.isEmpty) return _BucketStats.empty();
-      int sumS = 0, sumD = 0;
-      for (final r in xs) {
-        sumS += r.systolic;
-        sumD += r.diastolic;
-      }
-      final n = xs.length;
-      return _BucketStats(n: n, avgSys: (sumS / n).round(), avgDia: (sumD / n).round());
-    }
-
-    return {
-      'morning': build(buckets['morning']!),
-      'day': build(buckets['day']!),
-      'evening': build(buckets['evening']!),
-      'night': build(buckets['night']!),
-    };
-  }
-
-  String _countLabel(int n, bool isRu) {
-    if (!isRu) return '$n';
-    // РїСЂРѕСЃС‚Р°СЏ СЂСѓСЃСЃРєР°СЏ С„РѕСЂРјР°: "1 РёР·РјРµСЂРµРЅРёРµ / 2 РёР·РјРµСЂРµРЅРёСЏ / 5 РёР·РјРµСЂРµРЅРёР№"
-    final n10 = n % 10;
-    final n100 = n % 100;
-    if (n10 == 1 && n100 != 11) return '$n РёР·РјРµСЂРµРЅРёРµ';
-    if (n10 >= 2 && n10 <= 4 && (n100 < 12 || n100 > 14)) return '$n РёР·РјРµСЂРµРЅРёСЏ';
-    return '$n РёР·РјРµСЂРµРЅРёР№';
-  }
-
+  // --- РћР‘РќРћР’Р›Р•РќРќР«Р™ PDF (РџРћ Р’РЎР•Рњ РўР Р•Р‘РћР’РђРќРРЇРњ) ---
   Future<void> _exportToPDFDoctorReport({
     required List<BloodPressureRecord> records,
     required String languageCode,
-    required UserProfile? profile,
-    required int periodDays,
+    UserProfile? profile,
+    int periodDays = 14,
   }) async {
-    final isRu = languageCode == 'ru';
+    final bool isRu = languageCode == 'ru';
+    final primaryColor = PdfColor.fromHex('#2E5D85');
+    final lightGrey = PdfColors.grey100;
 
-    // 1) РЁСЂРёС„С‚С‹ (РµСЃР»Рё РЅРµС‚ вЂ” Р±СѓРґРµС‚ РёСЃРєР»СЋС‡РµРЅРёРµ, РїРѕСЌС‚РѕРјСѓ РІР°Р¶РЅРѕ, С‡С‚РѕР±С‹ Р°СЃСЃРµС‚С‹ СЂРµР°Р»СЊРЅРѕ Р±С‹Р»Рё)
+    final now = DateTime.now();
+    final threshold = now.subtract(Duration(days: periodDays));
+    final filtered = records.where((r) => r.dateTime.isAfter(threshold)).toList();
+
     final fontData = await rootBundle.load('assets/fonts/Inter-Regular.ttf');
     final boldData = await rootBundle.load('assets/fonts/Inter-Bold.ttf');
     final ttf = pw.Font.ttf(fontData);
     final ttfBold = pw.Font.ttf(boldData);
 
-    final filtered = _filterByPeriod(records, periodDays);
-
-    final targetSys = profile?.targetSystolic ?? 120;
-    final targetDia = profile?.targetDiastolic ?? 80;
-
-    final nameRaw = (profile?.name ?? '').trim();
-    final name = nameRaw.isEmpty ? 'вЂ”' : nameRaw;
-
-    final age = _computeAge(profile);
-    final ageText = age == null ? 'вЂ”' : age.toString();
-
-    DateTime? maxDt, minDt;
-    if (filtered.isNotEmpty) {
-      maxDt = filtered.map((e) => e.dateTime).reduce((a, b) => a.isAfter(b) ? a : b);
-      minDt = filtered.map((e) => e.dateTime).reduce((a, b) => a.isBefore(b) ? a : b);
-    }
-
-    final periodText = (minDt == null || maxDt == null)
-        ? (isRu ? 'РџРµСЂРёРѕРґ: вЂ”' : 'Period: вЂ”')
-        : (isRu
-        ? 'РџРµСЂРёРѕРґ: ${_fmtDate(minDt)} вЂ” ${_fmtDate(maxDt)}'
-        : 'Period: ${_fmtDate(minDt)} вЂ” ${_fmtDate(maxDt)}');
-
-    final stats = _calcStats(filtered, targetSys, targetDia);
-    final buckets = _calcBuckets(filtered);
-
-    final title = isRu ? 'РћС‚С‡С‘С‚ РїРѕ Р°СЂС‚РµСЂРёР°Р»СЊРЅРѕРјСѓ РґР°РІР»РµРЅРёСЋ' : 'Blood Pressure Report';
+    final dobDate = _tryParseDob(profile);
+    final dobStr = dobDate != null ? DateFormat('dd.MM.yyyy').format(dobDate) : 'вЂ”';
+    final periodStr = '${DateFormat('dd.MM.yyyy').format(threshold)} вЂ“ ${DateFormat('dd.MM.yyyy').format(now)}';
 
     final pdf = pw.Document();
-
-    final h1 = pw.TextStyle(font: ttfBold, fontSize: 18, color: PdfColors.blue900);
-    final h2 = pw.TextStyle(font: ttfBold, fontSize: 12, color: PdfColors.blue900);
-    final body = pw.TextStyle(font: ttf, fontSize: 10, color: PdfColors.black);
-    final bodyBold = pw.TextStyle(font: ttfBold, fontSize: 10, color: PdfColors.black);
-    final small = pw.TextStyle(font: ttf, fontSize: 8, color: PdfColors.grey700);
-
-    pw.Widget sectionTitle(String text) => pw.Padding(
-      padding: const pw.EdgeInsets.only(top: 10, bottom: 6),
-      child: pw.Text(text, style: h2),
-    );
-
-    pw.Widget kvLine(String k, String v) => pw.Row(
-      children: [
-        pw.Expanded(child: pw.Text(k, style: body)),
-        pw.Text(v, style: bodyBold),
-      ],
-    );
-
-    pw.Widget statBox() {
-      final avg = stats.isEmpty ? 'вЂ”' : '${stats.avgSys}/${stats.avgDia}';
-      final min = stats.isEmpty ? 'вЂ”' : '${stats.minSys}/${stats.minDia}';
-      final max = stats.isEmpty ? 'вЂ”' : '${stats.maxSys}/${stats.maxDia}';
-      final out = stats.isEmpty
-          ? 'вЂ”'
-          : '${stats.outOfRangePct.toStringAsFixed(0)}% (${stats.outOfRangeCount}/${stats.n})';
-
-      final avgLabel = isRu ? 'РЎСЂРµРґРЅРµРµ Р·Р° РїРµСЂРёРѕРґ' : 'Average';
-      final minLabel = isRu ? 'РњРёРЅРёРјСѓРј' : 'Min';
-      final maxLabel = isRu ? 'РњР°РєСЃРёРјСѓРј' : 'Max';
-      final outLabel = isRu ? 'Р’С‹С€Рµ РЅРѕСЂРјС‹' : 'Above target';
-
-      return pw.Container(
-        decoration: pw.BoxDecoration(
-          borderRadius: pw.BorderRadius.circular(8),
-          color: PdfColors.grey100,
-          border: pw.Border.all(color: PdfColors.grey300, width: 1),
-        ),
-        padding: const pw.EdgeInsets.all(10),
-        child: pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: [
-            kvLine(avgLabel, avg),
-            pw.SizedBox(height: 4),
-            kvLine(minLabel, min),
-            pw.SizedBox(height: 4),
-            kvLine(maxLabel, max),
-            pw.SizedBox(height: 4),
-            kvLine(outLabel, out),
-          ],
-        ),
-      );
-    }
-
-    pw.Widget bucketTable() {
-      final morning = buckets['morning']!;
-      final day = buckets['day']!;
-      final evening = buckets['evening']!;
-      final night = buckets['night']!;
-
-      String f(_BucketStats b) {
-        if (b.isEmpty) return 'вЂ”';
-        return '${b.avgSys}/${b.avgDia}  (${_countLabel(b.n, isRu)})';
-      }
-
-      final rows = [
-        [isRu ? 'РЈС‚СЂРѕ (06вЂ“10)' : 'Morning (06вЂ“10)', f(morning)],
-        [isRu ? 'Р”РµРЅСЊ (12вЂ“16)' : 'Day (12вЂ“16)', f(day)],
-        [isRu ? 'Р’РµС‡РµСЂ (18вЂ“22)' : 'Evening (18вЂ“22)', f(evening)],
-        [isRu ? 'РќРѕС‡СЊ (22вЂ“06)' : 'Night (22вЂ“06)', f(night)],
-      ];
-
-      return pw.TableHelper.fromTextArray(
-        headers: [
-          isRu ? 'Р’СЂРµРјСЏ СЃСѓС‚РѕРє' : 'Time of day',
-          isRu ? 'РЎСЂРµРґРЅРµРµ (SYS/DIA)' : 'Average (SYS/DIA)',
-        ],
-        data: rows,
-        headerStyle: pw.TextStyle(font: ttfBold, fontSize: 10, color: PdfColors.white),
-        headerDecoration: const pw.BoxDecoration(color: PdfColors.blue800),
-        cellStyle: body,
-        cellAlignment: pw.Alignment.centerLeft,
-        columnWidths: {
-          0: const pw.FlexColumnWidth(2),
-          1: const pw.FlexColumnWidth(3),
-        },
-        cellPadding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      );
-    }
-
-    pw.Widget entriesTable() {
-      final sorted = List<BloodPressureRecord>.from(filtered)
-        ..sort((a, b) => b.dateTime.compareTo(a.dateTime));
-
-      final headers = isRu
-          ? ['Р”Р°С‚Р°', 'Р’СЂРµРјСЏ', 'Р”Р°РІР»РµРЅРёРµ', 'РџСѓР»СЊСЃ', 'РџСЂРёРјРµС‡Р°РЅРёСЏ']
-          : ['Date', 'Time', 'BP', 'Pulse', 'Notes'];
-
-      final data = sorted.map((r) {
-        final note = (r.note ?? '').trim();
-        return [
-          _fmtDate(r.dateTime),
-          _fmtTime(r.dateTime),
-          '${r.systolic}/${r.diastolic}',
-          r.pulse.toString(),
-          note,
-        ];
-      }).toList();
-
-      return pw.TableHelper.fromTextArray(
-        headers: headers,
-        data: data,
-        headerStyle: pw.TextStyle(font: ttfBold, fontSize: 10, color: PdfColors.white),
-        headerDecoration: const pw.BoxDecoration(color: PdfColors.blue800),
-        cellStyle: body,
-        cellAlignment: pw.Alignment.center,
-        cellPadding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-        columnWidths: {
-          0: const pw.FixedColumnWidth(70),
-          1: const pw.FixedColumnWidth(46),
-          2: const pw.FixedColumnWidth(60),
-          3: const pw.FixedColumnWidth(44),
-          4: const pw.FlexColumnWidth(),
-        },
-      );
-    }
-
-    pw.Widget doctorNotes() {
-      final label = isRu ? 'Р—Р°РјРµС‚РєРё РІСЂР°С‡Р°:' : "Doctor's notes:";
-      return pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
-        children: [
-          pw.Text(label, style: bodyBold),
-          pw.SizedBox(height: 6),
-          for (int i = 0; i < 6; i++)
-            pw.Container(
-              margin: const pw.EdgeInsets.only(bottom: 6),
-              height: 10,
-              decoration: const pw.BoxDecoration(
-                border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey500, width: 0.7)),
-              ),
-            ),
-        ],
-      );
-    }
-
-    final disclaimerRu =
-        'Р”Р°РЅРЅС‹Рµ РІРЅРµСЃРµРЅС‹ РїРѕР»СЊР·РѕРІР°С‚РµР»РµРј Рё РЅРµ СЏРІР»СЏСЋС‚СЃСЏ РјРµРґРёС†РёРЅСЃРєРёРј РёР·РјРµСЂРµРЅРёРµРј. РРЅС‚РµСЂРїСЂРµС‚Р°С†РёСЏ С‚СЂРµР±СѓРµС‚ РєР»РёРЅРёС‡РµСЃРєРѕР№ РІРµСЂРёС„РёРєР°С†РёРё.';
-    final disclaimerEn =
-        'Data is user-entered and does not replace a clinical measurement. Interpretation requires medical verification.';
+    final stats = _calculateStats(filtered, profile);
 
     pdf.addPage(
       pw.MultiPage(
-        pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.all(32),
-        build: (_) => [
-          pw.Text(title, style: h1),
-          pw.SizedBox(height: 6),
-          pw.Text(periodText, style: body),
-          pw.SizedBox(height: 8),
-          pw.Row(
-            children: [
-              pw.Expanded(
-                child: pw.Text(isRu ? 'РџР°С†РёРµРЅС‚: $name' : 'Patient: $name', style: body),
-              ),
-              pw.Text(isRu ? 'Р’РѕР·СЂР°СЃС‚: $ageText' : 'Age: $ageText', style: body),
-            ],
-          ),
-          pw.SizedBox(height: 6),
-          pw.Text(
-            isRu ? 'Р¦РµР»РµРІС‹Рµ Р·РЅР°С‡РµРЅРёСЏ: $targetSys/$targetDia' : 'Targets: $targetSys/$targetDia',
-            style: body,
-          ),
-          sectionTitle(isRu ? 'Р РµР·СЋРјРµ' : 'Summary'),
-          statBox(),
-          sectionTitle(isRu ? 'РђРЅР°Р»РёС‚РёРєР° РїРѕ РІСЂРµРјРµРЅРё СЃСѓС‚РѕРє' : 'Time-of-day analysis'),
-          bucketTable(),
-          sectionTitle(isRu ? 'Р–СѓСЂРЅР°Р» РёР·РјРµСЂРµРЅРёР№' : 'Measurements log'),
-          entriesTable(),
+        theme: pw.ThemeData.withFont(base: ttf, bold: ttfBold),
+        margin: const pw.EdgeInsets.all(35),
+        build: (context) => [
+          pw.Text(isRu ? 'РћС‚С‡С‘С‚ РїРѕ Р°СЂС‚РµСЂРёР°Р»СЊРЅРѕРјСѓ РґР°РІР»РµРЅРёСЋ' : 'Blood Pressure Report',
+              style: pw.TextStyle(font: ttfBold, fontSize: 18, color: primaryColor)),
           pw.SizedBox(height: 12),
-          doctorNotes(),
+
+          pw.Text('${isRu ? 'РџРµСЂРёРѕРґ' : 'Period'}: $periodStr', style: const pw.TextStyle(fontSize: 10)),
+          pw.Text('${isRu ? 'РџР°С†РёРµРЅС‚' : 'Patient'}: ${profile?.name ?? 'вЂ”'}', style: const pw.TextStyle(fontSize: 10)),
+          pw.Text('${isRu ? 'Р”Р°С‚Р° СЂРѕР¶РґРµРЅРёСЏ' : 'DOB'}: $dobStr', style: const pw.TextStyle(fontSize: 10)),
+          pw.Text('${isRu ? 'Р¦РµР»РµРІС‹Рµ Р·РЅР°С‡РµРЅРёСЏ' : 'Target values'}: ${profile?.targetSystolic ?? 120}/${profile?.targetDiastolic ?? 80}',
+              style: const pw.TextStyle(fontSize: 10)),
+
+          pw.SizedBox(height: 20),
+
+          // 1. Р Р•Р—Р®РњР•: РЎРІРµС‚Р»Рѕ-СЃРµСЂР°СЏ Р·Р°Р»РёРІРєР°, Р±РµР· РІРЅСѓС‚СЂРµРЅРЅРёС… Р»РёРЅРёР№, С†РµРЅС‚СЂ РІРѕ РІС‚РѕСЂРѕРј СЃС‚РѕР»Р±С†Рµ
+          _buildTitle(isRu ? 'Р РµР·СЋРјРµ' : 'Summary', primaryColor),
+          _buildResumeTable(
+            rows: [
+              [isRu ? 'РЎСЂРµРґРЅРµРµ Р·Р° РїРµСЂРёРѕРґ' : 'Average', '${stats.avgSys}/${stats.avgDia}'],
+              [isRu ? 'РњРёРЅРёРјСѓРј' : 'Minimum', '${stats.minSys}/${stats.minDia}'],
+              [isRu ? 'РњР°РєСЃРёРјСѓРј' : 'Maximum', '${stats.maxSys}/${stats.maxDia}'],
+              [isRu ? 'Р’С‹С€Рµ РЅРѕСЂРјС‹' : 'Above normal', '${stats.outOfRangePct.round()}% (${stats.outOfRangeCount}/${stats.n})'],
+            ],
+            bgColor: lightGrey,
+          ),
+
           pw.SizedBox(height: 10),
-          pw.Text(isRu ? disclaimerRu : disclaimerEn, style: small),
+
+          // 2. РђРќРђР›РРўРРљРђ: Р§С‘СЂРЅР°СЏ СЃРµС‚РєР° РІРµР·РґРµ (РІРЅРµС€РЅСЏСЏ Рё РІРЅСѓС‚СЂРµРЅРЅСЏСЏ)
+          _buildTitle(isRu ? 'РђРЅР°Р»РёС‚РёРєР° РїРѕ РІСЂРµРјРµРЅРё СЃСѓС‚РѕРє' : 'Time of day analytics', primaryColor),
+          _buildStandardTable(
+            headers: [isRu ? 'Р’СЂРµРјСЏ СЃСѓС‚РѕРє' : 'Time of day', isRu ? 'РЎСЂРµРґРЅРµРµ (SYS/DIA)' : 'Avg (SYS/DIA)'],
+            rows: _calcTimeBuckets(filtered, isRu),
+            headerColor: primaryColor,
+          ),
+
+          pw.SizedBox(height: 10),
+
+          // 3. Р–РЈР РќРђР›: Р§С‘СЂРЅР°СЏ СЃРµС‚РєР°, РџСЂРёРјРµС‡Р°РЅРёСЏ С€РёСЂРѕРєРёРµ
+          _buildTitle(isRu ? 'Р–СѓСЂРЅР°Р» РёР·РјРµСЂРµРЅРёР№' : 'Measurement log', primaryColor),
+          _buildStandardTable(
+            headers: isRu ? ['Р”Р°С‚Р°', 'Р’СЂРµРјСЏ', 'SYS/DIA', 'РџСѓР»СЊСЃ', 'РџСЂРёРјРµС‡Р°РЅРёРµ'] : ['Date', 'Time', 'SYS/DIA', 'Pulse', 'Note'],
+            rows: filtered.map((r) => [
+              DateFormat('dd.MM.yyyy').format(r.dateTime),
+              DateFormat('HH:mm').format(r.dateTime),
+              '${r.systolic}/${r.diastolic}',
+              r.pulse.toString(),
+              r.note ?? '',
+            ]).toList(),
+            headerColor: primaryColor,
+            isJournal: true,
+          ),
+
+          pw.SizedBox(height: 20),
+
+          // 4. Р—РђРњР•РўРљР Р’Р РђР§Рђ (Р›РёРЅРёРё)
+          pw.Text(isRu ? 'Р—Р°РјРµС‚РєРё РІСЂР°С‡Р°:' : 'Doctor\'s notes:', style: pw.TextStyle(font: ttfBold, fontSize: 10)),
+          pw.SizedBox(height: 5),
+          pw.Column(
+            children: List.generate(7, (index) => pw.Container(
+                height: 18,
+                decoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(color: PdfColors.black, width: 0.5)))
+            )),
+          ),
+          pw.SizedBox(height: 20),
+          pw.Text(
+            isRu
+                ? 'Р”Р°РЅРЅС‹Рµ РІРЅРµСЃРµРЅС‹ РїРѕР»СЊР·РѕРІР°С‚РµР»РµРј Рё РЅРµ СЏРІР»СЏСЋС‚СЃСЏ РјРµРґРёС†РёРЅСЃРєРёРј РёР·РјРµСЂРµРЅРёРµРј. РРЅС‚РµСЂРїСЂРµС‚Р°С†РёСЏ С‚СЂРµР±СѓРµС‚ РєР»РёРЅРёС‡РµСЃРєРѕР№ РІРµСЂРёС„РёРєР°С†РёРё.'
+                : 'Data entered by user. Requires clinical verification.',
+            style: pw.TextStyle(font: ttf, fontSize: 8, color: PdfColors.black),
+          ),
         ],
       ),
     );
 
-    // вњ… Р’РћРў Р­РўРћ вЂ” РєР»СЋС‡РµРІРѕР№ С„СѓРЅРґР°РјРµРЅС‚: bytes Р±РµСЂС‘Рј РёР· pdf.save()
     final bytes = await pdf.save();
-
     final dir = await getTemporaryDirectory();
-    final safeTs = DateTime.now().toIso8601String().replaceAll(':', '-');
-    final file = File('${dir.path}/pressure_report_$safeTs.pdf');
+    final file = File('${dir.path}/report_${now.millisecondsSinceEpoch}.pdf');
     await file.writeAsBytes(bytes, flush: true);
+    await Share.shareXFiles([XFile(file.path)]);
+  }
 
-    await Share.shareXFiles(
-      [XFile(file.path)],
-      text: isRu ? 'РћС‚С‡С‘С‚ РґР°РІР»РµРЅРёСЏ (PDF)' : 'Blood pressure report (PDF)',
+  pw.Widget _buildTitle(String text, PdfColor color) => pw.Padding(
+    padding: const pw.EdgeInsets.only(bottom: 6),
+    child: pw.Text(text, style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: color)),
+  );
+
+  pw.Widget _buildResumeTable({required List<List<String>> rows, required PdfColor bgColor}) {
+    return pw.Container(
+      decoration: pw.BoxDecoration(
+        color: bgColor,
+        borderRadius: pw.BorderRadius.circular(8),
+      ),
+      child: pw.ClipRRect(
+        horizontalRadius: 8, verticalRadius: 8,
+        child: pw.TableHelper.fromTextArray(
+          border: null,
+          cellStyle: const pw.TextStyle(fontSize: 9),
+          data: rows,
+          columnWidths: {0: const pw.FixedColumnWidth(150), 1: const pw.FlexColumnWidth()},
+          cellAlignments: {0: pw.Alignment.centerLeft, 1: pw.Alignment.center},
+          cellPadding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        ),
+      ),
     );
+  }
+
+  pw.Widget _buildStandardTable({
+    List<String>? headers,
+    required List<List<String>> rows,
+    required PdfColor headerColor,
+    bool isJournal = false,
+  }) {
+    return pw.Container(
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: PdfColors.black, width: 0.8),
+        borderRadius: pw.BorderRadius.circular(8),
+      ),
+      child: pw.ClipRRect(
+        horizontalRadius: 8, verticalRadius: 8,
+        child: pw.TableHelper.fromTextArray(
+          border: const pw.TableBorder(
+            horizontalInside: pw.BorderSide(color: PdfColors.black, width: 0.5),
+            verticalInside: pw.BorderSide(color: PdfColors.black, width: 0.5),
+          ),
+          headerStyle: pw.TextStyle(color: PdfColors.white, fontSize: 9, fontWeight: pw.FontWeight.bold),
+          headerDecoration: pw.BoxDecoration(color: headerColor),
+          cellStyle: const pw.TextStyle(fontSize: 9),
+          cellAlignment: pw.Alignment.center,
+          headers: headers,
+          data: rows,
+          columnWidths: isJournal
+              ? {
+            0: const pw.FixedColumnWidth(65),
+            1: const pw.FixedColumnWidth(45),
+            2: const pw.FixedColumnWidth(60),
+            3: const pw.FixedColumnWidth(45),
+            4: const pw.FlexColumnWidth(),
+          }
+              : {0: const pw.FixedColumnWidth(215), 1: const pw.FlexColumnWidth()},
+          cellPadding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        ),
+      ),
+    );
+  }
+
+  DateTime? _tryParseDob(UserProfile? p) {
+    if (p == null || p.age == 0) return null;
+    final s = p.age.toString();
+    if (s.length != 8) return null;
+    return DateTime(int.parse(s.substring(0, 4)), int.parse(s.substring(4, 6)), int.parse(s.substring(6, 8)));
+  }
+
+  _Stats _calculateStats(List<BloodPressureRecord> records, UserProfile? profile) {
+    if (records.isEmpty) return _Stats.empty();
+    int sSum = 0, dSum = 0, outCount = 0;
+    int minS = 999, maxS = 0, minD = 999, maxD = 0;
+    final tS = profile?.targetSystolic ?? 140;
+    final tD = profile?.targetDiastolic ?? 90;
+    for (var r in records) {
+      sSum += r.systolic; dSum += r.diastolic;
+      if (r.systolic < minS) minS = r.systolic;
+      if (r.systolic > maxS) maxS = r.systolic;
+      if (r.diastolic < minD) minD = r.diastolic;
+      if (r.diastolic > maxD) maxD = r.diastolic;
+      if (r.systolic > tS || r.diastolic > tD) outCount++;
+    }
+    return _Stats(
+      n: records.length, avgSys: (sSum / records.length).round(), avgDia: (dSum / records.length).round(),
+      minSys: minS, maxSys: maxS, minDia: minD, maxDia: maxD,
+      outOfRangeCount: outCount, outOfRangePct: (outCount / records.length) * 100,
+    );
+  }
+
+  List<List<String>> _calcTimeBuckets(List<BloodPressureRecord> records, bool isRu) {
+    final b = {'m': <BloodPressureRecord>[], 'd': <BloodPressureRecord>[], 'e': <BloodPressureRecord>[], 'n': <BloodPressureRecord>[]};
+    for (var r in records) {
+      final h = r.dateTime.hour;
+      if (h >= 6 && h < 10) b['m']!.add(r);
+      else if (h >= 12 && h < 16) b['d']!.add(r);
+      else if (h >= 18 && h < 22) b['e']!.add(r);
+      else if (h >= 22 || h < 6) b['n']!.add(r);
+    }
+    String f(List<BloodPressureRecord> l) {
+      if (l.isEmpty) return 'вЂ”';
+      final s = (l.map((e) => e.systolic).reduce((a, b) => a + b) / l.length).round();
+      final d = (l.map((e) => e.diastolic).reduce((a, b) => a + b) / l.length).round();
+      final label = isRu ? (l.length == 1 ? 'РёР·РјРµСЂРµРЅРёРµ' : (l.length < 5 ? 'РёР·РјРµСЂРµРЅРёСЏ' : 'РёР·РјРµСЂРµРЅРёР№')) : 'records';
+      return '$s/$d (${l.length} $label)';
+    }
+    return [
+      [isRu ? 'РЈС‚СЂРѕ (06-10)' : 'Morning', f(b['m']!)],
+      [isRu ? 'Р”РµРЅСЊ (12-16)' : 'Day', f(b['d']!)],
+      [isRu ? 'Р’РµС‡РµСЂ (18-22)' : 'Evening', f(b['e']!)],
+      [isRu ? 'РќРѕС‡СЊ (22-06)' : 'Night', f(b['n']!)],
+    ];
   }
 }
 
 class _Stats {
-  final int n;
-  final int avgSys;
-  final int avgDia;
-  final int minSys;
-  final int maxSys;
-  final int minDia;
-  final int maxDia;
-  final int outOfRangeCount;
+  final int n, avgSys, avgDia, minSys, maxSys, minDia, maxDia, outOfRangeCount;
   final double outOfRangePct;
-
-  const _Stats({
-    required this.n,
-    required this.avgSys,
-    required this.avgDia,
-    required this.minSys,
-    required this.maxSys,
-    required this.minDia,
-    required this.maxDia,
-    required this.outOfRangeCount,
-    required this.outOfRangePct,
-  });
-
-  bool get isEmpty => n == 0;
-
-  factory _Stats.empty() => const _Stats(
-    n: 0,
-    avgSys: 0,
-    avgDia: 0,
-    minSys: 0,
-    maxSys: 0,
-    minDia: 0,
-    maxDia: 0,
-    outOfRangeCount: 0,
-    outOfRangePct: 0.0,
-  );
-}
-
-class _BucketStats {
-  final int n;
-  final int avgSys;
-  final int avgDia;
-
-  const _BucketStats({
-    required this.n,
-    required this.avgSys,
-    required this.avgDia,
-  });
-
-  bool get isEmpty => n == 0;
-
-  factory _BucketStats.empty() => const _BucketStats(n: 0, avgSys: 0, avgDia: 0);
+  _Stats({required this.n, required this.avgSys, required this.avgDia, required this.minSys, required this.maxSys, required this.minDia, required this.maxDia, required this.outOfRangeCount, required this.outOfRangePct});
+  static _Stats empty() => _Stats(n: 0, avgSys: 0, avgDia: 0, minSys: 0, maxSys: 0, minDia: 0, maxDia: 0, outOfRangeCount: 0, outOfRangePct: 0);
 }
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -3650,32 +3428,44 @@ PressureField? toPressureField(InputField f) {
   };
 }
 enum InputField { systolic, diastolic, pulse, none }
+import 'package:flutter/cupertino.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:io' show Platform;
+
+/// Р’СЃРїРѕРјРѕРіР°С‚РµР»СЊРЅР°СЏ С„СѓРЅРєС†РёСЏ РґР»СЏ РєРѕСЂСЂРµРєС‚РЅРѕРіРѕ РєРѕРґРёСЂРѕРІР°РЅРёСЏ РїР°СЂР°РјРµС‚СЂРѕРІ mailto.
+/// Р—Р°РјРµРЅСЏРµС‚ '+' РЅР° '%20', С‡С‚РѕР±С‹ РІ С‚РµР»Рµ РїРёСЃСЊРјР° РЅРµ Р±С‹Р»Рѕ РїР»СЋСЃРѕРІ РІРјРµСЃС‚Рѕ РїСЂРѕР±РµР»РѕРІ.
+String _encodeQueryParameters(Map<String, String> params) {
+  return params.entries
+      .map((e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}')
+      .join('&')
+      .replaceAll('+', '%20');
+}
 
 Future<void> launchEmail({
   required String to,
   required String subject,
-  String? body,
+  required String body,
 }) async {
-  final uri = Uri(
+  // РСЃРїРѕР»СЊР·СѓРµРј СЂСѓС‡РЅСѓСЋ СЃР±РѕСЂРєСѓ query РІРјРµСЃС‚Рѕ queryParameters
+  final Uri emailLaunchUri = Uri(
     scheme: 'mailto',
     path: to,
-    queryParameters: <String, String>{
+    query: _encodeQueryParameters(<String, String>{
       'subject': subject,
-      if (body != null && body.trim().isNotEmpty) 'body': body,
-    },
+      'body': body,
+    }),
   );
 
-  if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-    // РјРѕР¶РЅРѕ РїРѕРєР°Р·Р°С‚СЊ SnackBar/Toast вЂ” РєР°Рє Сѓ С‚РµР±СЏ РїСЂРёРЅСЏС‚Рѕ РІ РїСЂРѕРµРєС‚Рµ
-    throw Exception('Could not launch email client');
+  // mode: LaunchMode.externalApplication РІР°Р¶РµРЅ РґР»СЏ СЃС‚Р°Р±РёР»СЊРЅРѕСЃС‚Рё РЅР° Android
+  final ok = await launchUrl(emailLaunchUri, mode: LaunchMode.externalApplication);
+  if (!ok) {
+    debugPrint('Could not launch email to $to');
   }
 }
 
 Future<void> rateApp({
   required String androidPackageName,
-  String? iosAppId, // РєРѕРіРґР° РїРѕСЏРІРёС‚СЃСЏ
+  String? iosAppId,
 }) async {
   if (Platform.isAndroid) {
     final marketUri = Uri.parse('market://details?id=$androidPackageName');
@@ -3689,12 +3479,10 @@ Future<void> rateApp({
   }
 
   if (Platform.isIOS) {
-    if (iosAppId == null || iosAppId.isEmpty) {
-      // РїРѕРєР° РЅРµ РѕРїСѓР±Р»РёРєРѕРІР°РЅРѕ вЂ” РјРѕР¶РЅРѕ РїСЂРѕСЃС‚Рѕ РјРѕР»С‡Р° РёРіРЅРѕСЂРёС‚СЊ РёР»Рё РїРѕРєР°Р·Р°С‚СЊ РїРѕРґСЃРєР°Р·РєСѓ
-      throw Exception('iOS App ID is not set yet');
+    if (iosAppId != null && iosAppId.isNotEmpty) {
+      final url = Uri.parse('https://apps.apple.com/app/id$iosAppId?action=write-review');
+      await launchUrl(url, mode: LaunchMode.externalApplication);
     }
-    final uri = Uri.parse('https://apps.apple.com/app/id$iosAppId?action=write-review');
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 }
 enum PressureCategory {
@@ -4549,7 +4337,8 @@ class _AddRecordViewState extends State<_AddRecordView> {
     final outer = dp(context, space.s80 + space.s6);
     final lift = outer / 2;
 
-    return dp(context, space.s96) + barH + lift + safeBottom + dp(context, space.s12) + keyboard;
+    return barH + lift;
+    //return dp(context, space.s96) + barH + lift + safeBottom + dp(context, space.s12) + keyboard;
   }
 
   Widget _threeColGridSpan23({
@@ -7509,7 +7298,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final outer = dp(context, space.s80 + space.s6);
     final lift = outer / 2;
 
-    return barH + lift + safeBottom + dp(context, space.s12);
+    return barH + safeBottom + dp(context, space.s8);
   }
 
   @override
@@ -10907,21 +10696,17 @@ extension AppSettingsQueryProperty
     });
   }
 }
-// settings_cubit.dart
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:in_app_review/in_app_review.dart';
-import 'package:url_launcher/url_launcher.dart';
-
 import 'package:blood_pressure_diary/core/database/isar_service.dart';
-import 'package:blood_pressure_diary/core/database/models/user_profile.dart';
 import 'package:blood_pressure_diary/core/repositories/pressure_repository.dart';
-import 'package:blood_pressure_diary/core/services/export_service.dart';
-import 'package:blood_pressure_diary/core/services/notification_service.dart';
 import 'package:blood_pressure_diary/features/settings/data/models/settings_model.dart';
 import 'package:blood_pressure_diary/features/settings/presentation/bloc/settings_state.dart';
+import 'package:blood_pressure_diary/core/services/export_service.dart';
+import 'package:blood_pressure_diary/core/services/notification_service.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:in_app_review/in_app_review.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 class SettingsCubit extends Cubit<SettingsState> {
   final IsarService _isarService;
@@ -10929,123 +10714,121 @@ class SettingsCubit extends Cubit<SettingsState> {
   final ExportService _exportService;
   final NotificationService _notificationService;
 
-  StreamSubscription<AppSettings>? _settingsSub;
-
   SettingsCubit(
       this._isarService,
       this._pressureRepository,
       this._exportService,
       this._notificationService,
       ) : super(SettingsState(AppSettings())) {
-    _bind();
+    _loadSettings();
+    _loadAppVersion();
   }
 
-  Future<void> _bind() async {
-    await _isarService.getOrCreateSettings();
-
-    await _settingsSub?.cancel();
-    _settingsSub = _isarService.watchSettings().listen((settings) {
-      emit(SettingsState(
-        settings,
-        errorMessage: state.errorMessage,
-        isExporting: state.isExporting,
-      ));
-    });
+  Future<void> _loadSettings() async {
+    // вњ… РќР°РґС‘Р¶РЅРѕ: РІСЃРµРіРґР° РїРѕР»СѓС‡Р°РµРј singleton-РЅР°СЃС‚СЂРѕР№РєРё РёР· Isar
+    final settings = await _isarService.getOrCreateSettings();
+    emit(SettingsState(settings, appVersion: state.appVersion));
   }
 
-  @override
-  Future<void> close() async {
-    await _settingsSub?.cancel();
-    return super.close();
+  Future<void> _loadAppVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      emit(state.copyWith(appVersion: info.version));
+    } catch (_) {
+      // If platform info is unavailable, keep version null.
+    }
   }
 
   Future<void> changeLanguage(String langCode) async {
-    final s = state.settings;
-    final updated = AppSettings(
-      themeMode: s.themeMode,
+    final newSettings = AppSettings(
+      themeMode: state.settings.themeMode,
       languageCode: langCode,
-      reminders: s.reminders,
-      notificationsEnabled: s.notificationsEnabled,
-      accountLinked: s.accountLinked,
-      accountEmail: s.accountEmail,
-      accountProvider: s.accountProvider,
+      reminders: state.settings.reminders,
+      notificationsEnabled: state.settings.notificationsEnabled,
+      accountLinked: state.settings.accountLinked,
+      accountEmail: state.settings.accountEmail,
+      accountProvider: state.settings.accountProvider,
     );
-    await _isarService.saveSettings(updated);
+
+    await _isarService.saveSettings(newSettings);
+    emit(state.copyWith(settings: newSettings));
   }
 
   Future<void> setThemeMode(AppThemeMode mode) async {
-    final s = state.settings;
-    final updated = AppSettings(
-      themeMode: mode, // вњ… Р’РћРў Р­РўРћ Рё Р»РѕРјР°Р»Рѕ РїРµСЂРµРєР»СЋС‡РµРЅРёРµ
-      languageCode: s.languageCode,
-      reminders: s.reminders,
-      notificationsEnabled: s.notificationsEnabled,
-      accountLinked: s.accountLinked,
-      accountEmail: s.accountEmail,
-      accountProvider: s.accountProvider,
+    final newSettings = AppSettings(
+      themeMode: mode,
+      languageCode: state.settings.languageCode,
+      reminders: state.settings.reminders,
+      notificationsEnabled: state.settings.notificationsEnabled,
+      accountLinked: state.settings.accountLinked,
+      accountEmail: state.settings.accountEmail,
+      accountProvider: state.settings.accountProvider,
     );
-    await _isarService.saveSettings(updated);
+
+    await _isarService.saveSettings(newSettings);
+    emit(state.copyWith(settings: newSettings));
   }
 
   Future<void> addReminder(TimeOfDay time) async {
     final hour = time.hour.toString().padLeft(2, '0');
     final minute = time.minute.toString().padLeft(2, '0');
-    final timeStr = '$hour:$minute';
+    final timeStr = "$hour:$minute";
 
-    final s = state.settings;
-    if (s.reminders.contains(timeStr)) return;
+    if (state.settings.reminders.contains(timeStr)) return;
 
-    final newList = List<String>.from(s.reminders)..add(timeStr);
+    final newList = List<String>.from(state.settings.reminders)..add(timeStr);
     newList.sort();
 
-    final updated = AppSettings(
-      themeMode: s.themeMode,
-      languageCode: s.languageCode,
+    final newSettings = AppSettings(
+      themeMode: state.settings.themeMode,
+      languageCode: state.settings.languageCode,
       reminders: newList,
-      notificationsEnabled: s.notificationsEnabled,
-      accountLinked: s.accountLinked,
-      accountEmail: s.accountEmail,
-      accountProvider: s.accountProvider,
+      notificationsEnabled: state.settings.notificationsEnabled,
+      accountLinked: state.settings.accountLinked,
+      accountEmail: state.settings.accountEmail,
+      accountProvider: state.settings.accountProvider,
     );
 
-    await _isarService.saveSettings(updated);
+    await _isarService.saveSettings(newSettings);
 
-    if (s.notificationsEnabled) {
-      await _notificationService.scheduleDailyNotification(timeStr.hashCode, time);
+    if (state.settings.notificationsEnabled) {
+      final id = timeStr.hashCode;
+      await _notificationService.scheduleDailyNotification(id, time);
     }
+
+    emit(state.copyWith(settings: newSettings));
   }
 
   Future<void> removeReminder(int index) async {
-    final s = state.settings;
-    if (index < 0 || index >= s.reminders.length) return;
+    if (index < 0 || index >= state.settings.reminders.length) return;
 
-    final timeStr = s.reminders[index];
-    final newList = List<String>.from(s.reminders)..removeAt(index);
+    final timeStr = state.settings.reminders[index];
+    final newList = List<String>.from(state.settings.reminders)..removeAt(index);
 
-    final updated = AppSettings(
-      themeMode: s.themeMode,
-      languageCode: s.languageCode,
+    final newSettings = AppSettings(
+      themeMode: state.settings.themeMode,
+      languageCode: state.settings.languageCode,
       reminders: newList,
-      notificationsEnabled: s.notificationsEnabled,
-      accountLinked: s.accountLinked,
-      accountEmail: s.accountEmail,
-      accountProvider: s.accountProvider,
+      notificationsEnabled: state.settings.notificationsEnabled,
+      accountLinked: state.settings.accountLinked,
+      accountEmail: state.settings.accountEmail,
+      accountProvider: state.settings.accountProvider,
     );
 
-    await _isarService.saveSettings(updated);
+    await _isarService.saveSettings(newSettings);
 
-    if (s.notificationsEnabled) {
+    if (state.settings.notificationsEnabled) {
       await _notificationService.cancelNotification(timeStr.hashCode);
     }
+
+    emit(state.copyWith(settings: newSettings));
   }
 
   Future<void> toggleNotifications(bool enabled) async {
-    final s = state.settings;
-
     if (enabled) {
       final granted = await _notificationService.requestPermissions();
       if (!granted) {
-        final message = s.languageCode == 'ru'
+        final message = state.settings.languageCode == 'ru'
             ? 'Р Р°Р·СЂРµС€РµРЅРёРµ РЅР° СѓРІРµРґРѕРјР»РµРЅРёСЏ РЅРµ РїРѕР»СѓС‡РµРЅРѕ'
             : 'Notification permission not granted';
         emit(state.copyWith(errorMessage: message));
@@ -11054,77 +10837,51 @@ class SettingsCubit extends Cubit<SettingsState> {
       }
     }
 
-    final reminders = (enabled && s.reminders.isEmpty)
-        ? <String>['08:00', '20:00']
-        : List<String>.from(s.reminders);
-
-    reminders.sort();
-
-    final updated = AppSettings(
-      themeMode: s.themeMode,
-      languageCode: s.languageCode,
-      reminders: reminders,
+    final newSettings = AppSettings(
+      themeMode: state.settings.themeMode,
+      languageCode: state.settings.languageCode,
+      reminders: state.settings.reminders,
       notificationsEnabled: enabled,
-      accountLinked: s.accountLinked,
-      accountEmail: s.accountEmail,
-      accountProvider: s.accountProvider,
+      accountLinked: state.settings.accountLinked,
+      accountEmail: state.settings.accountEmail,
+      accountProvider: state.settings.accountProvider,
     );
 
-    await _isarService.saveSettings(updated);
+    await _isarService.saveSettings(newSettings);
 
     if (enabled) {
-      await _syncAllNotifications(reminders);
+      await _syncAllNotifications(state.settings.reminders);
     } else {
       await _notificationService.cancelAllNotifications();
     }
+
+    emit(state.copyWith(settings: newSettings));
   }
 
   Future<void> _syncAllNotifications(List<String> reminders) async {
     await _notificationService.cancelAllNotifications();
-
     for (final timeStr in reminders) {
       final parts = timeStr.split(':');
-      final time = TimeOfDay(
-        hour: int.parse(parts[0]),
-        minute: int.parse(parts[1]),
-      );
+      final time = TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
       await _notificationService.scheduleDailyNotification(timeStr.hashCode, time);
     }
   }
 
-  /// periodDays РёСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ РґР»СЏ PDF (РЅР°РїСЂРёРјРµСЂ, 14 РґРЅРµР№), РґР»СЏ CSV РјРѕР¶РЅРѕ РїРµСЂРµРґР°РІР°С‚СЊ 0.
-  Future<void> exportData(ExportFormat format, {int pdfPeriodDays = 14}) async {
+  Future<void> exportData(ExportFormat format) async {
     final records = await _pressureRepository.getAllRecords();
 
     if (records.isEmpty) {
-      final message = state.settings.languageCode == 'ru'
-          ? 'РќРµС‚ РґР°РЅРЅС‹С… РґР»СЏ СЌРєСЃРїРѕСЂС‚Р°'
-          : 'No data to export';
+      final message = state.settings.languageCode == 'ru' ? 'РќРµС‚ РґР°РЅРЅС‹С… РґР»СЏ СЌРєСЃРїРѕСЂС‚Р°' : 'No data to export';
       emit(state.copyWith(errorMessage: message));
       emit(state.copyWith(errorMessage: null));
       return;
     }
 
-    UserProfile? profile;
-    try {
-      profile = await _isarService.getOrCreateProfile();
-    } catch (_) {
-      profile = null;
-    }
-
     emit(state.copyWith(isExporting: true));
     try {
-      await _exportService.exportData(
-        records,
-        format,
-        state.settings.languageCode,
-        profile: profile,
-        periodDays: format == ExportFormat.pdf ? pdfPeriodDays : 0,
-      );
+      await _exportService.exportData(records, format, state.settings.languageCode);
     } catch (e) {
-      final message = state.settings.languageCode == 'ru'
-          ? 'РћС€РёР±РєР° РїСЂРё СЌРєСЃРїРѕСЂС‚Рµ: $e'
-          : 'Export error: $e';
+      final message = state.settings.languageCode == 'ru' ? 'РћС€РёР±РєР° РїСЂРё СЌРєСЃРїРѕСЂС‚Рµ: $e' : 'Export error: $e';
       emit(state.copyWith(errorMessage: message));
       emit(state.copyWith(errorMessage: null));
     } finally {
@@ -11148,9 +10905,11 @@ class SettingsCubit extends Cubit<SettingsState> {
   }
 
   Future<void> rateApp() async {
-    final inAppReview = InAppReview.instance;
+    final InAppReview inAppReview = InAppReview.instance;
     if (await inAppReview.isAvailable()) {
       await inAppReview.requestReview();
+    } else {
+      await inAppReview.openStoreListing();
     }
   }
 }
@@ -11161,18 +10920,27 @@ class SettingsState extends Equatable {
   final AppSettings settings;
   final String? errorMessage;
   final bool isExporting;
+  /// App version from platform package info (e.g. "1.0.0").
+  final String? appVersion;
 
-  const SettingsState(this.settings, {this.errorMessage, this.isExporting = false});
+  const SettingsState(
+      this.settings, {
+        this.errorMessage,
+        this.isExporting = false,
+        this.appVersion,
+      });
 
   SettingsState copyWith({
     AppSettings? settings,
     String? errorMessage,
     bool? isExporting,
+    String? appVersion,
   }) {
     return SettingsState(
       settings ?? this.settings,
       errorMessage: errorMessage,
       isExporting: isExporting ?? this.isExporting,
+      appVersion: appVersion ?? this.appVersion,
     );
   }
 
@@ -11187,9 +10955,163 @@ class SettingsState extends Equatable {
     settings.accountProvider,
     errorMessage,
     isExporting,
+    appVersion,
   ];
 }
-// settings_screen.dart (РїРѕР»РЅР°СЏ Р·Р°РјРµРЅР° вЂ” РІС‹Р±РѕСЂ РїРµСЂРёРѕРґР° PDF + Privacy Policy + РІСЃС‘ РѕСЃС‚Р°Р»СЊРЅРѕРµ Р±РµР· РёР·РјРµРЅРµРЅРёР№)
+import 'package:flutter/material.dart';
+import 'package:blood_pressure_diary/core/theme/app_theme.dart';
+import 'package:blood_pressure_diary/core/theme/scale.dart';
+import 'package:blood_pressure_diary/l10n/generated/app_localizations.dart';
+
+class PrivacyPolicyScreen extends StatelessWidget {
+  const PrivacyPolicyScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final space = context.appSpace;
+    final txt = context.appText;
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // С„РёРєСЃРёСЂРѕРІР°РЅРЅС‹Р№ РІРЅРµС€РЅРёР№ РіРѕСЂРёР·РѕРЅС‚Р°Р»СЊРЅС‹Р№ РїР°РґРґРёРЅРі (РєР°Рє РЅР° СЌРєСЂР°РЅРµ РІРІРѕРґР°)
+    final side = dp(context, space.s20);
+
+    final topInset = MediaQuery.paddingOf(context).top;
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
+
+    final headerH = dp(context, space.s128);
+
+    final gap20 = dp(context, space.s20);
+    final gap16 = dp(context, space.s16);
+    final gap12 = dp(context, space.s12);
+    final gap10 = dp(context, space.s10);
+
+    final headerBg = isDark ? AppPalette.dark800 : AppPalette.blue700;
+
+    final l10n = AppLocalizations.of(context)!;
+
+    const lastUpdate = '15.02.2026';
+
+    final titleStyle = TextStyle(
+      fontFamily: txt.family,
+      fontSize: sp(context, txt.fs24),
+      fontWeight: txt.w700,
+      color: colors.textOnBrand,
+      height: 1.0,
+    );
+
+    final metaStyle = TextStyle(
+      fontFamily: txt.family,
+      fontSize: sp(context, txt.fs12),
+      fontWeight: txt.w400,
+      color: isDark ? AppPalette.dark350 : AppPalette.grey500,
+      height: 1.0,
+    );
+
+    final bodyStyle = TextStyle(
+      fontFamily: txt.family,
+      fontSize: sp(context, txt.fs14),
+      fontWeight: txt.w400,
+      color: colors.textPrimary,
+      height: 1.45,
+    );
+
+    return Scaffold(
+      backgroundColor: colors.background,
+      body: Column(
+        children: [
+          // РЁРђРџРљРђ вЂ” РєР°Рє РЅР° СЌРєСЂР°РЅРµ РІРІРѕРґР°: С†РІРµС‚, РѕС‚СЃС‚СѓРїС‹, РєСЂРµСЃС‚РёРє
+          Container(
+            height: headerH + topInset,
+            width: double.infinity,
+            color: headerBg,
+            padding: EdgeInsets.only(
+              left: side,
+              right: side,
+              top: topInset + gap12,
+              bottom: gap12,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(height: gap10),
+                Row(
+                  children: [
+                    _HeaderIconButton(
+                      icon: Icons.close,
+                      onTap: () => Navigator.of(context).pop(),
+                    ),
+                    const Spacer(),
+                  ],
+                ),
+                SizedBox(height: gap12),
+                Text(
+                  l10n.privacyPolicy,
+                  style: titleStyle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+
+          // РљРћРќРўР•РќРў
+          Expanded(
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              padding: EdgeInsets.only(
+                left: side,
+                right: side,
+                top: gap20,
+                bottom: gap20 + bottomInset,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${l10n.privacyPolicyLastUpdate} $lastUpdate',
+                    style: metaStyle,
+                  ),
+                  SizedBox(height: gap16),
+                  Text(
+                    l10n.privacyPolicyFullText,
+                    style: bodyStyle,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeaderIconButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _HeaderIconButton({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final space = context.appSpace;
+
+    final size = dp(context, space.s24);
+    return SizedBox(
+      width: size,
+      height: size,
+      child: IconButton(
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(),
+        icon: Icon(icon, color: colors.textOnBrand, size: size),
+        onPressed: onTap,
+      ),
+    );
+  }
+}
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -11205,7 +11127,6 @@ import 'package:blood_pressure_diary/features/settings/data/models/settings_mode
 import 'package:blood_pressure_diary/features/settings/presentation/bloc/settings_cubit.dart';
 import 'package:blood_pressure_diary/features/settings/presentation/bloc/settings_state.dart';
 import 'package:blood_pressure_diary/l10n/generated/app_localizations.dart';
-import 'package:blood_pressure_diary/core/utils/launcher_utils.dart';
 
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -11221,7 +11142,7 @@ class SettingsScreen extends StatelessWidget {
     final barH = dp(context, s.s72 - s.s2 - s.s1);
     final outer = dp(context, s.s80 + s.s6);
     final lift = outer / 2;
-    return barH + lift + safeBottom + dp(context, s.s12);
+    return barH + safeBottom + dp(context, s.s8);
   }
 
   Future<void> _runBlocking(BuildContext context, Future<void> Function() action) async {
@@ -11298,89 +11219,6 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
-  Future<int?> _showPdfPeriodSheet(BuildContext context, AppLocalizations l10n) {
-    final isRu = Localizations.localeOf(context).languageCode == 'ru';
-
-    return showModalBottomSheet<int>(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) {
-        Widget item(int days, String title) {
-          return ListTile(
-            title: Text(title),
-            onTap: () => Navigator.pop(ctx, days),
-          );
-        }
-
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Text(
-                  l10n.exportPDF,
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-              ),
-              item(3, isRu ? '3 РґРЅСЏ (Free)' : '3 days (Free)'),
-              item(14, isRu ? '14 РґРЅРµР№' : '14 days'),
-              item(30, isRu ? '30 РґРЅРµР№' : '30 days'),
-              item(90, isRu ? '90 РґРЅРµР№' : '90 days'),
-              const SizedBox(height: 8),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  void _showPrivacyPolicy(BuildContext context, AppLocalizations l10n) {
-    final isRu = Localizations.localeOf(context).languageCode == 'ru';
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    isRu ? 'РџРѕР»РёС‚РёРєР° РєРѕРЅС„РёРґРµРЅС†РёР°Р»СЊРЅРѕСЃС‚Рё' : 'Privacy Policy',
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    isRu
-                        ? '1) РџСЂРёР»РѕР¶РµРЅРёРµ С…СЂР°РЅРёС‚ РёР·РјРµСЂРµРЅРёСЏ РґР°РІР»РµРЅРёСЏ Рё РЅР°СЃС‚СЂРѕР№РєРё Р»РѕРєР°Р»СЊРЅРѕ РЅР° РІР°С€РµРј СѓСЃС‚СЂРѕР№СЃС‚РІРµ.\n\n'
-                        '2) Р•СЃР»Рё РІС‹ СѓРєР°Р·С‹РІР°РµС‚Рµ e-mail, РѕРЅ РёСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ С‚РѕР»СЊРєРѕ РґР»СЏ РѕС‚РїСЂР°РІРєРё РѕС‚С‡С‘С‚РѕРІ Рё СЂРµР·РµСЂРІРЅС‹С… РєРѕРїРёР№ РїРѕ РІР°С€РµРјСѓ Р·Р°РїСЂРѕСЃСѓ.\n\n'
-                        '3) РњС‹ РЅРµ РїРµСЂРµРґР°С‘Рј РІР°С€Рё РјРµРґРёС†РёРЅСЃРєРёРµ РґР°РЅРЅС‹Рµ С‚СЂРµС‚СЊРёРј Р»РёС†Р°Рј Рё РЅРµ РёСЃРїРѕР»СЊР·СѓРµРј РёС… РґР»СЏ СЂРµРєР»Р°РјС‹.\n\n'
-                        '4) РЈРІРµРґРѕРјР»РµРЅРёСЏ РёСЃРїРѕР»СЊР·СѓСЋС‚СЃСЏ С‚РѕР»СЊРєРѕ РґР»СЏ РЅР°РїРѕРјРёРЅР°РЅРёР№ РѕР± РёР·РјРµСЂРµРЅРёСЏС… (РµСЃР»Рё РІС‹ РёС… РІРєР»СЋС‡РёР»Рё).'
-                        : '1) The app stores blood pressure measurements and settings locally on your device.\n\n'
-                        '2) If you provide an email, it is used only to send reports and backups upon your request.\n\n'
-                        '3) We do not share your health data with third parties and do not use it for advertising.\n\n'
-                        '4) Notifications are used only for measurement reminders (if enabled).',
-                    style: const TextStyle(fontSize: 14),
-                  ),
-                  const SizedBox(height: 24),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
@@ -11398,6 +11236,8 @@ class SettingsScreen extends StatelessWidget {
     final headerH = dp(context, space.s128);
     final side = dp(context, space.s20);
 
+    final cardW = dp(context, space.w320);
+    final innerW = cardW - dp(context, space.s24); // 296
     final cardR = dp(context, radii.r10);
 
     final fieldH = dp(context, space.s48);
@@ -11408,6 +11248,7 @@ class SettingsScreen extends StatelessWidget {
     final h43 = dp(context, space.s40 + space.s2 + space.s1);
     final h44 = dp(context, space.s40 + space.s4);
 
+    // ---- Required vertical gaps (6 total)
     final gap16 = dp(context, space.s16);
     final gap8 = dp(context, space.s8);
 
@@ -11529,7 +11370,7 @@ class SettingsScreen extends StatelessWidget {
 
           Widget cardAuto({required Widget child}) {
             return SizedBox(
-              width: double.infinity,
+              width: cardW,
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   color: cardBg,
@@ -11543,7 +11384,7 @@ class SettingsScreen extends StatelessWidget {
 
           Widget cardFixed({required double height, required Widget child}) {
             return SizedBox(
-              width: double.infinity,
+              width: cardW,
               height: height,
               child: DecoratedBox(
                 decoration: BoxDecoration(
@@ -11626,7 +11467,7 @@ class SettingsScreen extends StatelessWidget {
               required String value,
               required double h,
             }) {
-              final removable = index >= 1 && enabled;
+              final removable = index >= 2;
 
               return SizedBox(
                 height: h,
@@ -11658,7 +11499,7 @@ class SettingsScreen extends StatelessWidget {
             return Opacity(
               opacity: enabled ? 1.0 : 0.55,
               child: Container(
-                width: double.infinity,
+                width: innerW,
                 decoration: BoxDecoration(
                   border: Border.all(color: borderColor, width: borderW),
                   borderRadius: BorderRadius.circular(cardR),
@@ -11758,7 +11599,7 @@ class SettingsScreen extends StatelessWidget {
                       Text(l10n.theme, style: labelStyle),
                       SizedBox(height: dp(context, space.s6)),
                       Container(
-                        width: double.infinity,
+                        width: innerW,
                         height: fieldH,
                         decoration: BoxDecoration(
                           color: fieldBg,
@@ -11783,65 +11624,29 @@ class SettingsScreen extends StatelessWidget {
             );
           }
 
-          Future<String?> _showLanguageSheet(
-              BuildContext context,
-              AppLocalizations l10n,
-              String current,
-              ) {
-            return showModalBottomSheet<String>(
-              context: context,
-              builder: (_) {
-                Widget item(String code, String title) {
-                  return ListTile(
-                    title: Text(title),
-                    trailing: current == code ? const Icon(Icons.check) : null,
-                    onTap: () => Navigator.of(context).pop(code),
-                  );
-                }
-
-                return SafeArea(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      item('ru', 'Р СѓСЃСЃРєРёР№'),
-                      item('en', 'English'),
-                    ],
-                  ),
-                );
-              },
-            );
-          }
 
           Widget languageCard() {
-            final s = state.settings;
-
-            String title;
-            switch (s.languageCode) {
-              case 'ru':
-                title = 'Р СѓСЃСЃРєРёР№';
-                break;
-              case 'en':
-                title = 'English';
-                break;
-              default:
-                title = 'English';
+            String titleFor(String code) {
+              switch (code) {
+                case 'ru':
+                  return 'Р СѓСЃСЃРєРёР№';
+                case 'en':
+                  return 'English';
+                default:
+                  return code;
+              }
             }
 
-            return InkWell(
-              borderRadius: BorderRadius.circular(cardR),
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
               onTap: () async {
                 final chosen = await _showLanguageSheet(context, l10n, s.languageCode);
-                if (!context.mounted) return;
-                if (chosen != null && chosen != s.languageCode) {
+                if (chosen != null && context.mounted) {
                   context.read<SettingsCubit>().changeLanguage(chosen);
                 }
               },
-              child: Container(
-                decoration: BoxDecoration(
-                  color: cardBg,
-                  borderRadius: BorderRadius.circular(cardR),
-                  boxShadow: [shadows.card],
-                ),
+              child: cardFixed(
+                height: h92,
                 child: Padding(
                   padding: EdgeInsets.all(dp(context, space.s12)),
                   child: Column(
@@ -11850,7 +11655,7 @@ class SettingsScreen extends StatelessWidget {
                       Text(l10n.language, style: labelStyle),
                       SizedBox(height: dp(context, space.s6)),
                       Container(
-                        width: double.infinity,
+                        width: innerW,
                         height: fieldH,
                         decoration: BoxDecoration(
                           color: fieldBg,
@@ -11859,7 +11664,7 @@ class SettingsScreen extends StatelessWidget {
                         padding: EdgeInsets.symmetric(horizontal: dp(context, space.s12)),
                         child: Row(
                           children: [
-                            Expanded(child: Text(title, style: itemStyle)),
+                            Expanded(child: Text(titleFor(s.languageCode), style: itemStyle)),
                             Icon(
                               Icons.keyboard_arrow_down,
                               color: colors.textPrimary,
@@ -11880,7 +11685,7 @@ class SettingsScreen extends StatelessWidget {
               behavior: HitTestBehavior.opaque,
               onTap: onTap,
               child: SizedBox(
-                width: double.infinity,
+                width: cardW,
                 height: h47,
                 child: DecoratedBox(
                   decoration: BoxDecoration(
@@ -11938,43 +11743,36 @@ class SettingsScreen extends StatelessWidget {
                         SizedBox(height: gap16),
                         languageCard(),
                         SizedBox(height: gap16),
+
                         actionButton(title: 'Р РµР·РµСЂРІРЅР°СЏ РєРѕРїРёСЏ (JSON)', onTap: () => _backupToJson(context)),
                         SizedBox(height: gap8),
                         actionButton(title: 'Р’РѕСЃСЃС‚Р°РЅРѕРІРёС‚СЊ РёР· РєРѕРїРёРё', onTap: () => _restoreFromJson(context)),
                         SizedBox(height: gap8),
+
                         actionButton(title: l10n.clearData, onTap: () => _showClearDataDialog(context, l10n)),
                         SizedBox(height: gap8),
                         actionButton(
-                          title: l10n.export,
+                          title: '${l10n.export} (CSV)',
                           onTap: state.isExporting ? () {} : () => _showExportBottomSheet(context, l10n),
                         ),
                         SizedBox(height: gap8),
                         actionButton(
                           title: l10n.contactSupport,
-                          onTap: () async {
-                            await launchEmail(
-                              to: 'resistor.rs@gmail.com',
-                              subject: 'Pressure Diary вЂ” РѕР±СЂР°С‚РЅР°СЏ СЃРІСЏР·СЊ',
-                              body: 'РћРїРёС€РёС‚Рµ РїСЂРѕР±Р»РµРјСѓ РёР»Рё РїСЂРµРґР»РѕР¶РµРЅРёРµ.\n',
-                            );
-                          },
+                          onTap: () => context.read<SettingsCubit>().contactSupport(),
                         ),
                         SizedBox(height: gap8),
-                        actionButton(
-                          title: l10n.rateApp,
-                          onTap: () async {
-                            await rateApp(androidPackageName: 'com.dmitry.blood_pressure_diary');
-                          },
+                        actionButton(title: l10n.rateApp, onTap: () => context.read<SettingsCubit>().rateApp()),
+                        Padding(
+                          padding: EdgeInsets.only(top: gap16),
+                          child: Center(
+                            child: Text(
+                              '${l10n.versionLabel} ${state.appVersion ?? 'вЂ”'}',
+                              style: versionStyle,
+                            ),
+                          ),
                         ),
-                        SizedBox(height: gap8),
-                        actionButton(
-                          title: Localizations.localeOf(context).languageCode == 'ru'
-                              ? 'РџРѕР»РёС‚РёРєР° РєРѕРЅС„РёРґРµРЅС†РёР°Р»СЊРЅРѕСЃС‚Рё'
-                              : 'Privacy Policy',
-                          onTap: () => _showPrivacyPolicy(context, l10n),
-                        ),
-                        SizedBox(height: gap8),
-                        Center(child: Text(l10n.version('1.0.0'), style: versionStyle)),
+
+                        SizedBox(height: gap16),
                       ],
                     ),
                   ),
@@ -12036,6 +11834,37 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
+
+  Future<String?> _showLanguageSheet(BuildContext context, AppLocalizations l10n, String current) {
+    return showModalBottomSheet<String>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        Widget item(String code, String title) {
+          final selected = code == current;
+          return ListTile(
+            title: Text(title),
+            trailing: selected ? const Icon(Icons.check) : null,
+            onTap: () => Navigator.pop(ctx, code),
+          );
+        }
+
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              item('ru', 'Р СѓСЃСЃРєРёР№'),
+              item('en', 'English'),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   void _showExportBottomSheet(BuildContext context, AppLocalizations l10n) {
     showModalBottomSheet(
       context: context,
@@ -12053,21 +11882,17 @@ class SettingsScreen extends StatelessWidget {
             ListTile(
               leading: const Icon(Icons.picture_as_pdf_outlined),
               title: Text(l10n.exportPDF),
-              onTap: () async {
+              onTap: () {
                 Navigator.pop(context);
-                final days = await _showPdfPeriodSheet(context, l10n);
-                if (days == null || !context.mounted) return;
-                await Future.delayed(const Duration(milliseconds: 150));
-                await context.read<SettingsCubit>().exportData(ExportFormat.pdf, pdfPeriodDays: days);
+                context.read<SettingsCubit>().exportData(ExportFormat.pdf);
               },
             ),
             ListTile(
               leading: const Icon(Icons.description_outlined),
               title: Text(l10n.exportCSV),
-              onTap: () async {
+              onTap: () {
                 Navigator.pop(context);
-                await Future.delayed(const Duration(milliseconds: 150));
-                await context.read<SettingsCubit>().exportData(ExportFormat.csv);
+                context.read<SettingsCubit>().exportData(ExportFormat.csv);
               },
             ),
             const SizedBox(height: 8),
@@ -12252,269 +12077,365 @@ abstract class AppLocalizations {
     Locale('ru'),
   ];
 
-  /// No description provided for @settings.
+  /// No description provided for @backupJson.
   ///
   /// In ru, this message translates to:
-  /// **'РќР°СЃС‚СЂРѕР№РєРё'**
-  String get settings;
+  /// **'Р РµР·РµСЂРІРЅР°СЏ РєРѕРїРёСЏ (JSON)'**
+  String get backupJson;
 
-  /// No description provided for @selectLanguage.
+  /// No description provided for @restoreFromBackup.
   ///
   /// In ru, this message translates to:
-  /// **'Р’С‹Р±РѕСЂ СЏР·С‹РєР°'**
-  String get selectLanguage;
+  /// **'Р’РѕСЃСЃС‚Р°РЅРѕРІРёС‚СЊ РёР· РєРѕРїРёРё'**
+  String get restoreFromBackup;
 
-  /// No description provided for @appTitle.
+  /// No description provided for @restoreDialogTitle.
   ///
   /// In ru, this message translates to:
-  /// **'Р”РЅРµРІРЅРёРє РґР°РІР»РµРЅРёСЏ'**
-  String get appTitle;
+  /// **'Р’РѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёРµ РёР· РєРѕРїРёРё'**
+  String get restoreDialogTitle;
 
-  /// No description provided for @notifications.
+  /// No description provided for @restoreDialogBody.
   ///
   /// In ru, this message translates to:
-  /// **'РЈРІРµРґРѕРјР»РµРЅРёСЏ'**
-  String get notifications;
+  /// **'Р­С‚Рѕ РґРµР№СЃС‚РІРёРµ Р·Р°РјРµРЅРёС‚ РІСЃРµ С‚РµРєСѓС‰РёРµ РґР°РЅРЅС‹Рµ РїСЂРёР»РѕР¶РµРЅРёСЏ (РїСЂРѕС„РёР»СЊ, РЅР°СЃС‚СЂРѕР№РєРё Рё Р·Р°РїРёСЃРё РґР°РІР»РµРЅРёСЏ). РџСЂРѕРґРѕР»Р¶РёС‚СЊ?'**
+  String get restoreDialogBody;
 
-  /// No description provided for @clearData.
+  /// No description provided for @restoreAction.
   ///
   /// In ru, this message translates to:
-  /// **'РћС‡РёСЃС‚РёС‚СЊ РґР°РЅРЅС‹Рµ'**
-  String get clearData;
+  /// **'Р’РѕСЃСЃС‚Р°РЅРѕРІРёС‚СЊ'**
+  String get restoreAction;
 
-  /// No description provided for @aboutApp.
+  /// No description provided for @dataRestoredSnack.
   ///
   /// In ru, this message translates to:
-  /// **'Рћ РїСЂРёР»РѕР¶РµРЅРёРё'**
-  String get aboutApp;
+  /// **'Р”Р°РЅРЅС‹Рµ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅС‹'**
+  String get dataRestoredSnack;
 
-  /// No description provided for @version.
+  /// No description provided for @reminderMorning.
   ///
   /// In ru, this message translates to:
-  /// **'Р’РµСЂСЃРёСЏ {version}'**
-  String version(String version);
+  /// **'РЈС‚СЂРѕ'**
+  String get reminderMorning;
 
-  /// No description provided for @functionInDevelopment.
+  /// No description provided for @reminderEvening.
   ///
   /// In ru, this message translates to:
-  /// **'Р¤СѓРЅРєС†РёСЏ РІ СЂР°Р·СЂР°Р±РѕС‚РєРµ'**
-  String get functionInDevelopment;
+  /// **'Р’РµС‡РµСЂ'**
+  String get reminderEvening;
 
-  /// No description provided for @deleteRecordQ.
+  /// No description provided for @reminderTime.
   ///
   /// In ru, this message translates to:
-  /// **'РЈРґР°Р»РёС‚СЊ Р·Р°РїРёСЃСЊ?'**
-  String get deleteRecordQ;
+  /// **'Р’СЂРµРјСЏ'**
+  String get reminderTime;
 
-  /// No description provided for @cannotUndo.
+  /// No description provided for @languageRu.
   ///
   /// In ru, this message translates to:
-  /// **'Р­С‚Рѕ РґРµР№СЃС‚РІРёРµ РЅРµР»СЊР·СЏ РѕС‚РјРµРЅРёС‚СЊ.'**
-  String get cannotUndo;
+  /// **'Р СѓСЃСЃРєРёР№'**
+  String get languageRu;
 
-  /// No description provided for @cancel.
+  /// No description provided for @languageEn.
   ///
   /// In ru, this message translates to:
-  /// **'РћС‚РјРµРЅР°'**
-  String get cancel;
+  /// **'English'**
+  String get languageEn;
 
-  /// No description provided for @delete.
+  /// No description provided for @noRecordsForPeriod.
   ///
   /// In ru, this message translates to:
-  /// **'РЈРґР°Р»РёС‚СЊ'**
-  String get delete;
+  /// **'РќРµС‚ Р·Р°РїРёСЃРµР№ Р·Р° РІС‹Р±СЂР°РЅРЅС‹Р№ РїРµСЂРёРѕРґ'**
+  String get noRecordsForPeriod;
 
-  /// No description provided for @theme.
+  /// No description provided for @noDataForPeriod.
   ///
   /// In ru, this message translates to:
-  /// **'РўРµРјР°'**
-  String get theme;
+  /// **'РќРµС‚ РґР°РЅРЅС‹С… Р·Р° СЌС‚РѕС‚ РїРµСЂРёРѕРґ'**
+  String get noDataForPeriod;
 
-  /// No description provided for @language.
+  /// No description provided for @noData.
   ///
   /// In ru, this message translates to:
-  /// **'РЇР·С‹Рє'**
-  String get language;
+  /// **'РќРµС‚ РґР°РЅРЅС‹С…'**
+  String get noData;
 
-  /// No description provided for @light.
+  /// No description provided for @chartsTitle.
   ///
   /// In ru, this message translates to:
-  /// **'РЎРІРµС‚Р»Р°СЏ'**
-  String get light;
+  /// **'Р“СЂР°С„РёРєРё'**
+  String get chartsTitle;
 
-  /// No description provided for @dark.
+  /// No description provided for @tabPressure.
   ///
   /// In ru, this message translates to:
-  /// **'РўРµРјРЅР°СЏ'**
-  String get dark;
+  /// **'Р”Р°РІР»РµРЅРёРµ'**
+  String get tabPressure;
 
-  /// No description provided for @system.
+  /// No description provided for @tabPulse.
   ///
   /// In ru, this message translates to:
-  /// **'РЎРёСЃС‚РµРјРЅР°СЏ'**
-  String get system;
+  /// **'РџСѓР»СЊСЃ'**
+  String get tabPulse;
 
-  /// No description provided for @reminders.
+  /// No description provided for @periodWeek.
   ///
   /// In ru, this message translates to:
-  /// **'РќР°РїРѕРјРёРЅР°РЅРёСЏ'**
-  String get reminders;
+  /// **'РќРµРґРµР»СЏ'**
+  String get periodWeek;
 
-  /// No description provided for @addReminder.
+  /// No description provided for @periodMonth.
   ///
   /// In ru, this message translates to:
-  /// **'Р”РѕР±Р°РІРёС‚СЊ РІСЂРµРјСЏ'**
-  String get addReminder;
+  /// **'РњРµСЃСЏС†'**
+  String get periodMonth;
 
-  /// No description provided for @clearDataConfirm.
+  /// No description provided for @periodAll.
   ///
   /// In ru, this message translates to:
-  /// **'Р’С‹ СѓРІРµСЂРµРЅС‹, С‡С‚Рѕ С…РѕС‚РёС‚Рµ СѓРґР°Р»РёС‚СЊ РІСЃРµ Р·Р°РїРёСЃРё? Р­С‚Рѕ РґРµР№СЃС‚РІРёРµ РЅРµР»СЊР·СЏ РѕС‚РјРµРЅРёС‚СЊ.'**
-  String get clearDataConfirm;
+  /// **'Р’СЃРµ'**
+  String get periodAll;
 
-  /// No description provided for @yes.
+  /// No description provided for @avgLabel.
   ///
   /// In ru, this message translates to:
-  /// **'Р”Р°'**
-  String get yes;
+  /// **'РЎСЂРµРґРЅРµРµ:'**
+  String get avgLabel;
 
-  /// No description provided for @no.
+  /// No description provided for @maxLabelShort.
   ///
   /// In ru, this message translates to:
-  /// **'РќРµС‚'**
-  String get no;
+  /// **'РњР°РєСЃ.:'**
+  String get maxLabelShort;
 
-  /// No description provided for @export.
+  /// No description provided for @minLabelShort.
   ///
   /// In ru, this message translates to:
-  /// **'Р­РєСЃРїРѕСЂС‚ РґР°РЅРЅС‹С…'**
-  String get export;
+  /// **'РњРёРЅ.:'**
+  String get minLabelShort;
 
-  /// No description provided for @exportCSV.
+  /// No description provided for @bpmUnit.
   ///
   /// In ru, this message translates to:
-  /// **'CSV РўР°Р±Р»РёС†Р°'**
-  String get exportCSV;
+  /// **'СѓРґ/РјРёРЅ'**
+  String get bpmUnit;
 
-  /// No description provided for @exportPDF.
+  /// No description provided for @tagHeader.
   ///
   /// In ru, this message translates to:
-  /// **'PDF РћС‚С‡РµС‚'**
-  String get exportPDF;
+  /// **'РўРµРіРё'**
+  String get tagHeader;
 
-  /// No description provided for @contactSupport.
+  /// No description provided for @tagHeaderWithCount.
   ///
   /// In ru, this message translates to:
-  /// **'РќР°РїРёСЃР°С‚СЊ РЅР°Рј'**
-  String get contactSupport;
+  /// **'РўРµРіРё ({count})'**
+  String tagHeaderWithCount(int count);
 
-  /// No description provided for @rateApp.
+  /// No description provided for @tagAfterCoffee.
   ///
   /// In ru, this message translates to:
-  /// **'РћС†РµРЅРёС‚СЊ РїСЂРёР»РѕР¶РµРЅРёРµ'**
-  String get rateApp;
+  /// **'РџРѕСЃР»Рµ РєРѕС„Рµ'**
+  String get tagAfterCoffee;
 
-  /// No description provided for @supportEmail.
+  /// No description provided for @tagAlcohol.
   ///
   /// In ru, this message translates to:
-  /// **'your_email@mail.com'**
-  String get supportEmail;
+  /// **'РђР»РєРѕРіРѕР»СЊ'**
+  String get tagAlcohol;
 
-  /// No description provided for @profile.
+  /// No description provided for @tagAfterMeal.
   ///
   /// In ru, this message translates to:
-  /// **'РџСЂРѕС„РёР»СЊ'**
-  String get profile;
+  /// **'РџРѕСЃР»Рµ РµРґС‹'**
+  String get tagAfterMeal;
 
-  /// No description provided for @name.
+  /// No description provided for @tagAfterWalk.
   ///
   /// In ru, this message translates to:
-  /// **'РРјСЏ'**
-  String get name;
+  /// **'РџРѕСЃР»Рµ РїСЂРѕРіСѓР»РєРё'**
+  String get tagAfterWalk;
 
-  /// No description provided for @age.
+  /// No description provided for @tagAfterTraining.
   ///
   /// In ru, this message translates to:
-  /// **'Р’РѕР·СЂР°СЃС‚'**
-  String get age;
+  /// **'РџРѕСЃР»Рµ С‚СЂРµРЅРёСЂРѕРІРєРё'**
+  String get tagAfterTraining;
 
-  /// No description provided for @gender.
+  /// No description provided for @tagStress.
   ///
   /// In ru, this message translates to:
-  /// **'РџРѕР»'**
-  String get gender;
+  /// **'РЎС‚СЂРµСЃСЃ'**
+  String get tagStress;
 
-  /// No description provided for @weight.
+  /// No description provided for @tagBadSleep.
   ///
   /// In ru, this message translates to:
-  /// **'Р’РµСЃ'**
-  String get weight;
+  /// **'РџР»РѕС…РѕР№ СЃРѕРЅ'**
+  String get tagBadSleep;
 
-  /// No description provided for @male.
+  /// No description provided for @tagHeadache.
   ///
   /// In ru, this message translates to:
-  /// **'РњСѓР¶СЃРєРѕР№'**
-  String get male;
+  /// **'Р“РѕР»РѕРІРЅР°СЏ Р±РѕР»СЊ'**
+  String get tagHeadache;
 
-  /// No description provided for @female.
+  /// No description provided for @tagTookMeds.
   ///
   /// In ru, this message translates to:
-  /// **'Р–РµРЅСЃРєРёР№'**
-  String get female;
+  /// **'РџСЂРёРЅСЏР» Р»РµРєР°СЂСЃС‚РІРѕ'**
+  String get tagTookMeds;
 
-  /// No description provided for @other.
+  /// No description provided for @tagMissedDose.
   ///
   /// In ru, this message translates to:
-  /// **'Р”СЂСѓРіРѕР№'**
-  String get other;
+  /// **'РџСЂРѕРїСѓСЃС‚РёР» РїСЂРёС‘Рј'**
+  String get tagMissedDose;
 
-  /// No description provided for @myGoal.
+  /// No description provided for @bpLevelLow.
   ///
   /// In ru, this message translates to:
-  /// **'РњРѕСЏ С†РµР»СЊ'**
-  String get myGoal;
+  /// **'РџРѕРЅРёР¶РµРЅРѕ'**
+  String get bpLevelLow;
 
-  /// No description provided for @targetPressure.
+  /// No description provided for @bpLevelNormal.
   ///
   /// In ru, this message translates to:
-  /// **'Р¦РµР»РµРІРѕРµ РґР°РІР»РµРЅРёРµ'**
-  String get targetPressure;
+  /// **'РќРѕСЂРјР°'**
+  String get bpLevelNormal;
 
-  /// No description provided for @systolic.
+  /// No description provided for @bpLevelElevated.
   ///
   /// In ru, this message translates to:
-  /// **'РЎРёСЃС‚РѕР»РёС‡РµСЃРєРѕРµ'**
-  String get systolic;
+  /// **'РџРѕРІС‹С€РµРЅРѕ'**
+  String get bpLevelElevated;
 
-  /// No description provided for @diastolic.
+  /// No description provided for @bpLevelHtn1.
   ///
   /// In ru, this message translates to:
-  /// **'Р”РёР°СЃС‚РѕР»РёС‡РµСЃРєРѕРµ'**
-  String get diastolic;
+  /// **'Р“РёРїРµСЂС‚РѕРЅРёСЏ 1'**
+  String get bpLevelHtn1;
 
-  /// No description provided for @premium.
+  /// No description provided for @bpLevelHtn2.
   ///
   /// In ru, this message translates to:
-  /// **'РџСЂРµРјРёСѓРј'**
-  String get premium;
+  /// **'Р“РёРїРµСЂС‚РѕРЅРёСЏ 2'**
+  String get bpLevelHtn2;
 
-  /// No description provided for @oneTimePayment.
+  /// No description provided for @bpLevelCrisis.
   ///
   /// In ru, this message translates to:
-  /// **'Р Р°Р·РѕРІС‹Р№ РїР»Р°С‚РµР¶ 2,99 в‚¬'**
-  String get oneTimePayment;
+  /// **'РљСЂРёР·РёСЃ'**
+  String get bpLevelCrisis;
 
-  /// No description provided for @buyPremium.
+  /// No description provided for @notifTitleMeasureNow.
   ///
   /// In ru, this message translates to:
-  /// **'РљСѓРїРёС‚СЊ РџСЂРµРјРёСѓРј'**
-  String get buyPremium;
+  /// **'РџРѕСЂР° РёР·РјРµСЂРёС‚СЊ РґР°РІР»РµРЅРёРµ'**
+  String get notifTitleMeasureNow;
 
-  /// No description provided for @save.
+  /// No description provided for @notifBodyDontForget.
   ///
   /// In ru, this message translates to:
-  /// **'РЎРѕС…СЂР°РЅРёС‚СЊ'**
-  String get save;
+  /// **'РќРµ Р·Р°Р±СѓРґСЊС‚Рµ РІРЅРµСЃС‚Рё РґР°РЅРЅС‹Рµ РІ РґРЅРµРІРЅРёРє РґР»СЏ РєРѕРЅС‚СЂРѕР»СЏ Р·РґРѕСЂРѕРІСЊСЏ.'**
+  String get notifBodyDontForget;
+
+  /// No description provided for @notifChannelName.
+  ///
+  /// In ru, this message translates to:
+  /// **'РќР°РїРѕРјРёРЅР°РЅРёСЏ Рѕ РґР°РІР»РµРЅРёРё'**
+  String get notifChannelName;
+
+  /// No description provided for @notifChannelDescription.
+  ///
+  /// In ru, this message translates to:
+  /// **'Р•Р¶РµРґРЅРµРІРЅС‹Рµ СѓРІРµРґРѕРјР»РµРЅРёСЏ Рѕ РЅРµРѕР±С…РѕРґРёРјРѕСЃС‚Рё Р·Р°РјРµСЂР° РґР°РІР»РµРЅРёСЏ'**
+  String get notifChannelDescription;
+
+  /// No description provided for @profileAccount.
+  ///
+  /// In ru, this message translates to:
+  /// **'РђРєРєР°СѓРЅС‚'**
+  String get profileAccount;
+
+  /// No description provided for @profileConnect.
+  ///
+  /// In ru, this message translates to:
+  /// **'РџРѕРґРєР»СЋС‡РёС‚СЊ'**
+  String get profileConnect;
+
+  /// No description provided for @profileNotSignedIn.
+  ///
+  /// In ru, this message translates to:
+  /// **'Р’С‹ РЅРµ РІРѕС€Р»Рё РІ Р°РєРєР°СѓРЅС‚'**
+  String get profileNotSignedIn;
+
+  /// No description provided for @profileSignIn.
+  ///
+  /// In ru, this message translates to:
+  /// **'Р’РѕР№С‚Рё'**
+  String get profileSignIn;
+
+  /// No description provided for @profileLinked.
+  ///
+  /// In ru, this message translates to:
+  /// **'РђРєРєР°СѓРЅС‚ РїРѕРґРєР»СЋС‡РµРЅ'**
+  String get profileLinked;
+
+  /// No description provided for @profileSignOut.
+  ///
+  /// In ru, this message translates to:
+  /// **'Р’С‹Р№С‚Рё'**
+  String get profileSignOut;
+
+  /// No description provided for @profileChooseSignIn.
+  ///
+  /// In ru, this message translates to:
+  /// **'Р’С‹Р±РµСЂРёС‚Рµ СЃРїРѕСЃРѕР± РІС…РѕРґР°'**
+  String get profileChooseSignIn;
+
+  /// No description provided for @profileSystolicLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Р’РµСЂС…РЅРµРµ'**
+  String get profileSystolicLabel;
+
+  /// No description provided for @profileDiastolicLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'РќРёР¶РЅРµРµ'**
+  String get profileDiastolicLabel;
+
+  /// No description provided for @premiumRemoveAds.
+  ///
+  /// In ru, this message translates to:
+  /// **'РЈР±СЂР°С‚СЊ СЂРµРєР»Р°РјСѓ'**
+  String get premiumRemoveAds;
+
+  /// No description provided for @premiumSubtitleOneTime.
+  ///
+  /// In ru, this message translates to:
+  /// **'Р Р°Р·РѕРІС‹Р№ РїР»Р°С‚РµР¶ 2,99 в‚¬ -  РЅР°РІСЃРµРіРґР°'**
+  String get premiumSubtitleOneTime;
+
+  /// No description provided for @dobLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Р”Р°С‚Р° СЂРѕР¶РґРµРЅРёСЏ'**
+  String get dobLabel;
+
+  /// No description provided for @genderShortMale.
+  ///
+  /// In ru, this message translates to:
+  /// **'РњСѓР¶.'**
+  String get genderShortMale;
+
+  /// No description provided for @genderShortFemale.
+  ///
+  /// In ru, this message translates to:
+  /// **'Р–РµРЅ.'**
+  String get genderShortFemale;
 }
 
 class _AppLocalizationsDelegate
@@ -12561,139 +12482,189 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
-  String get settings => 'Settings';
+  String get backupJson => 'Backup (JSON)';
 
   @override
-  String get selectLanguage => 'Select Language';
+  String get restoreFromBackup => 'Restore from backup';
 
   @override
-  String get appTitle => 'Blood Pressure Diary';
+  String get restoreDialogTitle => 'Restore from backup';
 
   @override
-  String get notifications => 'Notifications';
+  String get restoreDialogBody =>
+      'This action will replace all current app data (profile, settings, and pressure records). Continue?';
 
   @override
-  String get clearData => 'Clear Data';
+  String get restoreAction => 'Restore';
 
   @override
-  String get aboutApp => 'About App';
+  String get dataRestoredSnack => 'Data restored';
 
   @override
-  String version(String version) {
-    return 'Version $version';
+  String get reminderMorning => 'Morning';
+
+  @override
+  String get reminderEvening => 'Evening';
+
+  @override
+  String get reminderTime => 'Time';
+
+  @override
+  String get languageRu => 'Russian';
+
+  @override
+  String get languageEn => 'English';
+
+  @override
+  String get noRecordsForPeriod => 'No records for the selected period';
+
+  @override
+  String get noDataForPeriod => 'No data for this period';
+
+  @override
+  String get noData => 'No data';
+
+  @override
+  String get chartsTitle => 'Charts';
+
+  @override
+  String get tabPressure => 'Pressure';
+
+  @override
+  String get tabPulse => 'Pulse';
+
+  @override
+  String get periodWeek => 'Week';
+
+  @override
+  String get periodMonth => 'Month';
+
+  @override
+  String get periodAll => 'All';
+
+  @override
+  String get avgLabel => 'Avg:';
+
+  @override
+  String get maxLabelShort => 'Max:';
+
+  @override
+  String get minLabelShort => 'Min:';
+
+  @override
+  String get bpmUnit => 'bpm';
+
+  @override
+  String get tagHeader => 'Tags';
+
+  @override
+  String tagHeaderWithCount(int count) {
+    return 'Tags ($count)';
   }
 
   @override
-  String get functionInDevelopment => 'Function in development';
+  String get tagAfterCoffee => 'After coffee';
 
   @override
-  String get deleteRecordQ => 'Delete record?';
+  String get tagAlcohol => 'Alcohol';
 
   @override
-  String get cannotUndo => 'This action cannot be undone.';
+  String get tagAfterMeal => 'After meal';
 
   @override
-  String get cancel => 'Cancel';
+  String get tagAfterWalk => 'After walk';
 
   @override
-  String get delete => 'Delete';
+  String get tagAfterTraining => 'After workout';
 
   @override
-  String get theme => 'Theme';
+  String get tagStress => 'Stress';
 
   @override
-  String get language => 'РЇР·С‹Рє';
+  String get tagBadSleep => 'Poor sleep';
 
   @override
-  String get light => 'Light';
+  String get tagHeadache => 'Headache';
 
   @override
-  String get dark => 'Dark';
+  String get tagTookMeds => 'Took meds';
 
   @override
-  String get system => 'System';
+  String get tagMissedDose => 'Missed dose';
 
   @override
-  String get reminders => 'Reminders';
+  String get bpLevelLow => 'Low';
 
   @override
-  String get addReminder => 'Add time';
+  String get bpLevelNormal => 'Normal';
 
   @override
-  String get clearDataConfirm =>
-      'Are you sure you want to delete all records? This action cannot be undone.';
+  String get bpLevelElevated => 'Elevated';
 
   @override
-  String get yes => 'Yes';
+  String get bpLevelHtn1 => 'Hypertension 1';
 
   @override
-  String get no => 'No';
+  String get bpLevelHtn2 => 'Hypertension 2';
 
   @override
-  String get export => 'Export Data';
+  String get bpLevelCrisis => 'Crisis';
 
   @override
-  String get exportCSV => 'CSV Spreadsheet';
+  String get notifTitleMeasureNow => 'Time to measure blood pressure';
 
   @override
-  String get exportPDF => 'PDF Report';
+  String get notifBodyDontForget =>
+      'DonвЂ™t forget to log your measurements to track your health.';
 
   @override
-  String get contactSupport => 'Contact Support';
+  String get notifChannelName => 'Blood pressure reminders';
 
   @override
-  String get rateApp => 'Rate App';
+  String get notifChannelDescription =>
+      'Daily reminders to measure blood pressure';
 
   @override
-  String get supportEmail => 'your_email@mail.com';
+  String get profileAccount => 'Account';
 
   @override
-  String get profile => 'Profile';
+  String get profileConnect => 'Connect';
 
   @override
-  String get name => 'Name';
+  String get profileNotSignedIn => 'You are not signed in';
 
   @override
-  String get age => 'Age';
+  String get profileSignIn => 'Sign in';
 
   @override
-  String get gender => 'Gender';
+  String get profileLinked => 'Account connected';
 
   @override
-  String get weight => 'Weight';
+  String get profileSignOut => 'Sign out';
 
   @override
-  String get male => 'Male';
+  String get profileChooseSignIn => 'Choose a sign-in method';
 
   @override
-  String get female => 'Female';
+  String get profileSystolicLabel => 'Systolic';
 
   @override
-  String get other => 'Other';
+  String get profileDiastolicLabel => 'Diastolic';
 
   @override
-  String get myGoal => 'My Goal';
+  String get premiumRemoveAds => 'Remove ads';
 
   @override
-  String get targetPressure => 'Target Pressure';
+  String get premiumSubtitleOneTime => 'One-time payment в‚¬2.99 вЂ” forever';
 
   @override
-  String get systolic => 'Systolic';
+  String get dobLabel => 'Date of birth';
 
   @override
-  String get diastolic => 'Diastolic';
+  String get genderShortMale => 'M';
 
   @override
-  String get premium => 'Premium';
-
-  @override
-  String get oneTimePayment => 'One-time payment 2,99 в‚¬';
-
-  @override
-  String get buyPremium => 'Buy Premium';
-
-  @override
-  String get save => 'Save';
+  String get genderShortFemale => 'F';
 }
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
@@ -12706,139 +12677,189 @@ class AppLocalizationsRu extends AppLocalizations {
   AppLocalizationsRu([String locale = 'ru']) : super(locale);
 
   @override
-  String get settings => 'РќР°СЃС‚СЂРѕР№РєРё';
+  String get backupJson => 'Р РµР·РµСЂРІРЅР°СЏ РєРѕРїРёСЏ (JSON)';
 
   @override
-  String get selectLanguage => 'Р’С‹Р±РѕСЂ СЏР·С‹РєР°';
+  String get restoreFromBackup => 'Р’РѕСЃСЃС‚Р°РЅРѕРІРёС‚СЊ РёР· РєРѕРїРёРё';
 
   @override
-  String get appTitle => 'Р”РЅРµРІРЅРёРє РґР°РІР»РµРЅРёСЏ';
+  String get restoreDialogTitle => 'Р’РѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёРµ РёР· РєРѕРїРёРё';
 
   @override
-  String get notifications => 'РЈРІРµРґРѕРјР»РµРЅРёСЏ';
+  String get restoreDialogBody =>
+      'Р­С‚Рѕ РґРµР№СЃС‚РІРёРµ Р·Р°РјРµРЅРёС‚ РІСЃРµ С‚РµРєСѓС‰РёРµ РґР°РЅРЅС‹Рµ РїСЂРёР»РѕР¶РµРЅРёСЏ (РїСЂРѕС„РёР»СЊ, РЅР°СЃС‚СЂРѕР№РєРё Рё Р·Р°РїРёСЃРё РґР°РІР»РµРЅРёСЏ). РџСЂРѕРґРѕР»Р¶РёС‚СЊ?';
 
   @override
-  String get clearData => 'РћС‡РёСЃС‚РёС‚СЊ РґР°РЅРЅС‹Рµ';
+  String get restoreAction => 'Р’РѕСЃСЃС‚Р°РЅРѕРІРёС‚СЊ';
 
   @override
-  String get aboutApp => 'Рћ РїСЂРёР»РѕР¶РµРЅРёРё';
+  String get dataRestoredSnack => 'Р”Р°РЅРЅС‹Рµ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅС‹';
 
   @override
-  String version(String version) {
-    return 'Р’РµСЂСЃРёСЏ $version';
+  String get reminderMorning => 'РЈС‚СЂРѕ';
+
+  @override
+  String get reminderEvening => 'Р’РµС‡РµСЂ';
+
+  @override
+  String get reminderTime => 'Р’СЂРµРјСЏ';
+
+  @override
+  String get languageRu => 'Р СѓСЃСЃРєРёР№';
+
+  @override
+  String get languageEn => 'English';
+
+  @override
+  String get noRecordsForPeriod => 'РќРµС‚ Р·Р°РїРёСЃРµР№ Р·Р° РІС‹Р±СЂР°РЅРЅС‹Р№ РїРµСЂРёРѕРґ';
+
+  @override
+  String get noDataForPeriod => 'РќРµС‚ РґР°РЅРЅС‹С… Р·Р° СЌС‚РѕС‚ РїРµСЂРёРѕРґ';
+
+  @override
+  String get noData => 'РќРµС‚ РґР°РЅРЅС‹С…';
+
+  @override
+  String get chartsTitle => 'Р“СЂР°С„РёРєРё';
+
+  @override
+  String get tabPressure => 'Р”Р°РІР»РµРЅРёРµ';
+
+  @override
+  String get tabPulse => 'РџСѓР»СЊСЃ';
+
+  @override
+  String get periodWeek => 'РќРµРґРµР»СЏ';
+
+  @override
+  String get periodMonth => 'РњРµСЃСЏС†';
+
+  @override
+  String get periodAll => 'Р’СЃРµ';
+
+  @override
+  String get avgLabel => 'РЎСЂРµРґРЅРµРµ:';
+
+  @override
+  String get maxLabelShort => 'РњР°РєСЃ.:';
+
+  @override
+  String get minLabelShort => 'РњРёРЅ.:';
+
+  @override
+  String get bpmUnit => 'СѓРґ/РјРёРЅ';
+
+  @override
+  String get tagHeader => 'РўРµРіРё';
+
+  @override
+  String tagHeaderWithCount(int count) {
+    return 'РўРµРіРё ($count)';
   }
 
   @override
-  String get functionInDevelopment => 'Р¤СѓРЅРєС†РёСЏ РІ СЂР°Р·СЂР°Р±РѕС‚РєРµ';
+  String get tagAfterCoffee => 'РџРѕСЃР»Рµ РєРѕС„Рµ';
 
   @override
-  String get deleteRecordQ => 'РЈРґР°Р»РёС‚СЊ Р·Р°РїРёСЃСЊ?';
+  String get tagAlcohol => 'РђР»РєРѕРіРѕР»СЊ';
 
   @override
-  String get cannotUndo => 'Р­С‚Рѕ РґРµР№СЃС‚РІРёРµ РЅРµР»СЊР·СЏ РѕС‚РјРµРЅРёС‚СЊ.';
+  String get tagAfterMeal => 'РџРѕСЃР»Рµ РµРґС‹';
 
   @override
-  String get cancel => 'РћС‚РјРµРЅР°';
+  String get tagAfterWalk => 'РџРѕСЃР»Рµ РїСЂРѕРіСѓР»РєРё';
 
   @override
-  String get delete => 'РЈРґР°Р»РёС‚СЊ';
+  String get tagAfterTraining => 'РџРѕСЃР»Рµ С‚СЂРµРЅРёСЂРѕРІРєРё';
 
   @override
-  String get theme => 'РўРµРјР°';
+  String get tagStress => 'РЎС‚СЂРµСЃСЃ';
 
   @override
-  String get language => 'РЇР·С‹Рє';
+  String get tagBadSleep => 'РџР»РѕС…РѕР№ СЃРѕРЅ';
 
   @override
-  String get light => 'РЎРІРµС‚Р»Р°СЏ';
+  String get tagHeadache => 'Р“РѕР»РѕРІРЅР°СЏ Р±РѕР»СЊ';
 
   @override
-  String get dark => 'РўРµРјРЅР°СЏ';
+  String get tagTookMeds => 'РџСЂРёРЅСЏР» Р»РµРєР°СЂСЃС‚РІРѕ';
 
   @override
-  String get system => 'РЎРёСЃС‚РµРјРЅР°СЏ';
+  String get tagMissedDose => 'РџСЂРѕРїСѓСЃС‚РёР» РїСЂРёС‘Рј';
 
   @override
-  String get reminders => 'РќР°РїРѕРјРёРЅР°РЅРёСЏ';
+  String get bpLevelLow => 'РџРѕРЅРёР¶РµРЅРѕ';
 
   @override
-  String get addReminder => 'Р”РѕР±Р°РІРёС‚СЊ РІСЂРµРјСЏ';
+  String get bpLevelNormal => 'РќРѕСЂРјР°';
 
   @override
-  String get clearDataConfirm =>
-      'Р’С‹ СѓРІРµСЂРµРЅС‹, С‡С‚Рѕ С…РѕС‚РёС‚Рµ СѓРґР°Р»РёС‚СЊ РІСЃРµ Р·Р°РїРёСЃРё? Р­С‚Рѕ РґРµР№СЃС‚РІРёРµ РЅРµР»СЊР·СЏ РѕС‚РјРµРЅРёС‚СЊ.';
+  String get bpLevelElevated => 'РџРѕРІС‹С€РµРЅРѕ';
 
   @override
-  String get yes => 'Р”Р°';
+  String get bpLevelHtn1 => 'Р“РёРїРµСЂС‚РѕРЅРёСЏ 1';
 
   @override
-  String get no => 'РќРµС‚';
+  String get bpLevelHtn2 => 'Р“РёРїРµСЂС‚РѕРЅРёСЏ 2';
 
   @override
-  String get export => 'Р­РєСЃРїРѕСЂС‚ РґР°РЅРЅС‹С…';
+  String get bpLevelCrisis => 'РљСЂРёР·РёСЃ';
 
   @override
-  String get exportCSV => 'CSV РўР°Р±Р»РёС†Р°';
+  String get notifTitleMeasureNow => 'РџРѕСЂР° РёР·РјРµСЂРёС‚СЊ РґР°РІР»РµРЅРёРµ';
 
   @override
-  String get exportPDF => 'PDF РћС‚С‡РµС‚';
+  String get notifBodyDontForget =>
+      'РќРµ Р·Р°Р±СѓРґСЊС‚Рµ РІРЅРµСЃС‚Рё РґР°РЅРЅС‹Рµ РІ РґРЅРµРІРЅРёРє РґР»СЏ РєРѕРЅС‚СЂРѕР»СЏ Р·РґРѕСЂРѕРІСЊСЏ.';
 
   @override
-  String get contactSupport => 'РќР°РїРёСЃР°С‚СЊ РЅР°Рј';
+  String get notifChannelName => 'РќР°РїРѕРјРёРЅР°РЅРёСЏ Рѕ РґР°РІР»РµРЅРёРё';
 
   @override
-  String get rateApp => 'РћС†РµРЅРёС‚СЊ РїСЂРёР»РѕР¶РµРЅРёРµ';
+  String get notifChannelDescription =>
+      'Р•Р¶РµРґРЅРµРІРЅС‹Рµ СѓРІРµРґРѕРјР»РµРЅРёСЏ Рѕ РЅРµРѕР±С…РѕРґРёРјРѕСЃС‚Рё Р·Р°РјРµСЂР° РґР°РІР»РµРЅРёСЏ';
 
   @override
-  String get supportEmail => 'your_email@mail.com';
+  String get profileAccount => 'РђРєРєР°СѓРЅС‚';
 
   @override
-  String get profile => 'РџСЂРѕС„РёР»СЊ';
+  String get profileConnect => 'РџРѕРґРєР»СЋС‡РёС‚СЊ';
 
   @override
-  String get name => 'РРјСЏ';
+  String get profileNotSignedIn => 'Р’С‹ РЅРµ РІРѕС€Р»Рё РІ Р°РєРєР°СѓРЅС‚';
 
   @override
-  String get age => 'Р’РѕР·СЂР°СЃС‚';
+  String get profileSignIn => 'Р’РѕР№С‚Рё';
 
   @override
-  String get gender => 'РџРѕР»';
+  String get profileLinked => 'РђРєРєР°СѓРЅС‚ РїРѕРґРєР»СЋС‡РµРЅ';
 
   @override
-  String get weight => 'Р’РµСЃ';
+  String get profileSignOut => 'Р’С‹Р№С‚Рё';
 
   @override
-  String get male => 'РњСѓР¶СЃРєРѕР№';
+  String get profileChooseSignIn => 'Р’С‹Р±РµСЂРёС‚Рµ СЃРїРѕСЃРѕР± РІС…РѕРґР°';
 
   @override
-  String get female => 'Р–РµРЅСЃРєРёР№';
+  String get profileSystolicLabel => 'Р’РµСЂС…РЅРµРµ';
 
   @override
-  String get other => 'Р”СЂСѓРіРѕР№';
+  String get profileDiastolicLabel => 'РќРёР¶РЅРµРµ';
 
   @override
-  String get myGoal => 'РњРѕСЏ С†РµР»СЊ';
+  String get premiumRemoveAds => 'РЈР±СЂР°С‚СЊ СЂРµРєР»Р°РјСѓ';
 
   @override
-  String get targetPressure => 'Р¦РµР»РµРІРѕРµ РґР°РІР»РµРЅРёРµ';
+  String get premiumSubtitleOneTime => 'Р Р°Р·РѕРІС‹Р№ РїР»Р°С‚РµР¶ 2,99 в‚¬ -  РЅР°РІСЃРµРіРґР°';
 
   @override
-  String get systolic => 'РЎРёСЃС‚РѕР»РёС‡РµСЃРєРѕРµ';
+  String get dobLabel => 'Р”Р°С‚Р° СЂРѕР¶РґРµРЅРёСЏ';
 
   @override
-  String get diastolic => 'Р”РёР°СЃС‚РѕР»РёС‡РµСЃРєРѕРµ';
+  String get genderShortMale => 'РњСѓР¶.';
 
   @override
-  String get premium => 'РџСЂРµРјРёСѓРј';
-
-  @override
-  String get oneTimePayment => 'Р Р°Р·РѕРІС‹Р№ РїР»Р°С‚РµР¶ 2,99 в‚¬';
-
-  @override
-  String get buyPremium => 'РљСѓРїРёС‚СЊ РџСЂРµРјРёСѓРј';
-
-  @override
-  String get save => 'РЎРѕС…СЂР°РЅРёС‚СЊ';
+  String get genderShortFemale => 'Р–РµРЅ.';
 }
 import 'package:flutter/material.dart';
 import 'package:intl/date_symbol_data_local.dart';
