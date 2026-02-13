@@ -11,8 +11,7 @@ import 'bloc/profile_state.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
-
-  String _providerTitle(String provider) {
+  String _providerTitle(BuildContext context, String provider) {
     switch (provider) {
       case 'google':
         return 'Google';
@@ -21,7 +20,8 @@ class ProfileScreen extends StatelessWidget {
       case 'email':
         return 'Email';
       default:
-        return provider.isEmpty ? 'Аккаунт' : provider;
+        final l10n = AppLocalizations.of(context)!;
+        return provider.isEmpty ? l10n.account : provider;
     }
   }
 
@@ -257,7 +257,7 @@ class ProfileScreen extends StatelessWidget {
                       padding: EdgeInsets.only(left: labelLeftPad),
                       child: Align(
                         alignment: Alignment.centerLeft,
-                        child: Text('Верхнее', style: valueStyle),
+                        child: Text(l10n.systolic, style: valueStyle),
                       ),
                     ),
                   ),
@@ -275,7 +275,7 @@ class ProfileScreen extends StatelessWidget {
                       padding: EdgeInsets.only(left: labelLeftPad),
                       child: Align(
                         alignment: Alignment.centerLeft,
-                        child: Text('Нижнее', style: valueStyle),
+                        child: Text(l10n.diastolic, style: valueStyle),
                       ),
                     ),
                   ),
@@ -364,7 +364,7 @@ class ProfileScreen extends StatelessWidget {
                       SizedBox(
                         width: double.infinity,
                         child: _primaryButton(
-                          title: 'Подключить',
+                          title: l10n.link,
                           bg: isDark ? AppPalette.dark900 : AppPalette.blue900,
                           fg: isDark ? colors.textPrimary : colors.textOnBrand,
                           onTap: () {
@@ -444,7 +444,7 @@ class ProfileScreen extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text('Имя', style: labelStyle),
+                      Text(l10n.name, style: labelStyle),
                       SizedBox(height: dp(context, space.s8)),
                       TextField(
                         controller: controller,
@@ -466,7 +466,7 @@ class ProfileScreen extends StatelessWidget {
                           context.read<ProfileCubit>().updateProfile(name: v);
                           Navigator.of(ctx).pop();
                         },
-                        child: const Text('Сохранить'),
+                        child: Text(l10n.save),
                       ),
                     ],
                   ),
@@ -539,7 +539,7 @@ class ProfileScreen extends StatelessWidget {
                           onSubmit(v);
                           Navigator.of(ctx).pop();
                         },
-                        child: const Text('Сохранить'),
+                        child: Text(l10n.save),
                       ),
                     ],
                   ),
@@ -574,7 +574,7 @@ class ProfileScreen extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Выберите способ входа', style: sectionTitleStyle),
+                      Text(l10n.chooseSignIn, style: sectionTitleStyle),
                       SizedBox(height: dp(context, space.s12)),
                       _sheetItem(
                         context: context,
@@ -650,7 +650,7 @@ class ProfileScreen extends StatelessWidget {
 
           final accountLine = profile.accountEmail.trim().isNotEmpty
               ? profile.accountEmail.trim()
-              : _providerTitle(profile.accountProvider);
+              : _providerTitle(context, profile.accountProvider);
 
           return Column(
             children: [
@@ -690,7 +690,7 @@ class ProfileScreen extends StatelessWidget {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text('Аккаунт', style: sectionTitleStyle),
+                                Text(l10n.account, style: sectionTitleStyle),
                                 SizedBox(height: pad6),
                                 Container(
                                   width: double.infinity,
@@ -709,26 +709,26 @@ class ProfileScreen extends StatelessWidget {
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       if (!isLoggedIn) ...[
-                                        Text('Вы не вошли в аккаунт', style: hintStyle),
+                                        Text(l10n.notSignedIn, style: hintStyle),
                                         SizedBox(height: pad8),
                                         SizedBox(
                                           width: double.infinity,
                                           child: _primaryButton(
-                                            title: 'Войти',
+                                            title: l10n.signIn,
                                             bg: accountBtnBg,
                                             fg: accountBtnFg,
                                             onTap: () => _showAccountLinkSheet(context),
                                           ),
                                         ),
                                       ] else ...[
-                                        Text('Аккаунт подключен', style: hintStyle),
+                                        Text(l10n.accountLinked, style: hintStyle),
                                         SizedBox(height: pad4),
                                         Text(accountLine, style: valueStyle),
                                         SizedBox(height: pad8),
                                         SizedBox(
                                           width: double.infinity,
                                           child: _primaryButton(
-                                            title: 'Выйти',
+                                            title: l10n.signOut,
                                             bg: accountBtnBg,
                                             fg: accountBtnFg,
                                             onTap: () => context.read<ProfileCubit>().unlinkAccount(),
@@ -760,7 +760,7 @@ class ProfileScreen extends StatelessWidget {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text('Имя', style: labelStyle),
+                                Text(l10n.name, style: labelStyle),
                                 SizedBox(height: pad6),
                                 _wideField(
                                   textValue: profile.name.isEmpty ? 'Дмитрий' : profile.name,
@@ -771,12 +771,12 @@ class ProfileScreen extends StatelessWidget {
 
                                 Row(
                                   children: [
-                                    Expanded(child: Text('Пол', style: labelStyle)),
+                                    Expanded(child: Text(l10n.gender, style: labelStyle)),
                                     SizedBox(width: dp(context, space.s20)),
                                     Expanded(
                                       child: Align(
                                         alignment: Alignment.centerRight,
-                                        child: Text('Дата рождения', style: labelStyle),
+                                        child: Text(l10n.birthDate, style: labelStyle),
                                       ),
                                     ),
                                   ],
@@ -795,7 +795,7 @@ class ProfileScreen extends StatelessWidget {
                                         child: Row(
                                           children: [
                                             _segPill(
-                                              title: 'Муж.',
+                                              title: l10n.male,
                                               selected: profile.gender == 'male',
                                               activeBg: segActiveBg,
                                               inactiveText: segText,
@@ -804,7 +804,7 @@ class ProfileScreen extends StatelessWidget {
                                             ),
                                             SizedBox(width: pad4),
                                             _segPill(
-                                              title: 'Жен.',
+                                              title: l10n.female,
                                               selected: profile.gender == 'female',
                                               activeBg: segActiveBg,
                                               inactiveText: segText,
@@ -825,7 +825,7 @@ class ProfileScreen extends StatelessWidget {
 
                                 SizedBox(height: pad10),
 
-                                Text('Нормы давления', style: labelStyle),
+                                Text(l10n.pressureNorms, style: labelStyle),
                                 SizedBox(height: pad6),
                                 normsBlock(
                                   topValue: profile.targetSystolic.toString(),
@@ -849,8 +849,8 @@ class ProfileScreen extends StatelessWidget {
                                 SizedBox(
                                   width: double.infinity,
                                   child: _primaryButton(
-                                    title: 'Убрать рекламу',
-                                    subtitle: 'Разовый платеж 2,99 € -  навсегда',
+                                    title: l10n.buyPremium,
+                                    subtitle: l10n.oneTimePayment,
                                     bg: isDark ? AppPalette.dark900 : AppPalette.blue900,
                                     fg: isDark ? colors.textPrimary : colors.textOnBrand,
                                     onTap: () {},

@@ -12,10 +12,14 @@ class SummaryCard extends StatelessWidget {
 
   const SummaryCard({super.key, this.record});
 
-  String _hhmm(DateTime t) => DateFormat('HH:mm').format(t);
+  String _time(BuildContext context, DateTime t) {
+    final locale = Localizations.localeOf(context).toLanguageTag();
+    return DateFormat.Hm(locale).format(t); // locale-aware (12/24h where applicable)
+  }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     final colors = context.appColors;
@@ -79,7 +83,7 @@ class SummaryCard extends StatelessWidget {
       child: (record == null)
           ? Center(
         child: Text(
-          'Нет данных',
+          l10n.noData,
           style: TextStyle(
             fontFamily: text.family,
             fontSize: sp(context, text.fs16),
@@ -99,7 +103,6 @@ class SummaryCard extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: pressureStyle,
           ),
-
           SizedBox(height: dp(context, space.s1)),
 
           // 2) Пульс + галочка
@@ -111,7 +114,7 @@ class SummaryCard extends StatelessWidget {
                   children: [
                     Text('${record!.pulse}', style: pulseStyle),
                     SizedBox(width: dp(context, space.s6)),
-                    Text('уд/мин', style: pulseStyle),
+                    Text(l10n.bpm, style: pulseStyle),
                   ],
                 ),
               ),
@@ -142,7 +145,7 @@ class SummaryCard extends StatelessWidget {
                   colorFilter: ColorFilter.mode(clockColor, BlendMode.srcIn),
                 ),
                 SizedBox(width: dp(context, space.s6)),
-                Text(_hhmm(record!.dateTime), style: timeStyle),
+                Text(_time(context, record!.dateTime), style: timeStyle),
               ],
             ),
           ),

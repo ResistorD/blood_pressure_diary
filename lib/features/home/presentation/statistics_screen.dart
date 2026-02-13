@@ -4,6 +4,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:intl/intl.dart';
 
+import '../../../l10n/generated/app_localizations.dart';
+
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/scale.dart';
 
@@ -22,6 +24,9 @@ class StatisticsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final localeName = Localizations.localeOf(context).languageCode;
+
     return BlocBuilder<ProfileCubit, ProfileState>(
       builder: (context, profileState) {
         int targetSys = 120;
@@ -63,20 +68,23 @@ class _StatisticsView extends StatefulWidget {
 class _StatisticsViewState extends State<_StatisticsView> {
   _ChartTab _tab = _ChartTab.pressure;
 
-  String _periodLabel(StatisticsPeriod p) {
+  String _periodLabel(StatisticsPeriod p, AppLocalizations l10n) {
     switch (p) {
       case StatisticsPeriod.sevenDays:
-        return 'Неделя';
+        return l10n.week;
       case StatisticsPeriod.thirtyDays:
-        return 'Месяц';
+        return l10n.month;
       case StatisticsPeriod.all:
-        return 'Все';
+        return l10n.periodAll;
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final l10n = AppLocalizations.of(context)!;
+    final localeName = Localizations.localeOf(context).languageCode;
 
     final colors = context.appColors;
     final space = context.appSpace;
@@ -153,7 +161,7 @@ class _StatisticsViewState extends State<_StatisticsView> {
                   children: [
                     Expanded(
                       child: Text(
-                        'Графики',
+                        l10n.chartsTitle,
                         style: titleStyle,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -165,7 +173,7 @@ class _StatisticsViewState extends State<_StatisticsView> {
                       radius: chipR,
                       bg: chipBg,
                       textColor: colors.textOnBrand,
-                      label: _periodLabel(state.period),
+                      label: _periodLabel(state.period, l10n),
                       onSelected: (p) => context.read<StatisticsCubit>().updatePeriod(p),
                     ),
                   ],
@@ -194,7 +202,7 @@ class _StatisticsViewState extends State<_StatisticsView> {
                           children: [
                             Expanded(
                               child: _WordUnderlineTab(
-                                title: 'Давление',
+                                title: l10n.tabPressure,
                                 selected: _tab == _ChartTab.pressure,
                                 selectedStyle: tabSelectedStyle,
                                 unselectedStyle: tabUnselectedStyle,
@@ -205,7 +213,7 @@ class _StatisticsViewState extends State<_StatisticsView> {
                             ),
                             Expanded(
                               child: _WordUnderlineTab(
-                                title: 'Пульс',
+                                title: l10n.tabPulse,
                                 selected: _tab == _ChartTab.pulse,
                                 selectedStyle: tabSelectedStyle,
                                 unselectedStyle: tabUnselectedStyle,
@@ -243,7 +251,7 @@ class _StatisticsViewState extends State<_StatisticsView> {
                           )
                               : Center(
                             child: Text(
-                              'Нет данных за этот период',
+                              l10n.noDataForPeriod,
                               style: TextStyle(
                                 fontFamily: text.family,
                                 fontSize: sp(context, text.fs14),
@@ -311,13 +319,14 @@ class _PeriodChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final space = context.appSpace;
     final text = context.appText;
+    final l10n = AppLocalizations.of(context)!;
 
     return PopupMenuButton<StatisticsPeriod>(
       onSelected: onSelected,
-      itemBuilder: (context) => const [
-        PopupMenuItem(value: StatisticsPeriod.sevenDays, child: Text('Неделя')),
-        PopupMenuItem(value: StatisticsPeriod.thirtyDays, child: Text('Месяц')),
-        PopupMenuItem(value: StatisticsPeriod.all, child: Text('Все')),
+      itemBuilder: (context) => [
+        PopupMenuItem(value: StatisticsPeriod.sevenDays, child: Text(l10n.week)),
+        PopupMenuItem(value: StatisticsPeriod.thirtyDays, child: Text(l10n.month)),
+        PopupMenuItem(value: StatisticsPeriod.all, child: Text(l10n.periodAll)),
       ],
       offset: Offset(0, dp(context, space.s30 - space.s2)),
       child: Container(
@@ -418,6 +427,7 @@ class _StatsBlock extends StatelessWidget {
   Widget build(BuildContext context) {
     final space = context.appSpace;
     final text = context.appText;
+    final l10n = AppLocalizations.of(context)!;
 
     final color = isDark ? AppPalette.dark350 : AppPalette.blue900;
 
@@ -460,9 +470,9 @@ class _StatsBlock extends StatelessWidget {
     return Column(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        row('Среднее:', avg),
-        row('Макс.:', max),
-        row('Мин.:', min),
+        row(l10n.avgLabel, avg),
+        row(l10n.maxLabelShort, max),
+        row(l10n.minLabelShort, min),
       ],
     );
   }
@@ -511,6 +521,8 @@ class _Chart extends StatelessWidget {
     final space = context.appSpace;
     final text = context.appText;
     final colors = context.appColors;
+    final l10n = AppLocalizations.of(context)!;
+    final localeName = Localizations.localeOf(context).toLanguageTag();
 
     final all = state.filteredRecords;
     final records = tab == _ChartTab.pulse ? all.where((r) => r.pulse > 0).toList() : all;
@@ -518,7 +530,7 @@ class _Chart extends StatelessWidget {
     if (records.isEmpty) {
       return Center(
         child: Text(
-          'Нет данных',
+          l10n.noData,
           style: TextStyle(
             fontFamily: text.family,
             fontSize: sp(context, text.fs14),
@@ -567,7 +579,7 @@ class _Chart extends StatelessWidget {
     final pulseYLabels = _pulseYLabels(minY, maxY);
     final xStep = _xLabelStep(records.length, state.period);
 
-    String xLabel(DateTime dt) => DateFormat('d', 'ru').format(dt);
+    String xLabel(DateTime dt) => DateFormat('d', localeName).format(dt);
 
     // tooltip style
     final tooltipBg = isDark ? AppPalette.dark900.withValues(alpha: 0.92) : AppPalette.grey050.withValues(alpha: 0.96);
@@ -718,8 +730,10 @@ class _Chart extends StatelessWidget {
             getTooltipItems: (touchedSpots) {
               return touchedSpots.map((spot) {
                 final rec = records[spot.x.toInt()];
-                final dateStr = DateFormat('dd.MM', 'ru').format(rec.dateTime);
-                final label = tab == _ChartTab.pressure ? (spot.barIndex == 0 ? 'Сист.' : 'Диаст.') : 'Пульс';
+                final dateStr = DateFormat('dd.MM', localeName).format(rec.dateTime);
+                final label = tab == _ChartTab.pressure
+                    ? (spot.barIndex == 0 ? l10n.systolicShort : l10n.diastolicShort)
+                    : l10n.pulse;
                 return LineTooltipItem(
                   '$dateStr\n$label: ${spot.y.toInt()}',
                   TextStyle(

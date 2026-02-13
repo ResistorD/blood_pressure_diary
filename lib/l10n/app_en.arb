@@ -2,7 +2,7 @@
   "backupJson": "Backup (JSON)",
   "restoreFromBackup": "Restore from backup",
   "restoreDialogTitle": "Restore from backup",
-  "restoreDialogBody": "This action will replace all current app data (profile, settings, and pressure records). Continue?",
+  "restoreDialogBody": "This will replace all current app data (profile, settings, and blood pressure records). Continue?",
   "restoreAction": "Restore",
   "dataRestoredSnack": "Data restored",
   "reminderMorning": "Morning",
@@ -19,7 +19,7 @@
   "periodWeek": "Week",
   "periodMonth": "Month",
   "periodAll": "All",
-  "avgLabel": "Avg:",
+  "avgLabel": "Average:",
   "maxLabelShort": "Max:",
   "minLabelShort": "Min:",
   "bpmUnit": "bpm",
@@ -45,50 +45,177 @@
   "bpLevelLow": "Low",
   "bpLevelNormal": "Normal",
   "bpLevelElevated": "Elevated",
-  "bpLevelHtn1": "Hypertension 1",
-  "bpLevelHtn2": "Hypertension 2",
-  "bpLevelCrisis": "Crisis",
-  "notifTitleMeasureNow": "Time to measure blood pressure",
-  "notifBodyDontForget": "Don’t forget to log your measurements to track your health.",
-  "notifChannelName": "Blood pressure reminders",
-  "notifChannelDescription": "Daily reminders to measure blood pressure",
+  "bpLevelHtn1": "Hypertension (Stage 1)",
+  "bpLevelHtn2": "Hypertension (Stage 2)",
+  "bpLevelCrisis": "Hypertensive crisis",
+  "notifTitleMeasureNow": "Time to measure",
+  "notifBodyDontForget": "Don’t forget to log your blood pressure.",
+  "notifChannelName": "Reminders",
+  "notifChannelDescription": "Blood pressure measurement reminders",
   "profileAccount": "Account",
   "profileConnect": "Connect",
-  "profileNotSignedIn": "You are not signed in",
+  "profileNotSignedIn": "Not signed in",
   "profileSignIn": "Sign in",
-  "profileLinked": "Account connected",
+  "profileLinked": "Connected",
   "profileSignOut": "Sign out",
-  "profileChooseSignIn": "Choose a sign-in method",
+  "profileChooseSignIn": "Choose sign-in method",
   "profileSystolicLabel": "Systolic",
   "profileDiastolicLabel": "Diastolic",
   "premiumRemoveAds": "Remove ads",
-  "premiumSubtitleOneTime": "One-time payment €2.99 — forever",
+  "premiumSubtitleOneTime": "One-time purchase",
   "dobLabel": "Date of birth",
   "genderShortMale": "M",
   "genderShortFemale": "F",
-  "appTitle": "BP Diary",
+  "appTitle": "Blood Pressure Diary",
   "yourCondition": "Your condition",
   "normalStatus": "Normal",
   "history": "History",
   "systolic": "Systolic",
   "diastolic": "Diastolic",
   "pulse": "Pulse",
-  "addRecord": "New Record",
+  "addRecord": "Add record",
   "save": "Save",
   "cancel": "Cancel",
   "settings": "Settings",
+  "today": "Today",
+  "week": "Week",
+  "month": "Month",
+  "allShort": "All",
+  "allTime": "All time",
+  "myDiary": "My diary",
+  "recordsOne": "{count} record",
+  "recordsFew": "{count} records",
+  "recordsMany": "{count} records",
   "profile": "Profile",
   "language": "Language",
   "theme": "Theme",
   "unitMmHg": "mmHg",
   "unitBpm": "bpm",
   "noRecords": "No records yet",
-  "lastMeasurement": "Last measurement: {date}",
+  "lastMeasurement": "Last measurement",
   "@lastMeasurement": {
     "placeholders": {
       "date": {
         "type": "String"
       }
     }
-  }
+  },
+  "pickTime": "Pick time",
+  "pickDate": "Pick date",
+  "deleteRecordQ": "Delete this record?",
+  "cannotUndo": "This action cannot be undone.",
+  "delete": "Delete",
+  "commentHint": "Comment",
+  "newRecord": "New record",
+  "systolicShort": "SYS",
+  "diastolicShort": "DIA",
+  "reminders": "Reminders",
+  "addReminder": "Add reminder",
+  "clearData": "Clear data",
+  "clearDataConfirm": "Delete all data? This cannot be undone.",
+  "export": "Export",
+  "exportCSV": "Export CSV",
+  "exportPDF": "Export PDF",
+  "contactSupport": "Contact support",
+  "rateApp": "Rate the app",
+  "versionLabel": "Version:",
+  "yes": "Yes",
+  "no": "No",
+  "light": "Light",
+  "dark": "Dark",
+  "system": "System",
+  "privacyPolicy": "Privacy Policy",
+  "privacyPolicyLastUpdate": "Last updated:",
+  "privacyPolicyFullText": "We respect your privacy.\n\nWhat the app stores\n• Blood pressure records (systolic/diastolic), pulse, date/time.\n• Optional notes and tags.\n• Settings (language, theme, reminders).\n\nWhere data is stored\n• By default, all data is stored locally on your device.\n\nReminders\n• If you enable reminders, the app schedules local notifications on your device.\n• The app does not transmit your measurements to a server to trigger reminders.\n\nBackups and export\n• When you create a backup (JSON) or export (PDF/CSV), the app prepares a file on your device.\n• If you share that file via other apps, those apps handle the data according to their own privacy policies.\n\nAnalytics and ads\n• The app does not intentionally sell personal data.\n• If third‑party services (e.g., sign‑in providers or store billing) are used, they may process limited technical information needed to provide their service.\n\nYour choices\n• You can delete records and clear all app data from within the app.\n• You can disable reminders at any time.\n\nContact\n• If you contact support, the information you send (email content) is processed by your email provider.\n\nThis text is provided for informational purposes and may be updated as the app evolves.",
+  "averageLabel": "Average",
+  "minLabel": "Min",
+  "maxLabel": "Max",
+  "pressureLabel": "Pressure",
+  "restoreBackupTitle": "Restore from backup",
+  "restoreBackupConfirm": "This will replace your current data. Continue?",
+  "restore": "Restore",
+  "dataRestored": "Data restored",
+  "morning": "Morning",
+  "evening": "Evening",
+  "time": "Time",
+  "russian": "Russian",
+  "account": "Account",
+  "@account": {
+    "description": "auto-added"
+  },
+  "accountConnected": "Connected",
+  "@accountConnected": {
+    "description": "auto-added"
+  },
+  "accountNotConnected": "Not connected",
+  "@accountNotConnected": {
+    "description": "auto-added"
+  },
+  "chooseSignIn": "Choose sign-in method",
+  "@chooseSignIn": {
+    "description": "auto-added"
+  },
+  "connect": "Connect",
+  "@connect": {
+    "description": "auto-added"
+  },
+  "signIn": "Sign in",
+  "@signIn": {
+    "description": "auto-added"
+  },
+  "signOut": "Sign out",
+  "@signOut": {
+    "description": "auto-added"
+  },
+  "name": "Name",
+  "@name": {
+    "description": "auto-added"
+  },
+  "gender": "Gender",
+  "@gender": {
+    "description": "auto-added"
+  },
+  "maleShort": "M",
+  "@maleShort": {
+    "description": "auto-added"
+  },
+  "femaleShort": "F",
+  "@femaleShort": {
+    "description": "auto-added"
+  },
+  "birthDate": "Date of birth",
+  "@birthDate": {
+    "description": "auto-added"
+  },
+  "pressureNorms": "Target pressure",
+  "@pressureNorms": {
+    "description": "auto-added"
+  },
+  "upper": "Upper",
+  "@upper": {
+    "description": "auto-added"
+  },
+  "lower": "Lower",
+  "@lower": {
+    "description": "auto-added"
+  },
+  "removeAds": "Remove ads",
+  "@removeAds": {
+    "description": "auto-added"
+  },
+  "removeAdsSubtitle": "One-time purchase",
+  "@removeAdsSubtitle": {
+    "description": "auto-added"
+  },
+  "bpm": "bpm",
+  "@bpm": {
+    "description": "auto-added"
+  },
+  "accountLinked": "Account linked",
+  "notSignedIn": "You are not signed in",
+  "link": "Link",
+  "buyPremium": "Remove ads",
+  "oneTimePayment": "One-time payment €2.99 — lifetime",
+  "male": "Male",
+  "female": "Fem.учзщке"
 }

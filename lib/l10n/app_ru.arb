@@ -77,6 +77,15 @@
   "save": "Сохранить",
   "cancel": "Отмена",
   "settings": "Настройки",
+  "today": "Сегодня",
+  "week": "Неделя",
+  "month": "Месяц",
+  "allShort": "Все",
+  "allTime": "Всё время",
+  "myDiary": "Мой дневник",
+  "recordsOne": "запись",
+  "recordsFew": "записи",
+  "recordsMany": "записей",
   "profile": "Профиль",
   "language": "Язык",
   "theme": "Тема",
@@ -90,5 +99,123 @@
         "type": "String"
       }
     }
-  }
+  },
+  "pickTime": "Выберите время",
+  "pickDate": "Выберите дату",
+  "deleteRecordQ": "Удалить запись?",
+  "cannotUndo": "Это действие нельзя отменить.",
+  "delete": "Удалить",
+  "commentHint": "Комментарий",
+  "newRecord": "Новая запись",
+  "systolicShort": "Сист.",
+  "diastolicShort": "Диаст.",
+  "reminders": "Напоминания",
+  "addReminder": "Добавить напоминание",
+  "clearData": "Очистить данные",
+  "clearDataConfirm": "Точно очистить все данные?",
+  "export": "Экспорт",
+  "exportCSV": "Экспорт в CSV",
+  "exportPDF": "Экспорт в PDF",
+  "contactSupport": "Написать нам",
+  "rateApp": "Оценить приложение",
+  "versionLabel": "Версия",
+  "yes": "Да",
+  "no": "Нет",
+  "light": "Светлая",
+  "dark": "Тёмная",
+  "system": "Системная",
+  "privacyPolicy": "Политика конфиденциальности",
+  "privacyPolicyLastUpdate": "Обновлено:",
+  "privacyPolicyFullText": "Мы уважаем вашу конфиденциальность.\n\nКакие данные хранит приложение\n• Записи артериального давления (верхнее/нижнее), пульс, дата/время.\n• Необязательные комментарии и теги.\n• Настройки (язык, тема, напоминания).\n\nГде хранятся данные\n• По умолчанию все данные хранятся локально на вашем устройстве.\n\nНапоминания\n• Если вы включаете напоминания, приложение планирует локальные уведомления на устройстве.\n• Приложение не передаёт ваши измерения на сервер, чтобы запускать напоминания.\n\nРезервные копии и экспорт\n• При создании резервной копии (JSON) или экспорта (PDF/CSV) приложение формирует файл на вашем устройстве.\n• Если вы делитесь этим файлом через другие приложения, эти приложения обрабатывают данные согласно своим политикам конфиденциальности.\n\nАналитика и реклама\n• Приложение не продаёт ваши персональные данные намеренно.\n• Если используются сторонние сервисы (например, провайдеры входа или биллинг магазина), они могут обрабатывать ограниченную техническую информацию, необходимую для предоставления сервиса.\n\nВаш выбор\n• Вы можете удалять записи и очистить все данные приложения внутри приложения.\n• Вы можете отключить напоминания в любой момент.\n\nКонтакты\n• Если вы обращаетесь в поддержку, информация, которую вы отправляете (содержимое письма), обрабатывается вашим почтовым провайдером.\n\nЭтот текст предоставлен в информационных целях и может обновляться по мере развития приложения.",
+  "averageLabel": "Среднее:",
+  "minLabel": "Мин.:",
+  "maxLabel": "Макс.:",
+  "pressureLabel": "Давление",
+  "restoreBackupTitle": "Восстановление из копии",
+  "restoreBackupConfirm": "Это действие заменит все текущие данные приложения (профиль, настройки и записи давления). Продолжить?",
+  "restore": "Восстановить",
+  "dataRestored": "Данные восстановлены",
+  "morning": "Утро",
+  "evening": "Вечер",
+  "time": "Время",
+  "russian": "Русский",
+  "account": "Аккаунт",
+  "@account": {
+    "description": "auto-added"
+  },
+  "accountConnected": "Аккаунт подключен",
+  "@accountConnected": {
+    "description": "auto-added"
+  },
+  "accountNotConnected": "Вы не вошли в аккаунт",
+  "@accountNotConnected": {
+    "description": "auto-added"
+  },
+  "chooseSignIn": "Выберите способ входа",
+  "@chooseSignIn": {
+    "description": "auto-added"
+  },
+  "connect": "Подключить",
+  "@connect": {
+    "description": "auto-added"
+  },
+  "signIn": "Войти",
+  "@signIn": {
+    "description": "auto-added"
+  },
+  "signOut": "Выйти",
+  "@signOut": {
+    "description": "auto-added"
+  },
+  "name": "Имя",
+  "@name": {
+    "description": "auto-added"
+  },
+  "gender": "Пол",
+  "@gender": {
+    "description": "auto-added"
+  },
+  "maleShort": "Муж.",
+  "@maleShort": {
+    "description": "auto-added"
+  },
+  "femaleShort": "Жен.",
+  "@femaleShort": {
+    "description": "auto-added"
+  },
+  "birthDate": "Дата рождения",
+  "@birthDate": {
+    "description": "auto-added"
+  },
+  "pressureNorms": "Нормы давления",
+  "@pressureNorms": {
+    "description": "auto-added"
+  },
+  "upper": "Верхнее",
+  "@upper": {
+    "description": "auto-added"
+  },
+  "lower": "Нижнее",
+  "@lower": {
+    "description": "auto-added"
+  },
+  "removeAds": "Убрать рекламу",
+  "@removeAds": {
+    "description": "auto-added"
+  },
+  "removeAdsSubtitle": "Разовый платеж 2,99 € — навсегда",
+  "@removeAdsSubtitle": {
+    "description": "auto-added"
+  },
+  "bpm": "уд/мин",
+  "@bpm": {
+    "description": "auto-added"
+  },
+  "accountLinked": "Аккаунт подключен",
+  "notSignedIn": "Вы не вошли в аккаунт",
+  "link": "Подключить",
+  "buyPremium": "Убрать рекламу",
+  "oneTimePayment": "Разовый платеж 2,99 € — навсегда",
+  "male": "Муж.",
+  "female": "Жен."
 }

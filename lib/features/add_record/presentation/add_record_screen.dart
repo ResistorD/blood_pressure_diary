@@ -8,32 +8,94 @@ import 'package:blood_pressure_diary/features/home/data/blood_pressure_model.dar
 
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/scale.dart';
-import '../../../../core/utils/app_strings.dart';
 import '../../../core/utils/input_field.dart';
 import 'bloc/add_record_bloc.dart';
 import 'bloc/add_record_event.dart';
 import 'bloc/add_record_state.dart';
 import 'widgets/custom_keypad.dart';
 
+String _tr(BuildContext context, {required String ru, required String en}) {
+  final code = Localizations.localeOf(context).languageCode.toLowerCase();
+  return code == 'ru' ? ru : en;
+}
+
 class TagPreset {
-  final String label;
+  /// Значение, которое сохраняем в запись (стабильное, не зависит от языка).
+  final String value;
+
+  /// Текст, который показываем пользователю (может зависеть от языка).
+  final String ruLabel;
+  final String enLabel;
+
   final String iconAsset;
 
-  const TagPreset(this.label, this.iconAsset);
+  const TagPreset(this.value, this.iconAsset, {required this.ruLabel, required this.enLabel});
+
+  String label(BuildContext context) => _tr(context, ru: ruLabel, en: enLabel);
 }
 
 class AddRecordScreen extends StatelessWidget {
   static const List<TagPreset> presetTags = [
-    TagPreset('После кофе', 'assets/icons/tags/coffee.svg'),
-    TagPreset('Алкоголь', 'assets/icons/tags/alcohol.svg'),
-    TagPreset('После еды', 'assets/icons/tags/hamburger.svg'),
-    TagPreset('После прогулки', 'assets/icons/tags/walk.svg'),
-    TagPreset('После тренировки', 'assets/icons/tags/training.svg'),
-    TagPreset('Стресс', 'assets/icons/tags/stress.svg'),
-    TagPreset('Плохой сон', 'assets/icons/tags/sleep.svg'),
-    TagPreset('Головная боль', 'assets/icons/tags/headache.svg'),
-    TagPreset('Принял лекарство', 'assets/icons/tags/meds.svg'),
-    TagPreset('Пропустил приём', 'assets/icons/tags/missed_meds.svg'),
+    TagPreset(
+      'После кофе',
+      'assets/icons/tags/coffee.svg',
+      ruLabel: 'После кофе',
+      enLabel: 'After coffee',
+    ),
+    TagPreset(
+      'Алкоголь',
+      'assets/icons/tags/alcohol.svg',
+      ruLabel: 'Алкоголь',
+      enLabel: 'Alcohol',
+    ),
+    TagPreset(
+      'После еды',
+      'assets/icons/tags/hamburger.svg',
+      ruLabel: 'После еды',
+      enLabel: 'After meal',
+    ),
+    TagPreset(
+      'После прогулки',
+      'assets/icons/tags/walk.svg',
+      ruLabel: 'После прогулки',
+      enLabel: 'After walk',
+    ),
+    TagPreset(
+      'После тренировки',
+      'assets/icons/tags/training.svg',
+      ruLabel: 'После тренировки',
+      enLabel: 'After workout',
+    ),
+    TagPreset(
+      'Стресс',
+      'assets/icons/tags/stress.svg',
+      ruLabel: 'Стресс',
+      enLabel: 'Stress',
+    ),
+    TagPreset(
+      'Плохой сон',
+      'assets/icons/tags/sleep.svg',
+      ruLabel: 'Плохой сон',
+      enLabel: 'Poor sleep',
+    ),
+    TagPreset(
+      'Головная боль',
+      'assets/icons/tags/headache.svg',
+      ruLabel: 'Головная боль',
+      enLabel: 'Headache',
+    ),
+    TagPreset(
+      'Принял лекарство',
+      'assets/icons/tags/meds.svg',
+      ruLabel: 'Принял лекарство',
+      enLabel: 'Took meds',
+    ),
+    TagPreset(
+      'Пропустил приём',
+      'assets/icons/tags/missed_meds.svg',
+      ruLabel: 'Пропустил приём',
+      enLabel: 'Missed meds',
+    ),
   ];
 
   final BloodPressureRecord? record;
@@ -109,7 +171,7 @@ class _AddRecordViewState extends State<_AddRecordView> {
     final picked = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(current),
-      helpText: AppStrings.pickTime,
+      helpText: _tr(context, ru: 'Выберите время', en: 'Select time'),
     );
     if (picked == null || !context.mounted) return;
 
@@ -129,7 +191,7 @@ class _AddRecordViewState extends State<_AddRecordView> {
       initialDate: current,
       firstDate: DateTime(current.year - 1),
       lastDate: DateTime(current.year + 1),
-      helpText: AppStrings.pickDate,
+      helpText: _tr(context, ru: 'Выберите дату', en: 'Select date'),
     );
     if (picked == null || !context.mounted) return;
 
@@ -148,16 +210,16 @@ class _AddRecordViewState extends State<_AddRecordView> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text(AppStrings.deleteRecordQ),
-        content: const Text(AppStrings.cannotUndo),
+        title: Text(_tr(context, ru: 'Удалить запись?', en: 'Delete record?')),
+        content: Text(_tr(context, ru: 'Отменить нельзя', en: 'This can’t be undone')),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(AppStrings.cancel, style: TextStyle(color: colors.brandStrong)),
+            child: Text(_tr(context, ru: 'Отмена', en: 'Cancel'), style: TextStyle(color: colors.brandStrong)),
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(AppStrings.delete, style: TextStyle(color: colors.danger)),
+            child: Text(_tr(context, ru: 'Удалить', en: 'Delete'), style: TextStyle(color: colors.danger)),
           ),
         ],
       ),
@@ -341,7 +403,7 @@ class _AddRecordViewState extends State<_AddRecordView> {
                       ),
                       SizedBox(height: gap12),
                       Text(
-                        AppStrings.newRecord,
+                        _tr(context, ru: 'Новая запись', en: 'New record'),
                         style: titleStyle,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -370,7 +432,7 @@ class _AddRecordViewState extends State<_AddRecordView> {
                                 radius: pillR,
                                 bg: surface,
                                 shadow: shadows.card,
-                                text: state.systolic.isEmpty ? AppStrings.systolicShort : state.systolic,
+                                text: state.systolic.isEmpty ? 'SYS' : state.systolic,
                                 textStyle: state.systolic.isEmpty ? pillHintStyle : pillValueStyleBold,
                                 isFocused: state.activeField == InputField.systolic,
                                 focusBorderColor: focusBorderColor,
@@ -385,7 +447,7 @@ class _AddRecordViewState extends State<_AddRecordView> {
                                 radius: pillR,
                                 bg: surface,
                                 shadow: shadows.card,
-                                text: state.diastolic.isEmpty ? AppStrings.diastolicShort : state.diastolic,
+                                text: state.diastolic.isEmpty ? 'DIA' : state.diastolic,
                                 textStyle: state.diastolic.isEmpty ? pillHintStyle : pillValueStyleBold,
                                 isFocused: state.activeField == InputField.diastolic,
                                 focusBorderColor: focusBorderColor,
@@ -400,7 +462,7 @@ class _AddRecordViewState extends State<_AddRecordView> {
                                 radius: pillR,
                                 bg: surface,
                                 shadow: shadows.card,
-                                text: state.pulse.isEmpty ? AppStrings.pulse : state.pulse,
+                                text: state.pulse.isEmpty ? _tr(context, ru: 'Пульс', en: 'Pulse') : state.pulse,
                                 textStyle: state.pulse.isEmpty ? pillHintStyle : pillValueStyleBold,
                                 isFocused: state.activeField == InputField.pulse,
                                 focusBorderColor: focusBorderColor,
@@ -431,7 +493,7 @@ class _AddRecordViewState extends State<_AddRecordView> {
                             height: pillH,
                             radius: pillR,
                             bg: surface,
-                            text: DateFormat('dd MMMM yyyy', 'ru').format(dt),
+                            text: DateFormat('dd MMMM yyyy', Localizations.localeOf(context).toString()).format(dt),
                             textStyle: pillValueStyleRegular,
                             chevronColor: chevron,
                             shadow: shadows.card,
@@ -465,7 +527,7 @@ class _AddRecordViewState extends State<_AddRecordView> {
                             onChanged: (v) => context.read<AddRecordBloc>().add(NoteChanged(v)),
                             style: commentStyle,
                             decoration: InputDecoration.collapsed(
-                              hintText: AppStrings.commentHint,
+                              hintText: _tr(context, ru: 'Комментарий', en: 'Comment'),
                               hintStyle: commentHintStyle,
                             ),
                           ),
@@ -490,7 +552,7 @@ class _AddRecordViewState extends State<_AddRecordView> {
                             children: [
                               for (final tag in AddRecordScreen.presetTags)
                                 FilterChip(
-                                  selected: state.tags.contains(tag.label),
+                                  selected: state.tags.contains(tag.value),
                                   label: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
@@ -500,10 +562,10 @@ class _AddRecordViewState extends State<_AddRecordView> {
                                         height: dp(context, space.s16),
                                       ),
                                       SizedBox(width: dp(context, space.s6)),
-                                      Text(tag.label, style: pillValueStyleRegular),
+                                      Text(tag.label(context), style: pillValueStyleRegular),
                                     ],
                                   ),
-                                  onSelected: (_) => context.read<AddRecordBloc>().add(TagToggled(tag.label)),
+                                  onSelected: (_) => context.read<AddRecordBloc>().add(TagToggled(tag.value)),
                                   backgroundColor: surface,
                                 ),
                             ],
@@ -530,7 +592,7 @@ class _AddRecordViewState extends State<_AddRecordView> {
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(pillR)),
                               ),
                               child: Text(
-                                AppStrings.save,
+                                _tr(context, ru: 'Сохранить', en: 'Save'),
                                 style: TextStyle(
                                   fontFamily: txt.family,
                                   fontSize: sp(context, txt.fs20),
@@ -689,11 +751,26 @@ class _ChevronPill extends StatelessWidget {
             borderRadius: BorderRadius.circular(radius),
             boxShadow: [shadow],
           ),
-          padding: EdgeInsets.symmetric(horizontal: dp(context, space.s12)),
+          // Чуть ужимаем внутренние отступы и иконку: поле времени (1/3 ширины) иначе может не влезать на небольших экранах.
+          padding: EdgeInsets.only(
+            left: dp(context, space.s12),
+            right: dp(context, space.s8),
+          ),
           child: Row(
             children: [
-              Expanded(child: Text(text, style: textStyle, maxLines: 1, overflow: TextOverflow.ellipsis)),
-              Icon(Icons.arrow_drop_down, color: chevronColor, size: dp(context, space.s24)),
+              Expanded(
+                child: Text(
+                  text,
+                  style: textStyle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Icon(
+                Icons.arrow_drop_down,
+                color: chevronColor,
+                size: dp(context, space.s20),
+              ),
             ],
           ),
         ),
@@ -764,7 +841,8 @@ class _TagsDisclosureRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final space = context.appSpace;
 
-    final label = selectedCount == 0 ? 'Теги' : 'Теги ($selectedCount)';
+    final base = _tr(context, ru: 'Теги', en: 'Tags');
+    final label = selectedCount == 0 ? base : '$base ($selectedCount)';
 
     return GestureDetector(
       onTap: onTap,

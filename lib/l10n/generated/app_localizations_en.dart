@@ -19,7 +19,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get restoreDialogBody =>
-      'This action will replace all current app data (profile, settings, and pressure records). Continue?';
+      'This will replace all current app data (profile, settings, and blood pressure records). Continue?';
 
   @override
   String get restoreAction => 'Restore';
@@ -70,7 +70,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get periodAll => 'All';
 
   @override
-  String get avgLabel => 'Avg:';
+  String get avgLabel => 'Average:';
 
   @override
   String get maxLabelShort => 'Max:';
@@ -129,27 +129,25 @@ class AppLocalizationsEn extends AppLocalizations {
   String get bpLevelElevated => 'Elevated';
 
   @override
-  String get bpLevelHtn1 => 'Hypertension 1';
+  String get bpLevelHtn1 => 'Hypertension (Stage 1)';
 
   @override
-  String get bpLevelHtn2 => 'Hypertension 2';
+  String get bpLevelHtn2 => 'Hypertension (Stage 2)';
 
   @override
-  String get bpLevelCrisis => 'Crisis';
+  String get bpLevelCrisis => 'Hypertensive crisis';
 
   @override
-  String get notifTitleMeasureNow => 'Time to measure blood pressure';
+  String get notifTitleMeasureNow => 'Time to measure';
 
   @override
-  String get notifBodyDontForget =>
-      'Don’t forget to log your measurements to track your health.';
+  String get notifBodyDontForget => 'Don’t forget to log your blood pressure.';
 
   @override
-  String get notifChannelName => 'Blood pressure reminders';
+  String get notifChannelName => 'Reminders';
 
   @override
-  String get notifChannelDescription =>
-      'Daily reminders to measure blood pressure';
+  String get notifChannelDescription => 'Blood pressure measurement reminders';
 
   @override
   String get profileAccount => 'Account';
@@ -158,19 +156,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileConnect => 'Connect';
 
   @override
-  String get profileNotSignedIn => 'You are not signed in';
+  String get profileNotSignedIn => 'Not signed in';
 
   @override
   String get profileSignIn => 'Sign in';
 
   @override
-  String get profileLinked => 'Account connected';
+  String get profileLinked => 'Connected';
 
   @override
   String get profileSignOut => 'Sign out';
 
   @override
-  String get profileChooseSignIn => 'Choose a sign-in method';
+  String get profileChooseSignIn => 'Choose sign-in method';
 
   @override
   String get profileSystolicLabel => 'Systolic';
@@ -182,7 +180,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get premiumRemoveAds => 'Remove ads';
 
   @override
-  String get premiumSubtitleOneTime => 'One-time payment €2.99 — forever';
+  String get premiumSubtitleOneTime => 'One-time purchase';
 
   @override
   String get dobLabel => 'Date of birth';
@@ -194,7 +192,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get genderShortFemale => 'F';
 
   @override
-  String get appTitle => 'BP Diary';
+  String get appTitle => 'Blood Pressure Diary';
 
   @override
   String get yourCondition => 'Your condition';
@@ -215,7 +213,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get pulse => 'Pulse';
 
   @override
-  String get addRecord => 'New Record';
+  String get addRecord => 'Add record';
 
   @override
   String get save => 'Save';
@@ -225,6 +223,39 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settings => 'Settings';
+
+  @override
+  String get today => 'Today';
+
+  @override
+  String get week => 'Week';
+
+  @override
+  String get month => 'Month';
+
+  @override
+  String get allShort => 'All';
+
+  @override
+  String get allTime => 'All time';
+
+  @override
+  String get myDiary => 'My diary';
+
+  @override
+  String recordsOne(Object count) {
+    return '$count record';
+  }
+
+  @override
+  String recordsFew(Object count) {
+    return '$count records';
+  }
+
+  @override
+  String recordsMany(Object count) {
+    return '$count records';
+  }
 
   @override
   String get profile => 'Profile';
@@ -246,6 +277,200 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String lastMeasurement(String date) {
-    return 'Last measurement: $date';
+    return 'Last measurement';
   }
+
+  @override
+  String get pickTime => 'Pick time';
+
+  @override
+  String get pickDate => 'Pick date';
+
+  @override
+  String get deleteRecordQ => 'Delete this record?';
+
+  @override
+  String get cannotUndo => 'This action cannot be undone.';
+
+  @override
+  String get delete => 'Delete';
+
+  @override
+  String get commentHint => 'Comment';
+
+  @override
+  String get newRecord => 'New record';
+
+  @override
+  String get systolicShort => 'SYS';
+
+  @override
+  String get diastolicShort => 'DIA';
+
+  @override
+  String get reminders => 'Reminders';
+
+  @override
+  String get addReminder => 'Add reminder';
+
+  @override
+  String get clearData => 'Clear data';
+
+  @override
+  String get clearDataConfirm => 'Delete all data? This cannot be undone.';
+
+  @override
+  String get export => 'Export';
+
+  @override
+  String get exportCSV => 'Export CSV';
+
+  @override
+  String get exportPDF => 'Export PDF';
+
+  @override
+  String get contactSupport => 'Contact support';
+
+  @override
+  String get rateApp => 'Rate the app';
+
+  @override
+  String get versionLabel => 'Version:';
+
+  @override
+  String get yes => 'Yes';
+
+  @override
+  String get no => 'No';
+
+  @override
+  String get light => 'Light';
+
+  @override
+  String get dark => 'Dark';
+
+  @override
+  String get system => 'System';
+
+  @override
+  String get privacyPolicy => 'Privacy Policy';
+
+  @override
+  String get privacyPolicyLastUpdate => 'Last updated:';
+
+  @override
+  String get privacyPolicyFullText =>
+      'We respect your privacy.\n\nWhat the app stores\n• Blood pressure records (systolic/diastolic), pulse, date/time.\n• Optional notes and tags.\n• Settings (language, theme, reminders).\n\nWhere data is stored\n• By default, all data is stored locally on your device.\n\nReminders\n• If you enable reminders, the app schedules local notifications on your device.\n• The app does not transmit your measurements to a server to trigger reminders.\n\nBackups and export\n• When you create a backup (JSON) or export (PDF/CSV), the app prepares a file on your device.\n• If you share that file via other apps, those apps handle the data according to their own privacy policies.\n\nAnalytics and ads\n• The app does not intentionally sell personal data.\n• If third‑party services (e.g., sign‑in providers or store billing) are used, they may process limited technical information needed to provide their service.\n\nYour choices\n• You can delete records and clear all app data from within the app.\n• You can disable reminders at any time.\n\nContact\n• If you contact support, the information you send (email content) is processed by your email provider.\n\nThis text is provided for informational purposes and may be updated as the app evolves.';
+
+  @override
+  String get averageLabel => 'Average';
+
+  @override
+  String get minLabel => 'Min';
+
+  @override
+  String get maxLabel => 'Max';
+
+  @override
+  String get pressureLabel => 'Pressure';
+
+  @override
+  String get restoreBackupTitle => 'Restore from backup';
+
+  @override
+  String get restoreBackupConfirm =>
+      'This will replace your current data. Continue?';
+
+  @override
+  String get restore => 'Restore';
+
+  @override
+  String get dataRestored => 'Data restored';
+
+  @override
+  String get morning => 'Morning';
+
+  @override
+  String get evening => 'Evening';
+
+  @override
+  String get time => 'Time';
+
+  @override
+  String get russian => 'Russian';
+
+  @override
+  String get account => 'Account';
+
+  @override
+  String get accountConnected => 'Connected';
+
+  @override
+  String get accountNotConnected => 'Not connected';
+
+  @override
+  String get chooseSignIn => 'Choose sign-in method';
+
+  @override
+  String get connect => 'Connect';
+
+  @override
+  String get signIn => 'Sign in';
+
+  @override
+  String get signOut => 'Sign out';
+
+  @override
+  String get name => 'Name';
+
+  @override
+  String get gender => 'Gender';
+
+  @override
+  String get maleShort => 'M';
+
+  @override
+  String get femaleShort => 'F';
+
+  @override
+  String get birthDate => 'Date of birth';
+
+  @override
+  String get pressureNorms => 'Target pressure';
+
+  @override
+  String get upper => 'Upper';
+
+  @override
+  String get lower => 'Lower';
+
+  @override
+  String get removeAds => 'Remove ads';
+
+  @override
+  String get removeAdsSubtitle => 'One-time purchase';
+
+  @override
+  String get bpm => 'bpm';
+
+  @override
+  String get accountLinked => 'Account linked';
+
+  @override
+  String get notSignedIn => 'You are not signed in';
+
+  @override
+  String get link => 'Link';
+
+  @override
+  String get buyPremium => 'Remove ads';
+
+  @override
+  String get oneTimePayment => 'One-time payment €2.99 — lifetime';
+
+  @override
+  String get male => 'Male';
+
+  @override
+  String get female => 'Fem.учзщке';
 }

@@ -9,7 +9,7 @@ class NotificationService {
 
   Future<void> initialize() async {
     tz_data.initializeTimeZones();
-    
+
     const AndroidInitializationSettings androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
     const DarwinInitializationSettings iosSettings = DarwinInitializationSettings(
       requestAlertPermission: false,
@@ -62,7 +62,9 @@ class NotificationService {
         ),
         iOS: DarwinNotificationDetails(),
       ),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      // NOTE: Inexact scheduling avoids Android 12+ exact-alarm restrictions
+      // (SCHEDULE_EXACT_ALARM / "Alarms & reminders" permission).
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
       uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
       matchDateTimeComponents: DateTimeComponents.time,
     );

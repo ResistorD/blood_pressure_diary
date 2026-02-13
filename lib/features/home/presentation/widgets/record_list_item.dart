@@ -11,17 +11,60 @@ import '../../../profile/presentation/bloc/profile_state.dart';
 import '../../data/blood_pressure_model.dart';
 
 class RecordListItem extends StatelessWidget {
-  static const Map<String, String> _tagIconByLabel = {
-    'После кофе': 'assets/icons/tags/coffee.svg',
-    'После еды': 'assets/icons/tags/hamburger.svg',
-    'После прогулки': 'assets/icons/tags/walk.svg',
-    'После нагрузки/тренировки': 'assets/icons/tags/training.svg',
-    'Стресс': 'assets/icons/tags/stress.svg',
-    'Плохой сон': 'assets/icons/tags/sleep.svg',
-    'Принял лекарство': 'assets/icons/tags/meds.svg',
-    'Пропустил приём': 'assets/icons/tags/missed_meds.svg',
-    'Алкоголь': 'assets/icons/tags/alcohol.svg',
-    'Головная боль': 'assets/icons/tags/headache.svg',
+  /// IMPORTANT:
+  /// Tags can come in slightly different wording/case (e.g. "после тренировки" vs "После нагрузки/тренировки").
+  /// We normalize (trim + lowerCase) before lookup.
+  static String _normTag(String s) => s.trim().toLowerCase();
+
+  static const Map<String, String> _tagIconByLabelNorm = {
+    // кофе / еда
+    'после кофе': 'assets/icons/tags/coffee.svg',
+    'after coffee': 'assets/icons/tags/coffee.svg',
+    'coffee': 'assets/icons/tags/coffee.svg',
+
+    'после еды': 'assets/icons/tags/hamburger.svg',
+    'after meal': 'assets/icons/tags/hamburger.svg',
+    'meal': 'assets/icons/tags/hamburger.svg',
+
+    // прогулка
+    'после прогулки': 'assets/icons/tags/walk.svg',
+    'after walk': 'assets/icons/tags/walk.svg',
+    'walk': 'assets/icons/tags/walk.svg',
+
+    // тренировка / нагрузка
+    'после тренировки': 'assets/icons/tags/training.svg',
+    'после нагрузки': 'assets/icons/tags/training.svg',
+    'после нагрузки/тренировки': 'assets/icons/tags/training.svg',
+    'после нагрузки / тренировки': 'assets/icons/tags/training.svg',
+    'после нагрузки и тренировки': 'assets/icons/tags/training.svg',
+    'workout': 'assets/icons/tags/training.svg',
+    'training': 'assets/icons/tags/training.svg',
+
+    // стресс / сон
+    'стресс': 'assets/icons/tags/stress.svg',
+    'stress': 'assets/icons/tags/stress.svg',
+
+    'плохой сон': 'assets/icons/tags/sleep.svg',
+    'bad sleep': 'assets/icons/tags/sleep.svg',
+    'sleep': 'assets/icons/tags/sleep.svg',
+
+    // лекарства
+    'принял лекарство': 'assets/icons/tags/meds.svg',
+    'принял лекарства': 'assets/icons/tags/meds.svg',
+    'took meds': 'assets/icons/tags/meds.svg',
+    'meds': 'assets/icons/tags/meds.svg',
+
+    'пропустил приём': 'assets/icons/tags/missed_meds.svg',
+    'пропустил прием': 'assets/icons/tags/missed_meds.svg',
+    'missed meds': 'assets/icons/tags/missed_meds.svg',
+
+    // алкоголь
+    'алкоголь': 'assets/icons/tags/alcohol.svg',
+    'alcohol': 'assets/icons/tags/alcohol.svg',
+
+    // голова
+    'головная боль': 'assets/icons/tags/headache.svg',
+    'headache': 'assets/icons/tags/headache.svg',
   };
 
   final BloodPressureRecord record;
@@ -192,7 +235,6 @@ class RecordListItem extends StatelessWidget {
   }
 }
 
-
 class _TagsMetaRow extends StatelessWidget {
   final List<String> tags;
   final String note;
@@ -214,7 +256,8 @@ class _TagsMetaRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final icons = <String>[];
     for (final t in tags) {
-      final p = RecordListItem._tagIconByLabel[t];
+      final key = RecordListItem._normTag(t);
+      final p = RecordListItem._tagIconByLabelNorm[key];
       if (p != null) icons.add(p);
     }
 
@@ -225,24 +268,58 @@ class _TagsMetaRow extends StatelessWidget {
       children: [
         if (icons.isNotEmpty)
           Flexible(
-            flex: 0,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                for (final p in icons.take(4)) ...[
-                  SvgPicture.asset(
-                    p,
-                    width: iconSize,
-                    height: iconSize,
-                  ),
-                  SizedBox(width: gap),
-                ],
-              ],
+            fit: FlexFit.loose,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final maxW = constraints.maxWidth;
+
+                // slot = icon + gap, но последняя иконка без обязательного хвостового gap
+                final slot = iconSize + gap;
+                int maxIcons = 0;
+                if (maxW > 0 && slot > 0) {
+                  maxIcons = ((maxW + gap) / slot).floor();
+                }
+
+                if (maxIcons <= 0) {
+                  // места нет вообще — показываем только "…"
+                  return Text('…', maxLines: 1, overflow: TextOverflow.ellipsis, style: noteStyle);
+                }
+
+                final needEllipsis = icons.length > maxIcons;
+                final count = needEllipsis ? (maxIcons - 1) : icons.length;
+
+                final safeCount = count < 0 ? 0 : (count > icons.length ? icons.length : count);
+
+                return Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (int i = 0; i < safeCount; i++) ...[
+                      SvgPicture.asset(
+                        icons[i],
+                        width: iconSize,
+                        height: iconSize,
+                      ),
+                      SizedBox(width: gap),
+                    ],
+                    if (needEllipsis)
+                      Text(
+                        '…',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: noteStyle,
+                      )
+                    else if (safeCount > 0)
+                    // убираем лишний gap в конце, но не меняем токены/отступы вокруг
+                      const SizedBox.shrink(),
+                  ],
+                );
+              },
             ),
           ),
         if (icons.isNotEmpty && showText) SizedBox(width: gap),
         if (showText)
-          Expanded(
+          Flexible(
+            fit: FlexFit.loose,
             child: Text(
               text,
               maxLines: 1,

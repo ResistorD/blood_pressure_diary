@@ -119,26 +119,13 @@ class SettingsCubit extends Cubit<SettingsState> {
 
     await _isarService.saveSettings(newSettings);
 
-    if (state.settings.notificationsEnabled) {
-      await _notificationService.cancelNotification(timeStr.hashCode);
-    }
+    // Cancel scheduled notification if it exists
+    await _notificationService.cancelNotification(timeStr.hashCode);
 
     emit(state.copyWith(settings: newSettings));
   }
 
   Future<void> toggleNotifications(bool enabled) async {
-    if (enabled) {
-      final granted = await _notificationService.requestPermissions();
-      if (!granted) {
-        final message = state.settings.languageCode == 'ru'
-            ? 'Разрешение на уведомления не получено'
-            : 'Notification permission not granted';
-        emit(state.copyWith(errorMessage: message));
-        emit(state.copyWith(errorMessage: null));
-        return;
-      }
-    }
-
     final newSettings = AppSettings(
       themeMode: state.settings.themeMode,
       languageCode: state.settings.languageCode,
@@ -152,43 +139,74 @@ class SettingsCubit extends Cubit<SettingsState> {
     await _isarService.saveSettings(newSettings);
 
     if (enabled) {
-      await _syncAllNotifications(state.settings.reminders);
+      // Reschedule all reminders
+      for (final timeStr in newSettings.reminders) {
+        final parts = timeStr.split(':');
+        if (parts.length != 2) continue;
+        final time = TimeOfDay(
+          hour: int.parse(parts[0]),
+          minute: int.parse(parts[1]),
+        );
+        await _notificationService.scheduleDailyNotification(timeStr.hashCode, time);
+      }
     } else {
-      await _notificationService.cancelAllNotifications();
+      // Cancel all reminders
+      for (final timeStr in newSettings.reminders) {
+        await _notificationService.cancelNotification(timeStr.hashCode);
+      }
     }
 
     emit(state.copyWith(settings: newSettings));
   }
 
-  Future<void> _syncAllNotifications(List<String> reminders) async {
-    await _notificationService.cancelAllNotifications();
-    for (final timeStr in reminders) {
-      final parts = timeStr.split(':');
-      final time = TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
-      await _notificationService.scheduleDailyNotification(timeStr.hashCode, time);
-    }
-  }
-
-  Future<void> exportData(ExportFormat format) async {
+  Future<void> exportData(ExportFormat format, {int? days}) async {
     final records = await _pressureRepository.getAllRecords();
 
-    if (records.isEmpty) {
-      final message = state.settings.languageCode == 'ru' ? 'Нет данных для экспорта' : 'No data to export';
+    // Optional period filter (days). Kept to preserve existing export behavior.
+    var effectiveRecords = records;
+    if (days != null) {
+      final cutoff = DateTime.now().subtract(Duration(days: days));
+      effectiveRecords = records.where((r) {
+        final dt = r.dateTime;
+        return dt.isAfter(cutoff) || dt.isAtSameMomentAs(cutoff);
+      }).toList();
+    }
+
+    if (effectiveRecords.isEmpty) {
+      final message = state.settings.languageCode == 'ru'
+          ? 'Нет данных для экспорта'
+          : 'No data to export';
       emit(state.copyWith(errorMessage: message));
       emit(state.copyWith(errorMessage: null));
       return;
     }
 
+    // ✅ Строго типобезопасно: профиль берём так, как проектом предусмотрено.
+    final profile = await _isarService.getOrCreateProfile();
+
     emit(state.copyWith(isExporting: true));
     try {
-      await _exportService.exportData(records, format, state.settings.languageCode);
+      await _exportService.exportData(
+        effectiveRecords,
+        format,
+        state.settings.languageCode,
+        profile: profile,
+        periodDays: days ?? 36500,
+      );
     } catch (e) {
-      final message = state.settings.languageCode == 'ru' ? 'Ошибка при экспорте: $e' : 'Export error: $e';
+      final message = state.settings.languageCode == 'ru'
+          ? 'Ошибка при экспорте: $e'
+          : 'Export error: $e';
       emit(state.copyWith(errorMessage: message));
       emit(state.copyWith(errorMessage: null));
     } finally {
       emit(state.copyWith(isExporting: false));
     }
+  }
+
+  // Backwards-compatible positional wrapper (older call sites).
+  Future<void> exportDataLegacy(ExportFormat format, [int? days]) async {
+    await exportData(format, days: days);
   }
 
   Future<void> clearAllData() async {

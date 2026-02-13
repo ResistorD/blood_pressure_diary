@@ -1,10 +1,10 @@
-﻿import 'package:isar/isar.dart';
+import 'package:isar/isar.dart';
 
 part 'user_profile.g.dart';
 
 @collection
 class UserProfile {
-  Id id = 0; // Р’СЃРµРіРґР° 0 РґР»СЏ РµРґРёРЅСЃС‚РІРµРЅРЅРѕР№ Р·Р°РїРёСЃРё РїСЂРѕС„РёР»СЏ
+  Id id = 0; // Всегда 0 для единственной записи профиля
 
   String name = '';
   int age = 0;
@@ -14,7 +14,7 @@ class UserProfile {
   int targetSystolic = 120;
   int targetDiastolic = 80;
 
-  // --- Account link (Р»РѕРєР°Р»СЊРЅР°СЏ РїСЂРёРІСЏР·РєР°, СЂРµР°Р»СЊРЅР°СЏ: С…СЂР°РЅРёС‚СЃСЏ РІ Isar)
+  // --- Account link (локальная привязка, реальная: хранится в Isar)
   bool accountLinked = false;
   String accountEmail = '';
   String accountProvider = ''; // 'email' | 'google' | 'apple'
@@ -1540,8 +1540,8 @@ class IsarService {
 
   // --- Settings (singleton, id=0) ---
 
-  /// Р РµР°РєС‚РёРІРЅРѕРµ РЅР°Р±Р»СЋРґРµРЅРёРµ Р·Р° singleton-РЅР°СЃС‚СЂРѕР№РєР°РјРё (id=0).
-  /// Р’Р°Р¶РЅРѕ: Р·Р°РїРёСЃСЊ РґРѕР»Р¶РЅР° СЃСѓС‰РµСЃС‚РІРѕРІР°С‚СЊ (СЃРѕР·РґР°С‘С‚СЃСЏ С‡РµСЂРµР· [getOrCreateSettings]).
+  /// Реактивное наблюдение за singleton-настройками (id=0).
+  /// Важно: запись должна существовать (создаётся через [getOrCreateSettings]).
   Stream<AppSettings> watchSettings() {
     return _isar.appSettings
         .watchObject(0, fireImmediately: true)
@@ -1553,8 +1553,8 @@ class IsarService {
     final byId = await _isar.appSettings.get(0);
     if (byId != null) return byId;
 
-    // Р•СЃР»Рё РІ Р±Р°Р·Рµ РµСЃС‚СЊ "РєР°РєР°СЏ-С‚Рѕ" Р·Р°РїРёСЃСЊ РЅР°СЃС‚СЂРѕРµРє (РїРѕСЃР»Рµ СЃС‚Р°СЂС‹С… СЌРєСЃРїРµСЂРёРјРµРЅС‚РѕРІ),
-    // РїРѕРґРЅРёРјР°РµРј РµС‘ Рё РЅР°СЃРёР»СЊРЅРѕ РґРµР»Р°РµРј singleton id=0.
+    // Если в базе есть "какая-то" запись настроек (после старых экспериментов),
+    // поднимаем её и насильно делаем singleton id=0.
     final any = await _isar.appSettings.where().findFirst();
     if (any != null) {
       any.id = 0;
@@ -1584,8 +1584,8 @@ class IsarService {
 
   // --- Profile (singleton, id=0) ---
 
-  /// Р РµР°РєС‚РёРІРЅРѕРµ РЅР°Р±Р»СЋРґРµРЅРёРµ Р·Р° singleton-РїСЂРѕС„РёР»РµРј (id=0).
-  /// Р’Р°Р¶РЅРѕ: Р·Р°РїРёСЃСЊ РґРѕР»Р¶РЅР° СЃСѓС‰РµСЃС‚РІРѕРІР°С‚СЊ (СЃРѕР·РґР°С‘С‚СЃСЏ С‡РµСЂРµР· [getOrCreateProfile]).
+  /// Реактивное наблюдение за singleton-профилем (id=0).
+  /// Важно: запись должна существовать (создаётся через [getOrCreateProfile]).
   Stream<UserProfile> watchProfile() {
     return _isar.userProfiles
         .watchObject(0, fireImmediately: true)
@@ -1624,9 +1624,9 @@ class IsarService {
     });
   }
 
-  /// РџРѕР»РЅР°СЏ Р·Р°РјРµРЅР° РґР°РЅРЅС‹С… РїСЂРёР»РѕР¶РµРЅРёСЏ (РґР»СЏ restore):
-  /// - settings/profile РїРµСЂРµР·Р°РїРёСЃС‹РІР°РµРј
-  /// - Р·Р°РїРёСЃРё РґР°РІР»РµРЅРёСЏ РїРѕР»РЅРѕСЃС‚СЊСЋ Р·Р°РјРµРЅСЏРµРј
+  /// Полная замена данных приложения (для restore):
+  /// - settings/profile перезаписываем
+  /// - записи давления полностью заменяем
   Future<void> replaceAllData({
     required AppSettings settings,
     required UserProfile profile,
@@ -1666,18 +1666,18 @@ Future<void> setupLocator(Isar isar) async {
   await notificationService.initialize();
   getIt.registerSingleton<NotificationService>(notificationService);
 
-  // 2. Р РµРїРѕР·РёС‚РѕСЂРёР№ (Р·Р°РІРёСЃРёС‚ РѕС‚ IsarService)
+  // 2. Репозиторий (зависит от IsarService)
   getIt.registerLazySingleton<PressureRepository>(
         () => PressureRepository(getIt<IsarService>()),
   );
 
-  // 3. BLoC (Р·Р°РІРёСЃРёС‚ РѕС‚ СЂРµРїРѕР·РёС‚РѕСЂРёСЏ)
+  // 3. BLoC (зависит от репозитория)
   getIt.registerFactory<HomeBloc>(() => HomeBloc(getIt<PressureRepository>()));
   
   getIt.registerFactory(() => AddRecordBloc(getIt<PressureRepository>()));
   getIt.registerSingleton<ProfileCubit>(ProfileCubit(getIt<IsarService>()));
   
-  // SettingsCubit РєР°Рє СЃРёРЅРіР»С‚РѕРЅ, С‡С‚РѕР±С‹ РЅР°СЃС‚СЂРѕР№РєРё Р±С‹Р»Рё РґРѕСЃС‚СѓРїРЅС‹ РІРµР·РґРµ
+  // SettingsCubit как синглтон, чтобы настройки были доступны везде
   getIt.registerSingleton(SettingsCubit(
     getIt<IsarService>(),
     getIt<PressureRepository>(),
@@ -1727,7 +1727,7 @@ class _AppNavigationState extends State<AppNavigation> {
 
   @override
   Widget build(BuildContext context) {
-    // вњ… РџРѕРјРµРЅСЏР»Рё РјРµСЃС‚Р°РјРё: РџСЂРѕС„РёР»СЊ Рё РќР°СЃС‚СЂРѕР№РєРё
+    // ✅ Поменяли местами: Профиль и Настройки
     final pages = <Widget>[
       const HomeScreen(),
       const StatisticsScreen(),
@@ -1768,9 +1768,9 @@ class _BottomNavBar extends StatelessWidget {
 
     final s = context.appSpace;
 
-    // вњ… Р’ dark: Р°РєС‚РёРІРЅР°СЏ Р‘Р›Р•Р”РќРђРЇ, РѕСЃС‚Р°Р»СЊРЅС‹Рµ РЇР РљРР•
-    final bright = isDark ? AppPalette.dark400 : AppPalette.blue900; // СЏСЂРєР°СЏ
-    final pale = isDark ? AppPalette.dark600 : AppPalette.grey500; // Р±Р»РµРґРЅР°СЏ
+    // ✅ В dark: активная БЛЕДНАЯ, остальные ЯРКИЕ
+    final bright = isDark ? AppPalette.dark400 : AppPalette.blue900; // яркая
+    final pale = isDark ? AppPalette.dark600 : AppPalette.grey500; // бледная
 
     final barH = dp(context, s.s72 - s.s2 - s.s1); // 69
     final icon = dp(context, s.s30);
@@ -1781,7 +1781,7 @@ class _BottomNavBar extends StatelessWidget {
 
     final lift = outer / 2;
 
-    // вњ… Р¤РѕРЅ РЅРёР¶РЅРµРіРѕ РјРµРЅСЋ dark: #3C3C3C
+    // ✅ Фон нижнего меню dark: #3C3C3C
     final barBg = isDark ? AppPalette.dark800 : AppPalette.grey050;
 
     return SafeArea(
@@ -1792,7 +1792,7 @@ class _BottomNavBar extends StatelessWidget {
           clipBehavior: Clip.none,
           alignment: Alignment.bottomCenter,
           children: [
-            // РџРѕРґР»РѕР¶РєР° РїРѕРґ РїРѕРґРЅСЏС‚СѓСЋ РєРЅРѕРїРєСѓ вЂ” РїСЂРѕР·СЂР°С‡РЅР°СЏ
+            // Подложка под поднятую кнопку — прозрачная
             Positioned.fill(child: const ColoredBox(color: Colors.transparent)),
 
             Positioned(
@@ -1822,7 +1822,7 @@ class _BottomNavBar extends StatelessWidget {
                     ),
                     SizedBox(width: outer),
 
-                    // вњ… РўСЂРµС‚СЊСЏ РІРєР»Р°РґРєР° С‚РµРїРµСЂСЊ РџСЂРѕС„РёР»СЊ (activeIndex == 2)
+                    // ✅ Третья вкладка теперь Профиль (activeIndex == 2)
                     Expanded(
                       child: _NavItem(
                         asset: 'assets/user-pen.svg',
@@ -1832,7 +1832,7 @@ class _BottomNavBar extends StatelessWidget {
                       ),
                     ),
 
-                    // вњ… Р§РµС‚РІС‘СЂС‚Р°СЏ РІРєР»Р°РґРєР° С‚РµРїРµСЂСЊ РќР°СЃС‚СЂРѕР№РєРё (activeIndex == 3)
+                    // ✅ Четвёртая вкладка теперь Настройки (activeIndex == 3)
                     Expanded(
                       child: _NavItem(
                         asset: 'assets/settings.svg',
@@ -2043,7 +2043,7 @@ class BackupService {
     };
 
     return const JsonEncoder.withIndent('  ').convert(map);
-    // (Indent РїРѕР»РµР·РµРЅ: С„Р°Р№Р» С‡РёС‚Р°РµРјС‹Р№, РїСЂРѕС‰Рµ РѕС‚Р»Р°Р¶РёРІР°С‚СЊ. РџСЂРё Р¶РµР»Р°РЅРёРё РјРѕР¶РЅРѕ СѓР±СЂР°С‚СЊ.)
+    // (Indent полезен: файл читаемый, проще отлаживать. При желании можно убрать.)
   }
 
   Future<void> restoreFromJson(String jsonText) async {
@@ -2080,7 +2080,7 @@ class BackupService {
       records.add(_recordFromMap(item));
     }
 
-    // Р’РѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёРµ: РїРµСЂРµР·Р°РїРёСЃС‹РІР°РµРј (settings/profile) Рё РїРѕР»РЅРѕСЃС‚СЊСЋ Р·Р°РјРµРЅСЏРµРј Р·Р°РїРёСЃРё РґР°РІР»РµРЅРёСЏ.
+    // Восстановление: перезаписываем (settings/profile) и полностью заменяем записи давления.
     await _isar.replaceAllData(
       settings: settings,
       profile: profile,
@@ -2164,7 +2164,7 @@ class BackupService {
       ..note = m['note']?.toString()
       ..emotion = m['emotion']?.toString();
 
-    // id РЅРµ РїРµСЂРµРЅРѕСЃРёРј вЂ” Isar СЃР°Рј РІС‹РґР°СЃС‚ РЅРѕРІС‹Рµ id.
+    // id не переносим — Isar сам выдаст новые id.
     return r;
   }
 }
@@ -2203,7 +2203,7 @@ class ExportService {
     );
   }
 
-  // --- Р’РћРЎРЎРўРђРќРћР’Р›Р•РќРќР«Р™ CSV ---
+  // --- ВОССТАНОВЛЕННЫЙ CSV ---
   Future<void> _exportToCSV(List<BloodPressureRecord> records) async {
     List<List<dynamic>> rows = [
       ["Date", "Time", "Systolic", "Diastolic", "Pulse", "Note"]
@@ -2228,7 +2228,7 @@ class ExportService {
     await Share.shareXFiles([XFile(file.path)]);
   }
 
-  // --- РћР‘РќРћР’Р›Р•РќРќР«Р™ PDF (РџРћ Р’РЎР•Рњ РўР Р•Р‘РћР’РђРќРРЇРњ) ---
+  // --- ОБНОВЛЕННЫЙ PDF (ПО ВСЕМ ТРЕБОВАНИЯМ) ---
   Future<void> _exportToPDFDoctorReport({
     required List<BloodPressureRecord> records,
     required String languageCode,
@@ -2249,8 +2249,8 @@ class ExportService {
     final ttfBold = pw.Font.ttf(boldData);
 
     final dobDate = _tryParseDob(profile);
-    final dobStr = dobDate != null ? DateFormat('dd.MM.yyyy').format(dobDate) : 'вЂ”';
-    final periodStr = '${DateFormat('dd.MM.yyyy').format(threshold)} вЂ“ ${DateFormat('dd.MM.yyyy').format(now)}';
+    final dobStr = dobDate != null ? DateFormat('dd.MM.yyyy').format(dobDate) : '—';
+    final periodStr = '${DateFormat('dd.MM.yyyy').format(threshold)} – ${DateFormat('dd.MM.yyyy').format(now)}';
 
     final pdf = pw.Document();
     final stats = _calculateStats(filtered, profile);
@@ -2260,46 +2260,46 @@ class ExportService {
         theme: pw.ThemeData.withFont(base: ttf, bold: ttfBold),
         margin: const pw.EdgeInsets.all(35),
         build: (context) => [
-          pw.Text(isRu ? 'РћС‚С‡С‘С‚ РїРѕ Р°СЂС‚РµСЂРёР°Р»СЊРЅРѕРјСѓ РґР°РІР»РµРЅРёСЋ' : 'Blood Pressure Report',
+          pw.Text(isRu ? 'Отчёт по артериальному давлению' : 'Blood Pressure Report',
               style: pw.TextStyle(font: ttfBold, fontSize: 18, color: primaryColor)),
           pw.SizedBox(height: 12),
 
-          pw.Text('${isRu ? 'РџРµСЂРёРѕРґ' : 'Period'}: $periodStr', style: const pw.TextStyle(fontSize: 10)),
-          pw.Text('${isRu ? 'РџР°С†РёРµРЅС‚' : 'Patient'}: ${profile?.name ?? 'вЂ”'}', style: const pw.TextStyle(fontSize: 10)),
-          pw.Text('${isRu ? 'Р”Р°С‚Р° СЂРѕР¶РґРµРЅРёСЏ' : 'DOB'}: $dobStr', style: const pw.TextStyle(fontSize: 10)),
-          pw.Text('${isRu ? 'Р¦РµР»РµРІС‹Рµ Р·РЅР°С‡РµРЅРёСЏ' : 'Target values'}: ${profile?.targetSystolic ?? 120}/${profile?.targetDiastolic ?? 80}',
+          pw.Text('${isRu ? 'Период' : 'Period'}: $periodStr', style: const pw.TextStyle(fontSize: 10)),
+          pw.Text('${isRu ? 'Пациент' : 'Patient'}: ${profile?.name ?? '—'}', style: const pw.TextStyle(fontSize: 10)),
+          pw.Text('${isRu ? 'Дата рождения' : 'DOB'}: $dobStr', style: const pw.TextStyle(fontSize: 10)),
+          pw.Text('${isRu ? 'Целевые значения' : 'Target values'}: ${profile?.targetSystolic ?? 120}/${profile?.targetDiastolic ?? 80}',
               style: const pw.TextStyle(fontSize: 10)),
 
           pw.SizedBox(height: 20),
 
-          // 1. Р Р•Р—Р®РњР•: РЎРІРµС‚Р»Рѕ-СЃРµСЂР°СЏ Р·Р°Р»РёРІРєР°, Р±РµР· РІРЅСѓС‚СЂРµРЅРЅРёС… Р»РёРЅРёР№, С†РµРЅС‚СЂ РІРѕ РІС‚РѕСЂРѕРј СЃС‚РѕР»Р±С†Рµ
-          _buildTitle(isRu ? 'Р РµР·СЋРјРµ' : 'Summary', primaryColor),
+          // 1. РЕЗЮМЕ: Светло-серая заливка, без внутренних линий, центр во втором столбце
+          _buildTitle(isRu ? 'Резюме' : 'Summary', primaryColor),
           _buildResumeTable(
             rows: [
-              [isRu ? 'РЎСЂРµРґРЅРµРµ Р·Р° РїРµСЂРёРѕРґ' : 'Average', '${stats.avgSys}/${stats.avgDia}'],
-              [isRu ? 'РњРёРЅРёРјСѓРј' : 'Minimum', '${stats.minSys}/${stats.minDia}'],
-              [isRu ? 'РњР°РєСЃРёРјСѓРј' : 'Maximum', '${stats.maxSys}/${stats.maxDia}'],
-              [isRu ? 'Р’С‹С€Рµ РЅРѕСЂРјС‹' : 'Above normal', '${stats.outOfRangePct.round()}% (${stats.outOfRangeCount}/${stats.n})'],
+              [isRu ? 'Среднее за период' : 'Average', '${stats.avgSys}/${stats.avgDia}'],
+              [isRu ? 'Минимум' : 'Minimum', '${stats.minSys}/${stats.minDia}'],
+              [isRu ? 'Максимум' : 'Maximum', '${stats.maxSys}/${stats.maxDia}'],
+              [isRu ? 'Выше нормы' : 'Above normal', '${stats.outOfRangePct.round()}% (${stats.outOfRangeCount}/${stats.n})'],
             ],
             bgColor: lightGrey,
           ),
 
           pw.SizedBox(height: 10),
 
-          // 2. РђРќРђР›РРўРРљРђ: Р§С‘СЂРЅР°СЏ СЃРµС‚РєР° РІРµР·РґРµ (РІРЅРµС€РЅСЏСЏ Рё РІРЅСѓС‚СЂРµРЅРЅСЏСЏ)
-          _buildTitle(isRu ? 'РђРЅР°Р»РёС‚РёРєР° РїРѕ РІСЂРµРјРµРЅРё СЃСѓС‚РѕРє' : 'Time of day analytics', primaryColor),
+          // 2. АНАЛИТИКА: Чёрная сетка везде (внешняя и внутренняя)
+          _buildTitle(isRu ? 'Аналитика по времени суток' : 'Time of day analytics', primaryColor),
           _buildStandardTable(
-            headers: [isRu ? 'Р’СЂРµРјСЏ СЃСѓС‚РѕРє' : 'Time of day', isRu ? 'РЎСЂРµРґРЅРµРµ (SYS/DIA)' : 'Avg (SYS/DIA)'],
+            headers: [isRu ? 'Время суток' : 'Time of day', isRu ? 'Среднее (SYS/DIA)' : 'Avg (SYS/DIA)'],
             rows: _calcTimeBuckets(filtered, isRu),
             headerColor: primaryColor,
           ),
 
           pw.SizedBox(height: 10),
 
-          // 3. Р–РЈР РќРђР›: Р§С‘СЂРЅР°СЏ СЃРµС‚РєР°, РџСЂРёРјРµС‡Р°РЅРёСЏ С€РёСЂРѕРєРёРµ
-          _buildTitle(isRu ? 'Р–СѓСЂРЅР°Р» РёР·РјРµСЂРµРЅРёР№' : 'Measurement log', primaryColor),
+          // 3. ЖУРНАЛ: Чёрная сетка, Примечания широкие
+          _buildTitle(isRu ? 'Журнал измерений' : 'Measurement log', primaryColor),
           _buildStandardTable(
-            headers: isRu ? ['Р”Р°С‚Р°', 'Р’СЂРµРјСЏ', 'SYS/DIA', 'РџСѓР»СЊСЃ', 'РџСЂРёРјРµС‡Р°РЅРёРµ'] : ['Date', 'Time', 'SYS/DIA', 'Pulse', 'Note'],
+            headers: isRu ? ['Дата', 'Время', 'SYS/DIA', 'Пульс', 'Примечание'] : ['Date', 'Time', 'SYS/DIA', 'Pulse', 'Note'],
             rows: filtered.map((r) => [
               DateFormat('dd.MM.yyyy').format(r.dateTime),
               DateFormat('HH:mm').format(r.dateTime),
@@ -2313,8 +2313,8 @@ class ExportService {
 
           pw.SizedBox(height: 20),
 
-          // 4. Р—РђРњР•РўРљР Р’Р РђР§Рђ (Р›РёРЅРёРё)
-          pw.Text(isRu ? 'Р—Р°РјРµС‚РєРё РІСЂР°С‡Р°:' : 'Doctor\'s notes:', style: pw.TextStyle(font: ttfBold, fontSize: 10)),
+          // 4. ЗАМЕТКИ ВРАЧА (Линии)
+          pw.Text(isRu ? 'Заметки врача:' : 'Doctor\'s notes:', style: pw.TextStyle(font: ttfBold, fontSize: 10)),
           pw.SizedBox(height: 5),
           pw.Column(
             children: List.generate(7, (index) => pw.Container(
@@ -2325,7 +2325,7 @@ class ExportService {
           pw.SizedBox(height: 20),
           pw.Text(
             isRu
-                ? 'Р”Р°РЅРЅС‹Рµ РІРЅРµСЃРµРЅС‹ РїРѕР»СЊР·РѕРІР°С‚РµР»РµРј Рё РЅРµ СЏРІР»СЏСЋС‚СЃСЏ РјРµРґРёС†РёРЅСЃРєРёРј РёР·РјРµСЂРµРЅРёРµРј. РРЅС‚РµСЂРїСЂРµС‚Р°С†РёСЏ С‚СЂРµР±СѓРµС‚ РєР»РёРЅРёС‡РµСЃРєРѕР№ РІРµСЂРёС„РёРєР°С†РёРё.'
+                ? 'Данные внесены пользователем и не являются медицинским измерением. Интерпретация требует клинической верификации.'
                 : 'Data entered by user. Requires clinical verification.',
             style: pw.TextStyle(font: ttf, fontSize: 8, color: PdfColors.black),
           ),
@@ -2442,17 +2442,17 @@ class ExportService {
       else if (h >= 22 || h < 6) b['n']!.add(r);
     }
     String f(List<BloodPressureRecord> l) {
-      if (l.isEmpty) return 'вЂ”';
+      if (l.isEmpty) return '—';
       final s = (l.map((e) => e.systolic).reduce((a, b) => a + b) / l.length).round();
       final d = (l.map((e) => e.diastolic).reduce((a, b) => a + b) / l.length).round();
-      final label = isRu ? (l.length == 1 ? 'РёР·РјРµСЂРµРЅРёРµ' : (l.length < 5 ? 'РёР·РјРµСЂРµРЅРёСЏ' : 'РёР·РјРµСЂРµРЅРёР№')) : 'records';
+      final label = isRu ? (l.length == 1 ? 'измерение' : (l.length < 5 ? 'измерения' : 'измерений')) : 'records';
       return '$s/$d (${l.length} $label)';
     }
     return [
-      [isRu ? 'РЈС‚СЂРѕ (06-10)' : 'Morning', f(b['m']!)],
-      [isRu ? 'Р”РµРЅСЊ (12-16)' : 'Day', f(b['d']!)],
-      [isRu ? 'Р’РµС‡РµСЂ (18-22)' : 'Evening', f(b['e']!)],
-      [isRu ? 'РќРѕС‡СЊ (22-06)' : 'Night', f(b['n']!)],
+      [isRu ? 'Утро (06-10)' : 'Morning', f(b['m']!)],
+      [isRu ? 'День (12-16)' : 'Day', f(b['d']!)],
+      [isRu ? 'Вечер (18-22)' : 'Evening', f(b['e']!)],
+      [isRu ? 'Ночь (22-06)' : 'Night', f(b['n']!)],
     ];
   }
 }
@@ -2474,7 +2474,7 @@ class NotificationService {
 
   Future<void> initialize() async {
     tz_data.initializeTimeZones();
-    
+
     const AndroidInitializationSettings androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
     const DarwinInitializationSettings iosSettings = DarwinInitializationSettings(
       requestAlertPermission: false,
@@ -2514,20 +2514,22 @@ class NotificationService {
 
     await _notificationsPlugin.zonedSchedule(
       id,
-      'РџРѕСЂР° РёР·РјРµСЂРёС‚СЊ РґР°РІР»РµРЅРёРµ',
-      'РќРµ Р·Р°Р±СѓРґСЊС‚Рµ РІРЅРµСЃС‚Рё РґР°РЅРЅС‹Рµ РІ РґРЅРµРІРЅРёРє РґР»СЏ РєРѕРЅС‚СЂРѕР»СЏ Р·РґРѕСЂРѕРІСЊСЏ.',
+      'Пора измерить давление',
+      'Не забудьте внести данные в дневник для контроля здоровья.',
       scheduledDate,
       const NotificationDetails(
         android: AndroidNotificationDetails(
           'blood_pressure_reminders',
-          'РќР°РїРѕРјРёРЅР°РЅРёСЏ Рѕ РґР°РІР»РµРЅРёРё',
-          channelDescription: 'Р•Р¶РµРґРЅРµРІРЅС‹Рµ СѓРІРµРґРѕРјР»РµРЅРёСЏ Рѕ РЅРµРѕР±С…РѕРґРёРјРѕСЃС‚Рё Р·Р°РјРµСЂР° РґР°РІР»РµРЅРёСЏ',
+          'Напоминания о давлении',
+          channelDescription: 'Ежедневные уведомления о необходимости замера давления',
           importance: Importance.max,
           priority: Priority.high,
         ),
         iOS: DarwinNotificationDetails(),
       ),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      // NOTE: Inexact scheduling avoids Android 12+ exact-alarm restrictions
+      // (SCHEDULE_EXACT_ALARM / "Alarms & reminders" permission).
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
       uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
       matchDateTimeComponents: DateTimeComponents.time,
     );
@@ -2571,7 +2573,7 @@ class AppPalette {
   // Dark greys
   static const Color dark900 = Color(0xFF2D2D2D); // rgb(45,45,45)
   static const Color dark800 = Color(0xFF3C3C3C); // rgb(60,60,60)
-  static const Color dark805 = Color(0xFF3D3D3D); // rgb(61,61,61) (РґР»СЏ linear РєРѕР»СЊС†Р°)
+  static const Color dark805 = Color(0xFF3D3D3D); // rgb(61,61,61) (для linear кольца)
   static const Color dark700 = Color(0xFF4C4C4C); // rgb(76,76,76)
   static const Color dark600 = Color(0xFF747474); // rgb(116,116,116)
   static const Color dark400 = Color(0xFFCCCCCC); // rgb(204,204,204)
@@ -3162,7 +3164,7 @@ class AppTheme {
       brightness: brightness,
       fontFamily: typography.family,
       scaffoldBackgroundColor: colors.background,
-      // вњ… Р­С‚Рѕ РєСЂРёС‚РёС‡РЅРѕ РґР»СЏ appColors/appSpace/...
+      // ✅ Это критично для appColors/appSpace/...
       extensions: <ThemeExtension<dynamic>>[
         colors,
         typography,
@@ -3284,7 +3286,7 @@ class AppTheme {
 }
 
 // -----------------------------------------------------------------------------
-// Context accessors (СЌС‚Рѕ Рё РµСЃС‚СЊ appColors/appSpace/...)
+// Context accessors (это и есть appColors/appSpace/...)
 
 extension AppThemeX on BuildContext {
   AppColors get appColors => Theme.of(this).extension<AppColors>() ?? AppColors.light;
@@ -3295,7 +3297,7 @@ extension AppThemeX on BuildContext {
 }
 
 // -----------------------------------------------------------------------------
-// Legacy API (С‡С‚РѕР±С‹ СЃС‚Р°СЂС‹Р№ РєРѕРґ РЅРµ РїРѕСЃС‹РїР°Р»СЃСЏ)
+// Legacy API (чтобы старый код не посыпался)
 
 class AppUI {
   // Sizes
@@ -3343,7 +3345,7 @@ class AppUI {
 import 'dart:math' as math;
 import 'package:flutter/widgets.dart';
 
-const double _designHeight = 800.0; // СЌС‚Р°Р»РѕРЅРЅР°СЏ РІС‹СЃРѕС‚Р° РјР°РєРµС‚Р° (dp)
+const double _designHeight = 800.0; // эталонная высота макета (dp)
 
 double _scale(BuildContext context) {
   final h = MediaQuery.sizeOf(context).height;
@@ -3356,41 +3358,13 @@ double dp(BuildContext context, double designPx) =>
 
 double sp(BuildContext context, double designSp) =>
     designSp * _scale(context);
-class AppStrings {
-  static const newRecord = 'РќРѕРІР°СЏ Р·Р°РїРёСЃСЊ';
-  static const deleteRecordQ = 'РЈРґР°Р»РёС‚СЊ Р·Р°РїРёСЃСЊ?';
-  static const cannotUndo = 'Р­С‚Рѕ РґРµР№СЃС‚РІРёРµ РЅРµР»СЊР·СЏ РѕС‚РјРµРЅРёС‚СЊ.';
-  static const cancel = 'РћС‚РјРµРЅР°';
-  static const delete = 'РЈРґР°Р»РёС‚СЊ';
-  static const pickTime = 'Р’С‹Р±РµСЂРёС‚Рµ РІСЂРµРјСЏ';
-  static const pickDate = 'Р’С‹Р±РµСЂРёС‚Рµ РґР°С‚Сѓ';
-  static const systolicShort = 'РЎРёСЃС‚.';
-  static const diastolicShort = 'Р”РёР°СЃС‚.';
-  static const pulse = 'РџСѓР»СЊСЃ';
-  static const commentHint = 'РљРѕРјРјРµРЅС‚Р°СЂРёР№';
-  static const save = 'РЎРѕС…СЂР°РЅРёС‚СЊ';
-  static const today = 'РЎРµРіРѕРґРЅСЏ';
-  static const week = 'РќРµРґРµР»СЏ';
-  static const month = 'РњРµСЃСЏС†';
-  static const allShort = 'Р’СЃС‘';
-  static const allTime = 'Р’СЃС‘ РІСЂРµРјСЏ';
-  static const myDiary = 'РњРѕР№ РґРЅРµРІРЅРёРє';
-  static String recordsWord(int n) {
-    final nAbs = n.abs() % 100;
-    final n1 = nAbs % 10;
-    if (nAbs >= 11 && nAbs <= 19) return 'Р·Р°РїРёСЃРµР№';
-    if (n1 == 1) return 'Р·Р°РїРёСЃСЊ';
-    if (n1 >= 2 && n1 <= 4) return 'Р·Р°РїРёСЃРё';
-    return 'Р·Р°РїРёСЃРµР№';
-  }
-}
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
 class BloodPressureColorUtils {
-  /// Р¦РІРµС‚ РјР°СЂРєРµСЂР° Р·Р°РїРёСЃРё РІ Р¶СѓСЂРЅР°Р»Рµ.
-  /// Р›РѕРіРёРєР° СЃРёРЅС…СЂРѕРЅРёР·РёСЂРѕРІР°РЅР° СЃ Р·РѕРЅР°РјРё РЅР° РіСЂР°С„РёРєРµ:
-  /// SYS: target В±10, DIA: target В±5.
+  /// Цвет маркера записи в журнале.
+  /// Логика синхронизирована с зонами на графике:
+  /// SYS: target ±10, DIA: target ±5.
   static Color getIndicatorColor(
       BuildContext context, {
         required int systolic,
@@ -3412,8 +3386,8 @@ class BloodPressureColorUtils {
     final isHigh = systolic > sysHigh || diastolic > diaHigh;
 
     if (isHigh) return c.danger;
-    if (isLow) return AppPalette.blueAccent; // РЅРёР·РєРѕРµ РґР°РІР»РµРЅРёРµ
-    return c.success; // РІ Р·РѕРЅРµ
+    if (isLow) return AppPalette.blueAccent; // низкое давление
+    return c.success; // в зоне
   }
 }
 import 'input_field.dart';
@@ -3428,12 +3402,18 @@ PressureField? toPressureField(InputField f) {
   };
 }
 enum InputField { systolic, diastolic, pulse, none }
+import 'package:flutter/widgets.dart';
+import 'package:blood_pressure_diary/l10n/generated/app_localizations.dart';
+
+extension AppLocalizationsX on BuildContext {
+  AppLocalizations get l10n => AppLocalizations.of(this)!;
+}
 import 'package:flutter/cupertino.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:io' show Platform;
 
-/// Р’СЃРїРѕРјРѕРіР°С‚РµР»СЊРЅР°СЏ С„СѓРЅРєС†РёСЏ РґР»СЏ РєРѕСЂСЂРµРєС‚РЅРѕРіРѕ РєРѕРґРёСЂРѕРІР°РЅРёСЏ РїР°СЂР°РјРµС‚СЂРѕРІ mailto.
-/// Р—Р°РјРµРЅСЏРµС‚ '+' РЅР° '%20', С‡С‚РѕР±С‹ РІ С‚РµР»Рµ РїРёСЃСЊРјР° РЅРµ Р±С‹Р»Рѕ РїР»СЋСЃРѕРІ РІРјРµСЃС‚Рѕ РїСЂРѕР±РµР»РѕРІ.
+/// Вспомогательная функция для корректного кодирования параметров mailto.
+/// Заменяет '+' на '%20', чтобы в теле письма не было плюсов вместо пробелов.
 String _encodeQueryParameters(Map<String, String> params) {
   return params.entries
       .map((e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}')
@@ -3446,7 +3426,7 @@ Future<void> launchEmail({
   required String subject,
   required String body,
 }) async {
-  // РСЃРїРѕР»СЊР·СѓРµРј СЂСѓС‡РЅСѓСЋ СЃР±РѕСЂРєСѓ query РІРјРµСЃС‚Рѕ queryParameters
+  // Используем ручную сборку query вместо queryParameters
   final Uri emailLaunchUri = Uri(
     scheme: 'mailto',
     path: to,
@@ -3456,7 +3436,7 @@ Future<void> launchEmail({
     }),
   );
 
-  // mode: LaunchMode.externalApplication РІР°Р¶РµРЅ РґР»СЏ СЃС‚Р°Р±РёР»СЊРЅРѕСЃС‚Рё РЅР° Android
+  // mode: LaunchMode.externalApplication важен для стабильности на Android
   final ok = await launchUrl(emailLaunchUri, mode: LaunchMode.externalApplication);
   if (!ok) {
     debugPrint('Could not launch email to $to');
@@ -3495,8 +3475,8 @@ enum PressureCategory {
 }
 
 class PressureAssessmentPolicy {
-  /// РћС†РµРЅРёРІР°РµС‚ СЃРѕСЃС‚РѕСЏРЅРёРµ РЅР° РѕСЃРЅРѕРІРµ СЃРёСЃС‚РѕР»РёС‡РµСЃРєРѕРіРѕ Рё РґРёР°СЃС‚РѕР»РёС‡РµСЃРєРѕРіРѕ РґР°РІР»РµРЅРёСЏ.
-  /// Р›РѕРіРёРєР° РѕСЃРЅРѕРІР°РЅР° РЅР° СЃС‚Р°РЅРґР°СЂС‚РЅС‹С… РјРµРґРёС†РёРЅСЃРєРёС… СЂРµРєРѕРјРµРЅРґР°С†РёСЏС…, РЅРѕ РјРѕР¶РµС‚ Р±С‹С‚СЊ СЂР°СЃС€РёСЂРµРЅР°.
+  /// Оценивает состояние на основе систолического и диастолического давления.
+  /// Логика основана на стандартных медицинских рекомендациях, но может быть расширена.
   static PressureCategory assess(int systolic, int diastolic) {
     if (systolic >= 180 || diastolic >= 120) return PressureCategory.crisis;
     if (systolic >= 160 || diastolic >= 100) return PressureCategory.high2;
@@ -3523,14 +3503,14 @@ import 'package:blood_pressure_diary/core/utils/validation_policy.dart';
 import 'package:blood_pressure_diary/core/utils/validation_utils.dart';
 
 class SmartInputEngine {
-  /// РћРїСЂРµРґРµР»СЏРµС‚ С†РµР»РµРІСѓСЋ РґР»РёРЅСѓ РїРѕР»СЏ РЅР° РѕСЃРЅРѕРІРµ РїРµСЂРІРѕР№ РІРІРµРґРµРЅРЅРѕР№ С†РёС„СЂС‹.
+  /// Определяет целевую длину поля на основе первой введенной цифры.
   static int getTargetLength(InputField field, String currentText, String nextDigit) {
     assert(currentText.isNotEmpty || nextDigit.isNotEmpty);
     final first = currentText.isEmpty ? nextDigit : currentText[0];
     return _targetLenByFirstDigit(field: field, firstDigit: first);
   }
 
-  /// РџСЂРѕРІРµСЂСЏРµС‚, РјРѕР¶РЅРѕ Р»Рё РґРѕР±Р°РІРёС‚СЊ С†РёС„СЂСѓ Рє С‚РµРєСѓС‰РµРјСѓ С‚РµРєСЃС‚Сѓ.
+  /// Проверяет, можно ли добавить цифру к текущему тексту.
   static bool isDigitAllowed({
     required InputField field,
     required String currentText,
@@ -3541,26 +3521,26 @@ class SmartInputEngine {
     final code = digit.codeUnitAt(0);
     if (code < 48 || code > 57) return false;
 
-    // Р’РµРґСѓС‰РёР№ РЅРѕР»СЊ Р·Р°РїСЂРµС‰РµРЅ
+    // Ведущий ноль запрещен
     if (currentText.isEmpty && digit == '0') return false;
 
     final newText = currentText + digit;
     final targetLen = getTargetLength(field, currentText, digit);
 
-    // Р•СЃР»Рё РїСЂРµРІС‹С€Р°РµРј РґР»РёРЅСѓ вЂ” Р·Р°РїСЂРµС‰РµРЅРѕ
+    // Если превышаем длину — запрещено
     if (newText.length > targetLen) return false;
 
-    // Р•СЃР»Рё СЌС‚Рѕ С„РёРЅР°Р»СЊРЅР°СЏ РґР»РёРЅР° вЂ” РїСЂРѕРІРµСЂСЏРµРј РґРёР°РїР°Р·РѕРЅ
+    // Если это финальная длина — проверяем диапазон
     if (newText.length == targetLen) {
       final value = int.tryParse(newText) ?? 0;
       return _isInRange(field, value, systolicValue);
     }
 
-    // Р•СЃР»Рё СЌС‚Рѕ РїСЂРѕРјРµР¶СѓС‚РѕС‡РЅС‹Р№ РІРІРѕРґ вЂ” РїСЂРѕРІРµСЂСЏРµРј, РґРѕСЃС‚РёР¶РёРј Р»Рё С…РѕС‚СЊ РѕРґРёРЅ РІР°Р»РёРґРЅС‹Р№ СЂРµР·СѓР»СЊС‚Р°С‚
+    // Если это промежуточный ввод — проверяем, достижим ли хоть один валидный результат
     return _isReachable(field, newText, targetLen, systolicValue);
   }
 
-  /// РќСѓР¶РЅРѕ Р»Рё Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё РїРµСЂРµС…РѕРґРёС‚СЊ Рє СЃР»РµРґСѓСЋС‰РµРјСѓ РїРѕР»СЋ.
+  /// Нужно ли автоматически переходить к следующему полю.
   static bool shouldAutoAdvance({
     required InputField field,
     required String currentText,
@@ -3666,7 +3646,7 @@ class ValidationPolicy {
 import 'validation_policy.dart';
 
 class ValidationUtils {
-  /// РџСЂРѕРІРµСЂРєР° С„РёРЅР°Р»СЊРЅРѕР№ РІР°Р»РёРґРЅРѕСЃС‚Рё РІСЃРµР№ С„РѕСЂРјС‹.
+  /// Проверка финальной валидности всей формы.
   static bool isFormValid({
     required String systolic,
     required String diastolic,
@@ -3687,7 +3667,7 @@ class ValidationUtils {
     return true;
   }
 
-  /// Р”РѕРїСѓСЃС‚РёРјС‹Р№ РґРёР°РїР°Р·РѕРЅ DIA Р·Р°РІРёСЃРёС‚ РѕС‚ С‚РµРєСѓС‰РµРіРѕ SYS.
+  /// Допустимый диапазон DIA зависит от текущего SYS.
   static (int, int) diaRangeForSys(int sys) {
     final lo = (sys - ValidationPolicy.maxSysDiaDiff) > ValidationPolicy.minDia
         ? (sys - ValidationPolicy.maxSysDiaDiff)
@@ -3727,7 +3707,7 @@ class AddRecordBloc extends Bloc<AddRecordEvent, AddRecordState> {
       emit(state.copyWith(isTagsExpanded: !state.isTagsExpanded));
     });
 
-    // РљР РРўРР§РќРћ: РРЅРёС†РёР°Р»РёР·РёСЂСѓРµРј РєРЅРѕРїРєРё РґР»СЏ РїСѓСЃС‚РѕРіРѕ СЃРѕСЃС‚РѕСЏРЅРёСЏ СЃРёСЃС‚РѕР»С‹ СЃСЂР°Р·Сѓ
+    // КРИТИЧНО: Инициализируем кнопки для пустого состояния систолы сразу
     add(const FieldChanged(InputField.systolic));
   }
 
@@ -3744,10 +3724,10 @@ class AddRecordBloc extends Bloc<AddRecordEvent, AddRecordState> {
     final cur = _getVal(state.activeField);
     final next = cur + event.number;
 
-    // 1) РѕР±РЅРѕРІР»СЏРµРј Р·РЅР°С‡РµРЅРёРµ РїРѕР»СЏ
+    // 1) обновляем значение поля
     final ns = _updateStateValue(state, state.activeField, next);
 
-    // 2) Р°РІС‚Рѕ-РїРµСЂРµС…РѕРґ
+    // 2) авто-переход
     final nextField = _getAutoNextField(ns);
 
     if (nextField != ns.activeField) {
@@ -3899,7 +3879,7 @@ class AddRecordBloc extends Bloc<AddRecordEvent, AddRecordState> {
   }
 }
 import 'package:equatable/equatable.dart';
-// РРјРїРѕСЂС‚РёСЂСѓРµРј РјРѕРґРµР»СЊ, С‡С‚РѕР±С‹ СЃРѕР±С‹С‚РёРµ EditStarted Р·РЅР°Р»Рѕ Рѕ BloodPressureRecord
+// Импортируем модель, чтобы событие EditStarted знало о BloodPressureRecord
 import '../../../home/data/blood_pressure_model.dart';
 import 'package:blood_pressure_diary/core/utils/input_field.dart';
 
@@ -3910,7 +3890,7 @@ abstract class AddRecordEvent extends Equatable {
   List<Object?> get props => [];
 }
 
-// РЎРћР‘Р«РўРР• Р”Р›РЇ Р Р•Р”РђРљРўРР РћР’РђРќРРЇ
+// СОБЫТИЕ ДЛЯ РЕДАКТИРОВАНИЯ
 class EditStarted extends AddRecordEvent {
   final BloodPressureRecord record;
   const EditStarted(this.record);
@@ -3935,7 +3915,7 @@ class FieldChanged extends AddRecordEvent {
   List<Object?> get props => [field];
 }
 
-// РЎРћР‘Р«РўРР• Р”Р›РЇ Р—РђРњР•РўРћРљ
+// СОБЫТИЕ ДЛЯ ЗАМЕТОК
 class NoteChanged extends AddRecordEvent {
   final String note;
   const NoteChanged(this.note);
@@ -3994,13 +3974,13 @@ class AddRecordState extends Equatable {
 
   final bool isSaved;
 
-  /// Р Р°Р·СЂРµС€С‘РЅРЅС‹Рµ РєРЅРѕРїРєРё РєР°СЃС‚РѕРјРЅРѕР№ РєР»Р°РІРёР°С‚СѓСЂС‹ (СЃС‚СЂРѕРєРё С†РёС„СЂ).
+  /// Разрешённые кнопки кастомной клавиатуры (строки цифр).
   final List<String> enabledKeys;
 
-  /// Р’С‹Р±СЂР°РЅРЅС‹Рµ С‚РµРіРё (С…СЂР°РЅРёРј С‚РµРєСЃС‚РѕРІС‹Рµ label).
+  /// Выбранные теги (храним текстовые label).
   final List<String> tags;
 
-  /// Р Р°СЃРєСЂС‹С‚ Р»Рё Р±Р»РѕРє С‚РµРіРѕРІ РЅР° СЌРєСЂР°РЅРµ.
+  /// Раскрыт ли блок тегов на экране.
   final bool isTagsExpanded;
 
   AddRecordState({
@@ -4135,8 +4115,8 @@ class CustomKeypad extends StatelessWidget {
               backgroundColor: isDelete ? deleteBackground : background,
               foregroundColor: foreground,
               elevation: 0,
-              padding: EdgeInsets.zero, // вњ… С‡С‚РѕР±С‹ РёРєРѕРЅРєР° РЅРµ вЂњРІРёСЃРµР»Р°вЂќ
-              minimumSize: const Size(double.infinity, double.infinity), // вњ… Р·Р°РїРѕР»РЅРёС‚СЊ СЏС‡РµР№РєСѓ
+              padding: EdgeInsets.zero, // ✅ чтобы иконка не “висела”
+              minimumSize: const Size(double.infinity, double.infinity), // ✅ заполнить ячейку
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radius)),
             ),
@@ -4166,32 +4146,94 @@ import 'package:blood_pressure_diary/features/home/data/blood_pressure_model.dar
 
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/scale.dart';
-import '../../../../core/utils/app_strings.dart';
 import '../../../core/utils/input_field.dart';
 import 'bloc/add_record_bloc.dart';
 import 'bloc/add_record_event.dart';
 import 'bloc/add_record_state.dart';
 import 'widgets/custom_keypad.dart';
 
+String _tr(BuildContext context, {required String ru, required String en}) {
+  final code = Localizations.localeOf(context).languageCode.toLowerCase();
+  return code == 'ru' ? ru : en;
+}
+
 class TagPreset {
-  final String label;
+  /// Значение, которое сохраняем в запись (стабильное, не зависит от языка).
+  final String value;
+
+  /// Текст, который показываем пользователю (может зависеть от языка).
+  final String ruLabel;
+  final String enLabel;
+
   final String iconAsset;
 
-  const TagPreset(this.label, this.iconAsset);
+  const TagPreset(this.value, this.iconAsset, {required this.ruLabel, required this.enLabel});
+
+  String label(BuildContext context) => _tr(context, ru: ruLabel, en: enLabel);
 }
 
 class AddRecordScreen extends StatelessWidget {
   static const List<TagPreset> presetTags = [
-    TagPreset('РџРѕСЃР»Рµ РєРѕС„Рµ', 'assets/icons/tags/coffee.svg'),
-    TagPreset('РђР»РєРѕРіРѕР»СЊ', 'assets/icons/tags/alcohol.svg'),
-    TagPreset('РџРѕСЃР»Рµ РµРґС‹', 'assets/icons/tags/hamburger.svg'),
-    TagPreset('РџРѕСЃР»Рµ РїСЂРѕРіСѓР»РєРё', 'assets/icons/tags/walk.svg'),
-    TagPreset('РџРѕСЃР»Рµ С‚СЂРµРЅРёСЂРѕРІРєРё', 'assets/icons/tags/training.svg'),
-    TagPreset('РЎС‚СЂРµСЃСЃ', 'assets/icons/tags/stress.svg'),
-    TagPreset('РџР»РѕС…РѕР№ СЃРѕРЅ', 'assets/icons/tags/sleep.svg'),
-    TagPreset('Р“РѕР»РѕРІРЅР°СЏ Р±РѕР»СЊ', 'assets/icons/tags/headache.svg'),
-    TagPreset('РџСЂРёРЅСЏР» Р»РµРєР°СЂСЃС‚РІРѕ', 'assets/icons/tags/meds.svg'),
-    TagPreset('РџСЂРѕРїСѓСЃС‚РёР» РїСЂРёС‘Рј', 'assets/icons/tags/missed_meds.svg'),
+    TagPreset(
+      'После кофе',
+      'assets/icons/tags/coffee.svg',
+      ruLabel: 'После кофе',
+      enLabel: 'After coffee',
+    ),
+    TagPreset(
+      'Алкоголь',
+      'assets/icons/tags/alcohol.svg',
+      ruLabel: 'Алкоголь',
+      enLabel: 'Alcohol',
+    ),
+    TagPreset(
+      'После еды',
+      'assets/icons/tags/hamburger.svg',
+      ruLabel: 'После еды',
+      enLabel: 'After meal',
+    ),
+    TagPreset(
+      'После прогулки',
+      'assets/icons/tags/walk.svg',
+      ruLabel: 'После прогулки',
+      enLabel: 'After walk',
+    ),
+    TagPreset(
+      'После тренировки',
+      'assets/icons/tags/training.svg',
+      ruLabel: 'После тренировки',
+      enLabel: 'After workout',
+    ),
+    TagPreset(
+      'Стресс',
+      'assets/icons/tags/stress.svg',
+      ruLabel: 'Стресс',
+      enLabel: 'Stress',
+    ),
+    TagPreset(
+      'Плохой сон',
+      'assets/icons/tags/sleep.svg',
+      ruLabel: 'Плохой сон',
+      enLabel: 'Poor sleep',
+    ),
+    TagPreset(
+      'Головная боль',
+      'assets/icons/tags/headache.svg',
+      ruLabel: 'Головная боль',
+      enLabel: 'Headache',
+    ),
+    TagPreset(
+      'Принял лекарство',
+      'assets/icons/tags/meds.svg',
+      ruLabel: 'Принял лекарство',
+      enLabel: 'Took meds',
+    ),
+    TagPreset(
+      'Пропустил приём',
+      'assets/icons/tags/missed_meds.svg',
+      ruLabel: 'Пропустил приём',
+      enLabel: 'Missed meds',
+    ),
   ];
 
   final BloodPressureRecord? record;
@@ -4267,7 +4309,7 @@ class _AddRecordViewState extends State<_AddRecordView> {
     final picked = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(current),
-      helpText: AppStrings.pickTime,
+      helpText: _tr(context, ru: 'Выберите время', en: 'Select time'),
     );
     if (picked == null || !context.mounted) return;
 
@@ -4287,7 +4329,7 @@ class _AddRecordViewState extends State<_AddRecordView> {
       initialDate: current,
       firstDate: DateTime(current.year - 1),
       lastDate: DateTime(current.year + 1),
-      helpText: AppStrings.pickDate,
+      helpText: _tr(context, ru: 'Выберите дату', en: 'Select date'),
     );
     if (picked == null || !context.mounted) return;
 
@@ -4306,16 +4348,16 @@ class _AddRecordViewState extends State<_AddRecordView> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text(AppStrings.deleteRecordQ),
-        content: const Text(AppStrings.cannotUndo),
+        title: Text(_tr(context, ru: 'Удалить запись?', en: 'Delete record?')),
+        content: Text(_tr(context, ru: 'Отменить нельзя', en: 'This can’t be undone')),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(AppStrings.cancel, style: TextStyle(color: colors.brandStrong)),
+            child: Text(_tr(context, ru: 'Отмена', en: 'Cancel'), style: TextStyle(color: colors.brandStrong)),
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(AppStrings.delete, style: TextStyle(color: colors.danger)),
+            child: Text(_tr(context, ru: 'Удалить', en: 'Delete'), style: TextStyle(color: colors.danger)),
           ),
         ],
       ),
@@ -4332,7 +4374,7 @@ class _AddRecordViewState extends State<_AddRecordView> {
     final safeBottom = MediaQuery.paddingOf(context).bottom;
     final keyboard = MediaQuery.viewInsetsOf(context).bottom;
 
-    // Bottom bar in AppNavigation: barH (69) + lift (43) в‰€ 112, РїР»СЋСЃ safeBottom.
+    // Bottom bar in AppNavigation: barH (69) + lift (43) ≈ 112, плюс safeBottom.
     final barH = dp(context, space.s72 - space.s2 - space.s1);
     final outer = dp(context, space.s80 + space.s6);
     final lift = outer / 2;
@@ -4374,7 +4416,7 @@ class _AddRecordViewState extends State<_AddRecordView> {
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // С„РёРєСЃРёСЂРѕРІР°РЅРЅС‹Р№ РІРЅРµС€РЅРёР№ РіРѕСЂРёР·РѕРЅС‚Р°Р»СЊРЅС‹Р№ РїР°РґРґРёРЅРі (СЌС‚Р°Р»РѕРЅ)
+    // фиксированный внешний горизонтальный паддинг (эталон)
     final side = dp(context, space.s20);
 
     final topInset = MediaQuery.paddingOf(context).top;
@@ -4499,7 +4541,7 @@ class _AddRecordViewState extends State<_AddRecordView> {
                       ),
                       SizedBox(height: gap12),
                       Text(
-                        AppStrings.newRecord,
+                        _tr(context, ru: 'Новая запись', en: 'New record'),
                         style: titleStyle,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -4519,7 +4561,7 @@ class _AddRecordViewState extends State<_AddRecordView> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        // SYS / DIA / Pulse вЂ” 3 СЂР°РІРЅС‹С… РїРѕР»СЏ РІ СЂСЏРґ (СЌС‚Р°Р»РѕРЅ)
+                        // SYS / DIA / Pulse — 3 равных поля в ряд (эталон)
                         Row(
                           children: [
                             Expanded(
@@ -4528,7 +4570,7 @@ class _AddRecordViewState extends State<_AddRecordView> {
                                 radius: pillR,
                                 bg: surface,
                                 shadow: shadows.card,
-                                text: state.systolic.isEmpty ? AppStrings.systolicShort : state.systolic,
+                                text: state.systolic.isEmpty ? 'SYS' : state.systolic,
                                 textStyle: state.systolic.isEmpty ? pillHintStyle : pillValueStyleBold,
                                 isFocused: state.activeField == InputField.systolic,
                                 focusBorderColor: focusBorderColor,
@@ -4543,7 +4585,7 @@ class _AddRecordViewState extends State<_AddRecordView> {
                                 radius: pillR,
                                 bg: surface,
                                 shadow: shadows.card,
-                                text: state.diastolic.isEmpty ? AppStrings.diastolicShort : state.diastolic,
+                                text: state.diastolic.isEmpty ? 'DIA' : state.diastolic,
                                 textStyle: state.diastolic.isEmpty ? pillHintStyle : pillValueStyleBold,
                                 isFocused: state.activeField == InputField.diastolic,
                                 focusBorderColor: focusBorderColor,
@@ -4558,7 +4600,7 @@ class _AddRecordViewState extends State<_AddRecordView> {
                                 radius: pillR,
                                 bg: surface,
                                 shadow: shadows.card,
-                                text: state.pulse.isEmpty ? AppStrings.pulse : state.pulse,
+                                text: state.pulse.isEmpty ? _tr(context, ru: 'Пульс', en: 'Pulse') : state.pulse,
                                 textStyle: state.pulse.isEmpty ? pillHintStyle : pillValueStyleBold,
                                 isFocused: state.activeField == InputField.pulse,
                                 focusBorderColor: focusBorderColor,
@@ -4571,7 +4613,7 @@ class _AddRecordViewState extends State<_AddRecordView> {
 
                         SizedBox(height: gap20),
 
-                        // Р’СЂРµРјСЏ (РєР°Рє SYS) + Р”Р°С‚Р° (РѕСЃС‚Р°С‚РѕРє РґРѕ РїСЂР°РІРѕРіРѕ РѕС‚СЃС‚СѓРїР°)
+                        // Время (как SYS) + Дата (остаток до правого отступа)
                         _threeColGridSpan23(
                           context: context,
                           gap: gap16,
@@ -4589,7 +4631,7 @@ class _AddRecordViewState extends State<_AddRecordView> {
                             height: pillH,
                             radius: pillR,
                             bg: surface,
-                            text: DateFormat('dd MMMM yyyy', 'ru').format(dt),
+                            text: DateFormat('dd MMMM yyyy', Localizations.localeOf(context).toString()).format(dt),
                             textStyle: pillValueStyleRegular,
                             chevronColor: chevron,
                             shadow: shadows.card,
@@ -4599,7 +4641,7 @@ class _AddRecordViewState extends State<_AddRecordView> {
 
                         SizedBox(height: gap20),
 
-                        // РљРѕРјРјРµРЅС‚Р°СЂРёР№ вЂ” РЅР° РІСЃСЋ С€РёСЂРёРЅСѓ РјРёРЅСѓСЃ РєСЂР°Р№РЅРёРµ РѕС‚СЃС‚СѓРїС‹
+                        // Комментарий — на всю ширину минус крайние отступы
                         Container(
                           height: commentH,
                           decoration: BoxDecoration(
@@ -4623,7 +4665,7 @@ class _AddRecordViewState extends State<_AddRecordView> {
                             onChanged: (v) => context.read<AddRecordBloc>().add(NoteChanged(v)),
                             style: commentStyle,
                             decoration: InputDecoration.collapsed(
-                              hintText: AppStrings.commentHint,
+                              hintText: _tr(context, ru: 'Комментарий', en: 'Comment'),
                               hintStyle: commentHintStyle,
                             ),
                           ),
@@ -4631,7 +4673,7 @@ class _AddRecordViewState extends State<_AddRecordView> {
 
                         SizedBox(height: gap16),
 
-                        // РўРµРіРё вЂ” РїРѕ С‚РѕР№ Р¶Рµ С€РёСЂРёРЅРµ, РІС‹СЂР°РІРЅРёРІР°РЅРёРµ РїРѕ РїСЂР°РІРѕРјСѓ РєСЂР°СЋ РІРЅСѓС‚СЂРё СЃС‚СЂРѕРєРё
+                        // Теги — по той же ширине, выравнивание по правому краю внутри строки
                         _TagsDisclosureRow(
                           isExpanded: state.isTagsExpanded,
                           selectedCount: state.tags.length,
@@ -4648,7 +4690,7 @@ class _AddRecordViewState extends State<_AddRecordView> {
                             children: [
                               for (final tag in AddRecordScreen.presetTags)
                                 FilterChip(
-                                  selected: state.tags.contains(tag.label),
+                                  selected: state.tags.contains(tag.value),
                                   label: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
@@ -4658,10 +4700,10 @@ class _AddRecordViewState extends State<_AddRecordView> {
                                         height: dp(context, space.s16),
                                       ),
                                       SizedBox(width: dp(context, space.s6)),
-                                      Text(tag.label, style: pillValueStyleRegular),
+                                      Text(tag.label(context), style: pillValueStyleRegular),
                                     ],
                                   ),
-                                  onSelected: (_) => context.read<AddRecordBloc>().add(TagToggled(tag.label)),
+                                  onSelected: (_) => context.read<AddRecordBloc>().add(TagToggled(tag.value)),
                                   backgroundColor: surface,
                                 ),
                             ],
@@ -4670,7 +4712,7 @@ class _AddRecordViewState extends State<_AddRecordView> {
 
                         SizedBox(height: gap16),
 
-                        // РЎРѕС…СЂР°РЅРёС‚СЊ вЂ” С€РёСЂРёРЅР° РєР°Рє РїРѕР»Рµ Р”Р°С‚С‹ (2/3), РІС‹СЂРѕРІРЅРµРЅРѕ РІРїСЂР°РІРѕ С‚РѕР№ Р¶Рµ СЃС‚СЂСѓРєС‚СѓСЂРѕР№
+                        // Сохранить — ширина как поле Даты (2/3), выровнено вправо той же структурой
                         _threeColGridSpan23(
                           context: context,
                           gap: gap16,
@@ -4688,7 +4730,7 @@ class _AddRecordViewState extends State<_AddRecordView> {
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(pillR)),
                               ),
                               child: Text(
-                                AppStrings.save,
+                                _tr(context, ru: 'Сохранить', en: 'Save'),
                                 style: TextStyle(
                                   fontFamily: txt.family,
                                   fontSize: sp(context, txt.fs20),
@@ -4847,11 +4889,26 @@ class _ChevronPill extends StatelessWidget {
             borderRadius: BorderRadius.circular(radius),
             boxShadow: [shadow],
           ),
-          padding: EdgeInsets.symmetric(horizontal: dp(context, space.s12)),
+          // Чуть ужимаем внутренние отступы и иконку: поле времени (1/3 ширины) иначе может не влезать на небольших экранах.
+          padding: EdgeInsets.only(
+            left: dp(context, space.s12),
+            right: dp(context, space.s8),
+          ),
           child: Row(
             children: [
-              Expanded(child: Text(text, style: textStyle, maxLines: 1, overflow: TextOverflow.ellipsis)),
-              Icon(Icons.arrow_drop_down, color: chevronColor, size: dp(context, space.s24)),
+              Expanded(
+                child: Text(
+                  text,
+                  style: textStyle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Icon(
+                Icons.arrow_drop_down,
+                color: chevronColor,
+                size: dp(context, space.s20),
+              ),
             ],
           ),
         ),
@@ -4908,7 +4965,7 @@ class _TagsDisclosureRow extends StatelessWidget {
   final int selectedCount;
   final VoidCallback onTap;
 
-  /// РЎС‚РёР»СЊ С‚РµРєСЃС‚Р° вЂ” РїРѕРґР°С‘Рј СЃРЅР°СЂСѓР¶Рё, С‡С‚РѕР±С‹ СЃРѕРІРїР°РґР°Р» СЃ С‡РёРїР°РјРё С‚РµРіРѕРІ.
+  /// Стиль текста — подаём снаружи, чтобы совпадал с чипами тегов.
   final TextStyle textStyle;
 
   const _TagsDisclosureRow({
@@ -4922,7 +4979,8 @@ class _TagsDisclosureRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final space = context.appSpace;
 
-    final label = selectedCount == 0 ? 'РўРµРіРё' : 'РўРµРіРё ($selectedCount)';
+    final base = _tr(context, ru: 'Теги', en: 'Tags');
+    final label = selectedCount == 0 ? base : '$base ($selectedCount)';
 
     return GestureDetector(
       onTap: onTap,
@@ -4938,7 +4996,7 @@ class _TagsDisclosureRow extends StatelessWidget {
           children: [
             Text(label, style: textStyle),
             SizedBox(width: dp(context, space.s10)),
-            Text(isExpanded ? 'вЂ“' : '+', style: textStyle),
+            Text(isExpanded ? '–' : '+', style: textStyle),
           ],
         ),
       ),
@@ -4962,24 +5020,24 @@ class BloodPressureRecord {
   late int diastolic;
   late int pulse;
 
-  String? note;    // РџРѕР»Рµ РґР»СЏ Р·Р°РјРµС‚РѕРє (Р±С‹РІС€РёР№ comment)
-  String? emotion; // РўРІРѕР№ СЌРјРѕРґР·Рё
-  List<String> tags = const []; // РљРѕРЅС‚РµРєСЃС‚РЅС‹Рµ С‚РµРіРё (РїРѕСЃР»Рµ РєРѕС„Рµ, СЃС‚СЂРµСЃСЃ Рё С‚.Рї.)
+  String? note;    // Поле для заметок (бывший comment)
+  String? emotion; // Твой эмодзи
+  List<String> tags = const []; // Контекстные теги (после кофе, стресс и т.п.)
 
   @ignore
   Color get statusColor {
     final category = PressureAssessmentPolicy.assess(systolic, diastolic);
     switch (category) {
       case PressureCategory.low:
-        return const Color(0xFF60A5FA); // РіРѕР»СѓР±РѕР№
+        return const Color(0xFF60A5FA); // голубой
       case PressureCategory.normal:
-        return const Color(0xFF22C55E); // Р·РµР»С‘РЅС‹Р№
+        return const Color(0xFF22C55E); // зелёный
       case PressureCategory.elevated:
-        return const Color(0xFFFACC15); // Р¶РµР»С‚С‹Р№
+        return const Color(0xFFFACC15); // желтый
       case PressureCategory.high1:
       case PressureCategory.high2:
       case PressureCategory.crisis:
-        return const Color(0xFFE11D48); // РєСЂР°СЃРЅС‹Р№
+        return const Color(0xFFE11D48); // красный
     }
   }
 
@@ -4988,17 +5046,17 @@ class BloodPressureRecord {
     final category = PressureAssessmentPolicy.assess(systolic, diastolic);
     switch (category) {
       case PressureCategory.low:
-        return 'РџРѕРЅРёР¶РµРЅРѕ';
+        return 'Понижено';
       case PressureCategory.normal:
-        return 'РќРѕСЂРјР°';
+        return 'Норма';
       case PressureCategory.elevated:
-        return 'РџРѕРІС‹С€РµРЅРѕ';
+        return 'Повышено';
       case PressureCategory.high1:
-        return 'Р“РёРїРµСЂС‚РѕРЅРёСЏ 1';
+        return 'Гипертония 1';
       case PressureCategory.high2:
-        return 'Р“РёРїРµСЂС‚РѕРЅРёСЏ 2';
+        return 'Гипертония 2';
       case PressureCategory.crisis:
-        return 'РљСЂРёР·РёСЃ';
+        return 'Кризис';
     }
   }
 }
@@ -6499,7 +6557,7 @@ class HomeBloc extends Bloc<HomeEvent, HomeState> {
   }
 
   Future<void> _onLoadData(LoadHomeData event, Emitter<HomeState> emit) async {
-    // РЇРІРЅРѕ С‚РёРїРёР·РёСЂСѓРµРј СЃС‚СЂРёРј, С‡С‚РѕР±С‹ РёР·Р±РµР¶Р°С‚СЊ РѕС€РёР±РєРё Object?
+    // Явно типизируем стрим, чтобы избежать ошибки Object?
     await emit.forEach<List<BloodPressureRecord>>(
       _repository.getAllRecordsStream(),
       onData: (records) => HomeLoaded(records),
@@ -6558,8 +6616,8 @@ class StatisticsCubit extends Cubit<StatisticsState> {
     updatePeriod(StatisticsPeriod.sevenDays);
   }
 
-  /// вњ… РћР±РЅРѕРІРёС‚СЊ РёСЃС…РѕРґРЅС‹Рµ Р·Р°РїРёСЃРё (РЅР°РїСЂРёРјРµСЂ, РїРѕСЃР»Рµ СѓРґР°Р»РµРЅРёСЏ/РґРѕР±Р°РІР»РµРЅРёСЏ РІ Р¶СѓСЂРЅР°Р»Рµ)
-  /// Рё РїРµСЂРµСЃС‡РёС‚Р°С‚СЊ С‚РµРєСѓС‰РёР№ РїРµСЂРёРѕРґ Р±РµР· РїРµСЂРµР·Р°РїСѓСЃРєР° РїСЂРёР»РѕР¶РµРЅРёСЏ.
+  /// ✅ Обновить исходные записи (например, после удаления/добавления в журнале)
+  /// и пересчитать текущий период без перезапуска приложения.
   void updateRecords(List<BloodPressureRecord> records) {
     _allRecords = List<BloodPressureRecord>.from(records);
     updatePeriod(state.period);
@@ -6681,7 +6739,7 @@ class StatisticsState extends Equatable {
   final double avgSys;
   final double avgDia;
 
-  // вњ… PULSE analytics
+  // ✅ PULSE analytics
   final double maxPulse;
   final double minPulse;
   final double avgPulse;
@@ -6767,17 +6825,60 @@ import '../../../profile/presentation/bloc/profile_state.dart';
 import '../../data/blood_pressure_model.dart';
 
 class RecordListItem extends StatelessWidget {
-  static const Map<String, String> _tagIconByLabel = {
-    'РџРѕСЃР»Рµ РєРѕС„Рµ': 'assets/icons/tags/coffee.svg',
-    'РџРѕСЃР»Рµ РµРґС‹': 'assets/icons/tags/hamburger.svg',
-    'РџРѕСЃР»Рµ РїСЂРѕРіСѓР»РєРё': 'assets/icons/tags/walk.svg',
-    'РџРѕСЃР»Рµ РЅР°РіСЂСѓР·РєРё/С‚СЂРµРЅРёСЂРѕРІРєРё': 'assets/icons/tags/training.svg',
-    'РЎС‚СЂРµСЃСЃ': 'assets/icons/tags/stress.svg',
-    'РџР»РѕС…РѕР№ СЃРѕРЅ': 'assets/icons/tags/sleep.svg',
-    'РџСЂРёРЅСЏР» Р»РµРєР°СЂСЃС‚РІРѕ': 'assets/icons/tags/meds.svg',
-    'РџСЂРѕРїСѓСЃС‚РёР» РїСЂРёС‘Рј': 'assets/icons/tags/missed_meds.svg',
-    'РђР»РєРѕРіРѕР»СЊ': 'assets/icons/tags/alcohol.svg',
-    'Р“РѕР»РѕРІРЅР°СЏ Р±РѕР»СЊ': 'assets/icons/tags/headache.svg',
+  /// IMPORTANT:
+  /// Tags can come in slightly different wording/case (e.g. "после тренировки" vs "После нагрузки/тренировки").
+  /// We normalize (trim + lowerCase) before lookup.
+  static String _normTag(String s) => s.trim().toLowerCase();
+
+  static const Map<String, String> _tagIconByLabelNorm = {
+    // кофе / еда
+    'после кофе': 'assets/icons/tags/coffee.svg',
+    'after coffee': 'assets/icons/tags/coffee.svg',
+    'coffee': 'assets/icons/tags/coffee.svg',
+
+    'после еды': 'assets/icons/tags/hamburger.svg',
+    'after meal': 'assets/icons/tags/hamburger.svg',
+    'meal': 'assets/icons/tags/hamburger.svg',
+
+    // прогулка
+    'после прогулки': 'assets/icons/tags/walk.svg',
+    'after walk': 'assets/icons/tags/walk.svg',
+    'walk': 'assets/icons/tags/walk.svg',
+
+    // тренировка / нагрузка
+    'после тренировки': 'assets/icons/tags/training.svg',
+    'после нагрузки': 'assets/icons/tags/training.svg',
+    'после нагрузки/тренировки': 'assets/icons/tags/training.svg',
+    'после нагрузки / тренировки': 'assets/icons/tags/training.svg',
+    'после нагрузки и тренировки': 'assets/icons/tags/training.svg',
+    'workout': 'assets/icons/tags/training.svg',
+    'training': 'assets/icons/tags/training.svg',
+
+    // стресс / сон
+    'стресс': 'assets/icons/tags/stress.svg',
+    'stress': 'assets/icons/tags/stress.svg',
+
+    'плохой сон': 'assets/icons/tags/sleep.svg',
+    'bad sleep': 'assets/icons/tags/sleep.svg',
+    'sleep': 'assets/icons/tags/sleep.svg',
+
+    // лекарства
+    'принял лекарство': 'assets/icons/tags/meds.svg',
+    'принял лекарства': 'assets/icons/tags/meds.svg',
+    'took meds': 'assets/icons/tags/meds.svg',
+    'meds': 'assets/icons/tags/meds.svg',
+
+    'пропустил приём': 'assets/icons/tags/missed_meds.svg',
+    'пропустил прием': 'assets/icons/tags/missed_meds.svg',
+    'missed meds': 'assets/icons/tags/missed_meds.svg',
+
+    // алкоголь
+    'алкоголь': 'assets/icons/tags/alcohol.svg',
+    'alcohol': 'assets/icons/tags/alcohol.svg',
+
+    // голова
+    'головная боль': 'assets/icons/tags/headache.svg',
+    'headache': 'assets/icons/tags/headache.svg',
   };
 
   final BloodPressureRecord record;
@@ -6948,7 +7049,6 @@ class RecordListItem extends StatelessWidget {
   }
 }
 
-
 class _TagsMetaRow extends StatelessWidget {
   final List<String> tags;
   final String note;
@@ -6970,7 +7070,8 @@ class _TagsMetaRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final icons = <String>[];
     for (final t in tags) {
-      final p = RecordListItem._tagIconByLabel[t];
+      final key = RecordListItem._normTag(t);
+      final p = RecordListItem._tagIconByLabelNorm[key];
       if (p != null) icons.add(p);
     }
 
@@ -6982,18 +7083,22 @@ class _TagsMetaRow extends StatelessWidget {
         if (icons.isNotEmpty)
           Flexible(
             flex: 0,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                for (final p in icons.take(4)) ...[
-                  SvgPicture.asset(
-                    p,
-                    width: iconSize,
-                    height: iconSize,
-                  ),
-                  SizedBox(width: gap),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final p in icons) ...[
+                    SvgPicture.asset(
+                      p,
+                      width: iconSize,
+                      height: iconSize,
+                    ),
+                    SizedBox(width: gap),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         if (icons.isNotEmpty && showText) SizedBox(width: gap),
@@ -7078,16 +7183,21 @@ import 'package:intl/intl.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/scale.dart';
 import '../../data/blood_pressure_model.dart';
+import 'package:blood_pressure_diary/core/utils/l10n_extensions.dart';
 
 class SummaryCard extends StatelessWidget {
   final BloodPressureRecord? record;
 
   const SummaryCard({super.key, this.record});
 
-  String _hhmm(DateTime t) => DateFormat('HH:mm').format(t);
+  String _time(BuildContext context, DateTime t) {
+    final locale = Localizations.localeOf(context).toLanguageTag();
+    return DateFormat.Hm(locale).format(t); // locale-aware (12/24h where applicable)
+  }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     final colors = context.appColors;
@@ -7097,14 +7207,14 @@ class SummaryCard extends StatelessWidget {
     final text = context.appText;
 
     final width = MediaQuery.sizeOf(context).width - dp(context, space.s20) * 2;
-    final height = dp(context, space.s114); // С„РёРєСЃ РїРѕ РјР°РєРµС‚Сѓ
+    final height = dp(context, space.s114); // фикс по макету
     final r = dp(context, radii.r10);
 
     final bg = isDark ? AppPalette.dark900 : AppPalette.blue600;
     final mainText = isDark ? AppPalette.dark400 : colors.textOnBrand;
     final checkColor = isDark ? AppPalette.dark600 : AppPalette.blue500;
 
-    // вњ… СѓРІРµР»РёС‡РёР»Рё, РЅРѕ Р±РµР· СѓР±РёР№СЃС‚РІР° РІС‹СЃРѕС‚С‹
+    // ✅ увеличили, но без убийства высоты
     final checkSize = dp(context, space.s40);
 
     final pressureStyle = TextStyle(
@@ -7141,7 +7251,7 @@ class SummaryCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(r),
         boxShadow: [shadow.card],
       ),
-      // вњ… СѓРјРµРЅСЊС€Р°РµРј РІРµСЂС‚РёРєР°Р»СЊРЅС‹Рµ РїР°РґРґРёРЅРіРё
+      // ✅ уменьшаем вертикальные паддинги
       padding: EdgeInsets.fromLTRB(
         dp(context, space.s16),
         dp(context, space.s6),
@@ -7151,7 +7261,7 @@ class SummaryCard extends StatelessWidget {
       child: (record == null)
           ? Center(
         child: Text(
-          'РќРµС‚ РґР°РЅРЅС‹С…',
+          l10n.noData,
           style: TextStyle(
             fontFamily: text.family,
             fontSize: sp(context, text.fs16),
@@ -7164,17 +7274,16 @@ class SummaryCard extends StatelessWidget {
           : Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 1) Р”Р°РІР»РµРЅРёРµ
+          // 1) Давление
           Text(
             '${record!.systolic}/${record!.diastolic}',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: pressureStyle,
           ),
-
           SizedBox(height: dp(context, space.s1)),
 
-          // 2) РџСѓР»СЊСЃ + РіР°Р»РѕС‡РєР°
+          // 2) Пульс + галочка
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
@@ -7183,7 +7292,7 @@ class SummaryCard extends StatelessWidget {
                   children: [
                     Text('${record!.pulse}', style: pulseStyle),
                     SizedBox(width: dp(context, space.s6)),
-                    Text('СѓРґ/РјРёРЅ', style: pulseStyle),
+                    Text(l10n.bpm, style: pulseStyle),
                   ],
                 ),
               ),
@@ -7202,7 +7311,7 @@ class SummaryCard extends StatelessWidget {
             ],
           ),
 
-          // вњ… вЂњРѕРїСѓСЃС‚РёС‚СЊвЂќ РІСЂРµРјСЏ РІРёР·СѓР°Р»СЊРЅРѕ, РЅРѕ РЅРµ СЂР°Р·РґСѓРІР°С‚СЊ РІС‹СЃРѕС‚Сѓ
+          // ✅ “опустить” время визуально, но не раздувать высоту
           Padding(
             padding: EdgeInsets.only(top: dp(context, space.s4)),
             child: Row(
@@ -7214,7 +7323,7 @@ class SummaryCard extends StatelessWidget {
                   colorFilter: ColorFilter.mode(clockColor, BlendMode.srcIn),
                 ),
                 SizedBox(width: dp(context, space.s6)),
-                Text(_hhmm(record!.dateTime), style: timeStyle),
+                Text(_time(context, record!.dateTime), style: timeStyle),
               ],
             ),
           ),
@@ -7230,13 +7339,26 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/scale.dart';
-import '../../../../core/utils/app_strings.dart';
 import '../data/blood_pressure_model.dart';
 import 'bloc/home_bloc.dart';
 import 'bloc/home_state.dart';
 import 'widgets/summary_card.dart';
 import 'widgets/record_list_item.dart';
 import '../../add_record/presentation/add_record_screen.dart';
+
+String _tr(BuildContext context, {required String ru, required String en}) {
+  final code = Localizations.localeOf(context).languageCode.toLowerCase();
+  return code == 'ru' ? ru : en;
+}
+
+String _recordsWord(BuildContext context, int n) {
+  if (Localizations.localeOf(context).languageCode.toLowerCase() != 'ru') {
+    return n == 1 ? 'record' : 'records';
+  }
+  if (n % 10 == 1 && n % 100 != 11) return 'запись';
+  if ([2, 3, 4].contains(n % 10) && ![12, 13, 14].contains(n % 100)) return 'записи';
+  return 'записей';
+}
 
 enum _FilterPeriod { today, week, month, all }
 
@@ -7250,20 +7372,18 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   _FilterPeriod _period = _FilterPeriod.week;
 
-  String _periodLabel(_FilterPeriod p) {
+  String _periodLabel(BuildContext context, _FilterPeriod p) {
     switch (p) {
       case _FilterPeriod.today:
-        return AppStrings.today;
+        return _tr(context, ru: 'Сегодня', en: 'Today');
       case _FilterPeriod.week:
-        return AppStrings.week;
+        return _tr(context, ru: 'Неделя', en: 'Week');
       case _FilterPeriod.month:
-        return AppStrings.month;
+        return _tr(context, ru: 'Месяц', en: 'Month');
       case _FilterPeriod.all:
-        return AppStrings.allShort;
+        return _tr(context, ru: 'Все', en: 'All');
     }
   }
-
-  String _recordsWord(int n) => AppStrings.recordsWord(n);
 
   List<BloodPressureRecord> _applyFilter(List<BloodPressureRecord> records) {
     final now = DateTime.now();
@@ -7290,7 +7410,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   double _bottomInset(BuildContext context) {
-    // Bottom bar in AppNavigation: barH (69) + lift (43) в‰€ 112, РїР»СЋСЃ safeBottom.
+    // Bottom bar in AppNavigation: barH (69) + lift (43) ≈ 112, плюс safeBottom.
     final space = context.appSpace;
     final safeBottom = MediaQuery.paddingOf(context).bottom;
 
@@ -7318,15 +7438,15 @@ class _HomeScreenState extends State<HomeScreen> {
     final overlap = dp(context, space.s40 + space.s10); // 50
     final headerTop = safeTop + dp(context, space.s20);
 
-    // Header colors (С‚РѕС‡РЅРѕ РєР°Рє РІ РјР°РєРµС‚Рµ РіР»Р°РІРЅРѕРіРѕ СЌРєСЂР°РЅР°)
+    // Header colors (точно как в макете главного экрана)
     final headerBg = isDark ? AppPalette.dark800 : AppPalette.blue700;
     final shelfBg = isDark ? AppPalette.dark700 : AppPalette.grey050;
 
-    // Divider 0.5px (С‡РµСЂРµР· s1/s2)
+    // Divider 0.5px (через s1/s2)
     final dividerH = dp(context, space.s1) / dp(context, space.s2);
     final shelfDivider = isDark ? Colors.transparent : colors.divider;
 
-    // Р”РµР»РёРєР°С‚РЅР°СЏ С‚РµРЅСЊ Сѓ РїРѕР»РєРё: РјРµРЅСЊС€Рµ blur/offset, С‡РµРј вЂњРєР°СЂС‚РѕС‡РЅР°СЏвЂќ
+    // Деликатная тень у полки: меньше blur/offset, чем “карточная”
     final shelfShadow = BoxShadow(
       offset: Offset(0, dp(context, space.s1)),
       blurRadius: dp(context, space.s4),
@@ -7376,7 +7496,7 @@ class _HomeScreenState extends State<HomeScreen> {
       height: 1.0,
     );
 
-    // вњ… РќРёР¶РЅРёР№ вЂњР·Р°РїР°СЃвЂќ РїРѕРґ РЅР°РІР±Р°СЂ + FAB + safeBottom (СѓСЃС‚РѕР№С‡РёРІРѕ РЅР° СЂР°Р·РЅС‹С… РґРµРІР°Р№СЃР°С…)
+    // ✅ Нижний “запас” под навбар + FAB + safeBottom (устойчиво на разных девайсах)
     final bottomListPadding = _bottomInset(context);
 
     return BlocBuilder<HomeBloc, HomeState>(
@@ -7428,14 +7548,14 @@ class _HomeScreenState extends State<HomeScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            AppStrings.myDiary,
+                            _tr(context, ru: 'Мой дневник', en: 'My diary'),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: titleStyle,
                           ),
                           SizedBox(height: dp(context, space.s20)),
                           Text(
-                            '$filteredCount ${_recordsWord(filteredCount)}',
+                            '$filteredCount ${_recordsWord(context, filteredCount)}',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: countStyle,
@@ -7445,11 +7565,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     PopupMenuButton<_FilterPeriod>(
                       onSelected: (value) => setState(() => _period = value),
-                      itemBuilder: (context) => const [
-                        PopupMenuItem(value: _FilterPeriod.today, child: Text(AppStrings.today)),
-                        PopupMenuItem(value: _FilterPeriod.week, child: Text(AppStrings.week)),
-                        PopupMenuItem(value: _FilterPeriod.month, child: Text(AppStrings.month)),
-                        PopupMenuItem(value: _FilterPeriod.all, child: Text(AppStrings.allTime)),
+                      itemBuilder: (context) => [
+                        PopupMenuItem(value: _FilterPeriod.today, child: Text(_tr(context, ru: 'Сегодня', en: 'Today'))),
+                        PopupMenuItem(value: _FilterPeriod.week, child: Text(_tr(context, ru: 'Неделя', en: 'Week'))),
+                        PopupMenuItem(value: _FilterPeriod.month, child: Text(_tr(context, ru: 'Месяц', en: 'Month'))),
+                        PopupMenuItem(value: _FilterPeriod.all, child: Text(_tr(context, ru: 'За всё время', en: 'All time'))),
                       ],
                       offset: Offset(0, dp(context, space.s30 - space.s2)), // 28
                       child: Container(
@@ -7463,7 +7583,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              _periodLabel(_period),
+                              _periodLabel(context, _period),
                               style: TextStyle(
                                 fontFamily: appText.family,
                                 fontSize: sp(context, appText.fs16),
@@ -7496,7 +7616,7 @@ class _HomeScreenState extends State<HomeScreen> {
               SliverToBoxAdapter(
                 child: Padding(
                   padding: EdgeInsets.only(top: dp(context, space.s24)),
-                  child: Center(child: Text('РќРµС‚ Р·Р°РїРёСЃРµР№ Р·Р° РІС‹Р±СЂР°РЅРЅС‹Р№ РїРµСЂРёРѕРґ', style: emptyStyle)),
+                  child: Center(child: Text(_tr(context, ru: 'Нет записей за выбранный период', en: 'No records for selected period'), style: emptyStyle)),
                 ),
               ),
               SliverToBoxAdapter(child: SizedBox(height: bottomListPadding)),
@@ -7512,7 +7632,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     child: Align(
                       alignment: Alignment.centerRight,
-                      child: Text(_formatDate(entry.$2.key), textAlign: TextAlign.right, style: dateStyle),
+                      child: Text(_formatDate(context, entry.$2.key), textAlign: TextAlign.right, style: dateStyle),
                     ),
                   ),
                 ),
@@ -7575,14 +7695,17 @@ class _HomeScreenState extends State<HomeScreen> {
     return [for (final k in keys) MapEntry(k, grouped[k]!)];
   }
 
-  String _formatDate(DateTime date) {
+  String _formatDate(BuildContext context, DateTime date) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
+    final locale = Localizations.localeOf(context).toString();
 
     if (date == today) {
-      return '${AppStrings.today}, ${DateFormat('d MMMM', 'ru').format(date)}';
+      return '${_tr(context, ru: 'Сегодня', en: 'Today')}, ${DateFormat('d MMMM', locale).format(date)}';
     }
-    return DateFormat('d MMMM yyyy, EEEE', 'ru').format(date);
+
+    // На EN будет "d MMMM yyyy, EEEE" нормально, на RU тоже.
+    return DateFormat('d MMMM yyyy, EEEE', locale).format(date);
   }
 }
 import 'package:fl_chart/fl_chart.dart';
@@ -7590,6 +7713,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:intl/intl.dart';
+
+import '../../../l10n/generated/app_localizations.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/scale.dart';
@@ -7609,6 +7734,9 @@ class StatisticsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final localeName = Localizations.localeOf(context).languageCode;
+
     return BlocBuilder<ProfileCubit, ProfileState>(
       builder: (context, profileState) {
         int targetSys = 120;
@@ -7650,20 +7778,23 @@ class _StatisticsView extends StatefulWidget {
 class _StatisticsViewState extends State<_StatisticsView> {
   _ChartTab _tab = _ChartTab.pressure;
 
-  String _periodLabel(StatisticsPeriod p) {
+  String _periodLabel(StatisticsPeriod p, AppLocalizations l10n) {
     switch (p) {
       case StatisticsPeriod.sevenDays:
-        return 'РќРµРґРµР»СЏ';
+        return l10n.week;
       case StatisticsPeriod.thirtyDays:
-        return 'РњРµСЃСЏС†';
+        return l10n.month;
       case StatisticsPeriod.all:
-        return 'Р’СЃРµ';
+        return l10n.periodAll;
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final l10n = AppLocalizations.of(context)!;
+    final localeName = Localizations.localeOf(context).languageCode;
 
     final colors = context.appColors;
     final space = context.appSpace;
@@ -7740,7 +7871,7 @@ class _StatisticsViewState extends State<_StatisticsView> {
                   children: [
                     Expanded(
                       child: Text(
-                        'Р“СЂР°С„РёРєРё',
+                        l10n.chartsTitle,
                         style: titleStyle,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -7752,7 +7883,7 @@ class _StatisticsViewState extends State<_StatisticsView> {
                       radius: chipR,
                       bg: chipBg,
                       textColor: colors.textOnBrand,
-                      label: _periodLabel(state.period),
+                      label: _periodLabel(state.period, l10n),
                       onSelected: (p) => context.read<StatisticsCubit>().updatePeriod(p),
                     ),
                   ],
@@ -7781,7 +7912,7 @@ class _StatisticsViewState extends State<_StatisticsView> {
                           children: [
                             Expanded(
                               child: _WordUnderlineTab(
-                                title: 'Р”Р°РІР»РµРЅРёРµ',
+                                title: l10n.tabPressure,
                                 selected: _tab == _ChartTab.pressure,
                                 selectedStyle: tabSelectedStyle,
                                 unselectedStyle: tabUnselectedStyle,
@@ -7792,7 +7923,7 @@ class _StatisticsViewState extends State<_StatisticsView> {
                             ),
                             Expanded(
                               child: _WordUnderlineTab(
-                                title: 'РџСѓР»СЊСЃ',
+                                title: l10n.tabPulse,
                                 selected: _tab == _ChartTab.pulse,
                                 selectedStyle: tabSelectedStyle,
                                 unselectedStyle: tabUnselectedStyle,
@@ -7830,7 +7961,7 @@ class _StatisticsViewState extends State<_StatisticsView> {
                           )
                               : Center(
                             child: Text(
-                              'РќРµС‚ РґР°РЅРЅС‹С… Р·Р° СЌС‚РѕС‚ РїРµСЂРёРѕРґ',
+                              l10n.noDataForPeriod,
                               style: TextStyle(
                                 fontFamily: text.family,
                                 fontSize: sp(context, text.fs14),
@@ -7898,13 +8029,14 @@ class _PeriodChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final space = context.appSpace;
     final text = context.appText;
+    final l10n = AppLocalizations.of(context)!;
 
     return PopupMenuButton<StatisticsPeriod>(
       onSelected: onSelected,
-      itemBuilder: (context) => const [
-        PopupMenuItem(value: StatisticsPeriod.sevenDays, child: Text('РќРµРґРµР»СЏ')),
-        PopupMenuItem(value: StatisticsPeriod.thirtyDays, child: Text('РњРµСЃСЏС†')),
-        PopupMenuItem(value: StatisticsPeriod.all, child: Text('Р’СЃРµ')),
+      itemBuilder: (context) => [
+        PopupMenuItem(value: StatisticsPeriod.sevenDays, child: Text(l10n.week)),
+        PopupMenuItem(value: StatisticsPeriod.thirtyDays, child: Text(l10n.month)),
+        PopupMenuItem(value: StatisticsPeriod.all, child: Text(l10n.periodAll)),
       ],
       offset: Offset(0, dp(context, space.s30 - space.s2)),
       child: Container(
@@ -8005,11 +8137,12 @@ class _StatsBlock extends StatelessWidget {
   Widget build(BuildContext context) {
     final space = context.appSpace;
     final text = context.appText;
+    final l10n = AppLocalizations.of(context)!;
 
     final color = isDark ? AppPalette.dark350 : AppPalette.blue900;
 
     String fmtPressure(double sys, double dia) => '${sys.toInt()}/${dia.toInt()}';
-    String fmtPulse(double v) => v == 0 ? 'вЂ”' : '${v.toInt()}';
+    String fmtPulse(double v) => v == 0 ? '—' : '${v.toInt()}';
 
     final avg = tab == _ChartTab.pressure ? fmtPressure(state.avgSys, state.avgDia) : fmtPulse(state.avgPulse);
     final max = tab == _ChartTab.pressure ? fmtPressure(state.maxSys, state.maxDia) : fmtPulse(state.maxPulse);
@@ -8047,9 +8180,9 @@ class _StatsBlock extends StatelessWidget {
     return Column(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        row('РЎСЂРµРґРЅРµРµ:', avg),
-        row('РњР°РєСЃ.:', max),
-        row('РњРёРЅ.:', min),
+        row(l10n.avgLabel, avg),
+        row(l10n.maxLabelShort, max),
+        row(l10n.minLabelShort, min),
       ],
     );
   }
@@ -8098,6 +8231,8 @@ class _Chart extends StatelessWidget {
     final space = context.appSpace;
     final text = context.appText;
     final colors = context.appColors;
+    final l10n = AppLocalizations.of(context)!;
+    final localeName = Localizations.localeOf(context).toLanguageTag();
 
     final all = state.filteredRecords;
     final records = tab == _ChartTab.pulse ? all.where((r) => r.pulse > 0).toList() : all;
@@ -8105,7 +8240,7 @@ class _Chart extends StatelessWidget {
     if (records.isEmpty) {
       return Center(
         child: Text(
-          'РќРµС‚ РґР°РЅРЅС‹С…',
+          l10n.noData,
           style: TextStyle(
             fontFamily: text.family,
             fontSize: sp(context, text.fs14),
@@ -8124,7 +8259,7 @@ class _Chart extends StatelessWidget {
     double maxY;
 
     if (tab == _ChartTab.pressure) {
-      // С„РёРєСЃРёСЂСѓРµРј СЂР°Р·СѓРјРЅС‹Р№ РґРёР°РїР°Р·РѕРЅ РєР°Рє РІ РјР°РєРµС‚Рµ
+      // фиксируем разумный диапазон как в макете
       minY = 40;
       maxY = 220;
     } else {
@@ -8154,13 +8289,13 @@ class _Chart extends StatelessWidget {
     final pulseYLabels = _pulseYLabels(minY, maxY);
     final xStep = _xLabelStep(records.length, state.period);
 
-    String xLabel(DateTime dt) => DateFormat('d', 'ru').format(dt);
+    String xLabel(DateTime dt) => DateFormat('d', localeName).format(dt);
 
     // tooltip style
     final tooltipBg = isDark ? AppPalette.dark900.withValues(alpha: 0.92) : AppPalette.grey050.withValues(alpha: 0.96);
     final tooltipTextColor = isDark ? Colors.white : AppPalette.blue900;
 
-    // вњ… Р·РѕРЅР° РґР°РІР»РµРЅРёСЏ РёР· РїСЂРѕС„РёР»СЏ
+    // ✅ зона давления из профиля
     final yLow = state.targetDiastolic.toDouble();
     final yHigh = state.targetSystolic.toDouble();
     final zoneColor = (tab == _ChartTab.pressure)
@@ -8173,7 +8308,7 @@ class _Chart extends StatelessWidget {
 
     return LineChart(
       LineChartData(
-        // вњ… ZONE (РїРѕР»РѕСЃР°)
+        // ✅ ZONE (полоса)
         rangeAnnotations: tab == _ChartTab.pressure
             ? RangeAnnotations(
           horizontalRangeAnnotations: [
@@ -8186,7 +8321,7 @@ class _Chart extends StatelessWidget {
         )
             : const RangeAnnotations(),
 
-        // вњ… РіСЂР°РЅРёС†С‹ Р·РѕРЅС‹ РїСѓРЅРєС‚РёСЂРѕРј
+        // ✅ границы зоны пунктиром
         extraLinesData: tab == _ChartTab.pressure
             ? ExtraLinesData(
           horizontalLines: [
@@ -8305,8 +8440,10 @@ class _Chart extends StatelessWidget {
             getTooltipItems: (touchedSpots) {
               return touchedSpots.map((spot) {
                 final rec = records[spot.x.toInt()];
-                final dateStr = DateFormat('dd.MM', 'ru').format(rec.dateTime);
-                final label = tab == _ChartTab.pressure ? (spot.barIndex == 0 ? 'РЎРёСЃС‚.' : 'Р”РёР°СЃС‚.') : 'РџСѓР»СЊСЃ';
+                final dateStr = DateFormat('dd.MM', localeName).format(rec.dateTime);
+                final label = tab == _ChartTab.pressure
+                    ? (spot.barIndex == 0 ? l10n.systolicShort : l10n.diastolicShort)
+                    : l10n.pulse;
                 return LineTooltipItem(
                   '$dateStr\n$label: ${spot.y.toInt()}',
                   TextStyle(
@@ -8460,7 +8597,7 @@ class ProfileLoaded extends ProfileState {
     profile.targetSystolic,
     profile.targetDiastolic,
 
-    // вњ… Р’РђР–РќРћ: С‡С‚РѕР±С‹ UI РѕР±РЅРѕРІР»СЏР»СЃСЏ РїСЂРё РІС…РѕРґРµ/РІС‹С…РѕРґРµ
+    // ✅ ВАЖНО: чтобы UI обновлялся при входе/выходе
     profile.accountLinked,
     profile.accountEmail,
     profile.accountProvider,
@@ -8488,8 +8625,7 @@ import 'bloc/profile_state.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
-
-  String _providerTitle(String provider) {
+  String _providerTitle(BuildContext context, String provider) {
     switch (provider) {
       case 'google':
         return 'Google';
@@ -8498,7 +8634,8 @@ class ProfileScreen extends StatelessWidget {
       case 'email':
         return 'Email';
       default:
-        return provider.isEmpty ? 'РђРєРєР°СѓРЅС‚' : provider;
+        final l10n = AppLocalizations.of(context)!;
+        return provider.isEmpty ? l10n.account : provider;
     }
   }
 
@@ -8525,12 +8662,12 @@ class ProfileScreen extends StatelessWidget {
     final headerBg = isDark ? AppPalette.dark800 : AppPalette.blue700;
     final headerTopInset = MediaQuery.paddingOf(context).top;
 
-    // UI-only: РІ РјР°РєРµС‚Рµ РїРѕРєР°Р·Р°РЅ РїСЂРёРјРµСЂ РґР°С‚С‹
+    // UI-only: в макете показан пример даты
     const demoDob = '25.12.1980';
 
     String? _formatDob(int stored) {
-      // РҐСЂР°РЅРёРј РґР°С‚Сѓ СЂРѕР¶РґРµРЅРёСЏ РєР°Рє YYYYMMDD РІ РїРѕР»Рµ age (С‡С‚РѕР±С‹ РЅРµ С‚СЂРѕРіР°С‚СЊ Isar-СЃС…РµРјСѓ).
-      // Р•СЃР»Рё stored РІС‹РіР»СЏРґРёС‚ РєР°Рє "РѕР±С‹С‡РЅС‹Р№ РІРѕР·СЂР°СЃС‚" (0..150) вЂ” РґР°С‚С‹ РЅРµС‚.
+      // Храним дату рождения как YYYYMMDD в поле age (чтобы не трогать Isar-схему).
+      // Если stored выглядит как "обычный возраст" (0..150) — даты нет.
       if (stored < 19000101) return null;
       final s = stored.toString().padLeft(8, '0');
       final yyyy = s.substring(0, 4);
@@ -8539,7 +8676,7 @@ class ProfileScreen extends StatelessWidget {
       return '$dd.$mm.$yyyy';
     }
 
-    // РџР»РѕС‚РЅРµРµ РїРѕ Y вЂ” РіР»Р°РІРЅС‹Р№ С„РёРєСЃ
+    // Плотнее по Y — главный фикс
     final pad12 = dp(context, space.s12);
     final pad10 = dp(context, space.s10);
     final pad8 = dp(context, space.s8);
@@ -8734,7 +8871,7 @@ class ProfileScreen extends StatelessWidget {
                       padding: EdgeInsets.only(left: labelLeftPad),
                       child: Align(
                         alignment: Alignment.centerLeft,
-                        child: Text('Р’РµСЂС…РЅРµРµ', style: valueStyle),
+                        child: Text(l10n.systolic, style: valueStyle),
                       ),
                     ),
                   ),
@@ -8752,7 +8889,7 @@ class ProfileScreen extends StatelessWidget {
                       padding: EdgeInsets.only(left: labelLeftPad),
                       child: Align(
                         alignment: Alignment.centerLeft,
-                        child: Text('РќРёР¶РЅРµРµ', style: valueStyle),
+                        child: Text(l10n.diastolic, style: valueStyle),
                       ),
                     ),
                   ),
@@ -8841,7 +8978,7 @@ class ProfileScreen extends StatelessWidget {
                       SizedBox(
                         width: double.infinity,
                         child: _primaryButton(
-                          title: 'РџРѕРґРєР»СЋС‡РёС‚СЊ',
+                          title: l10n.link,
                           bg: isDark ? AppPalette.dark900 : AppPalette.blue900,
                           fg: isDark ? colors.textPrimary : colors.textOnBrand,
                           onTap: () {
@@ -8921,7 +9058,7 @@ class ProfileScreen extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text('РРјСЏ', style: labelStyle),
+                      Text(l10n.name, style: labelStyle),
                       SizedBox(height: dp(context, space.s8)),
                       TextField(
                         controller: controller,
@@ -8943,7 +9080,7 @@ class ProfileScreen extends StatelessWidget {
                           context.read<ProfileCubit>().updateProfile(name: v);
                           Navigator.of(ctx).pop();
                         },
-                        child: const Text('РЎРѕС…СЂР°РЅРёС‚СЊ'),
+                        child: Text(l10n.save),
                       ),
                     ],
                   ),
@@ -9016,7 +9153,7 @@ class ProfileScreen extends StatelessWidget {
                           onSubmit(v);
                           Navigator.of(ctx).pop();
                         },
-                        child: const Text('РЎРѕС…СЂР°РЅРёС‚СЊ'),
+                        child: Text(l10n.save),
                       ),
                     ],
                   ),
@@ -9051,7 +9188,7 @@ class ProfileScreen extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Р’С‹Р±РµСЂРёС‚Рµ СЃРїРѕСЃРѕР± РІС…РѕРґР°', style: sectionTitleStyle),
+                      Text(l10n.chooseSignIn, style: sectionTitleStyle),
                       SizedBox(height: dp(context, space.s12)),
                       _sheetItem(
                         context: context,
@@ -9066,7 +9203,7 @@ class ProfileScreen extends StatelessWidget {
                         context: context,
                         title: 'Google',
                         onTap: () {
-                          // Р»РѕРєР°Р»СЊРЅР°СЏ РїСЂРёРІСЏР·РєР°: РїСЂРѕРІР°Р№РґРµСЂ РµСЃС‚СЊ, email РїСѓСЃС‚РѕР№
+                          // локальная привязка: провайдер есть, email пустой
                           context.read<ProfileCubit>().linkAccount(provider: 'google', email: '');
                           Navigator.pop(ctx);
                         },
@@ -9127,7 +9264,7 @@ class ProfileScreen extends StatelessWidget {
 
           final accountLine = profile.accountEmail.trim().isNotEmpty
               ? profile.accountEmail.trim()
-              : _providerTitle(profile.accountProvider);
+              : _providerTitle(context, profile.accountProvider);
 
           return Column(
             children: [
@@ -9153,7 +9290,7 @@ class ProfileScreen extends StatelessWidget {
                   ),
                   child: Column(
                     children: [
-                      // ---- РђРєРєР°СѓРЅС‚
+                      // ---- Аккаунт
                       SizedBox(
                         width: double.infinity,
                         child: DecoratedBox(
@@ -9167,7 +9304,7 @@ class ProfileScreen extends StatelessWidget {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text('РђРєРєР°СѓРЅС‚', style: sectionTitleStyle),
+                                Text(l10n.account, style: sectionTitleStyle),
                                 SizedBox(height: pad6),
                                 Container(
                                   width: double.infinity,
@@ -9186,26 +9323,26 @@ class ProfileScreen extends StatelessWidget {
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       if (!isLoggedIn) ...[
-                                        Text('Р’С‹ РЅРµ РІРѕС€Р»Рё РІ Р°РєРєР°СѓРЅС‚', style: hintStyle),
+                                        Text(l10n.notSignedIn, style: hintStyle),
                                         SizedBox(height: pad8),
                                         SizedBox(
                                           width: double.infinity,
                                           child: _primaryButton(
-                                            title: 'Р’РѕР№С‚Рё',
+                                            title: l10n.signIn,
                                             bg: accountBtnBg,
                                             fg: accountBtnFg,
                                             onTap: () => _showAccountLinkSheet(context),
                                           ),
                                         ),
                                       ] else ...[
-                                        Text('РђРєРєР°СѓРЅС‚ РїРѕРґРєР»СЋС‡РµРЅ', style: hintStyle),
+                                        Text(l10n.accountLinked, style: hintStyle),
                                         SizedBox(height: pad4),
                                         Text(accountLine, style: valueStyle),
                                         SizedBox(height: pad8),
                                         SizedBox(
                                           width: double.infinity,
                                           child: _primaryButton(
-                                            title: 'Р’С‹Р№С‚Рё',
+                                            title: l10n.signOut,
                                             bg: accountBtnBg,
                                             fg: accountBtnFg,
                                             onTap: () => context.read<ProfileCubit>().unlinkAccount(),
@@ -9223,7 +9360,7 @@ class ProfileScreen extends StatelessWidget {
 
                       SizedBox(height: pad12),
 
-                      // ---- РџСЂРѕС„РёР»СЊ
+                      // ---- Профиль
                       SizedBox(
                         width: double.infinity,
                         child: DecoratedBox(
@@ -9237,10 +9374,10 @@ class ProfileScreen extends StatelessWidget {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text('РРјСЏ', style: labelStyle),
+                                Text(l10n.name, style: labelStyle),
                                 SizedBox(height: pad6),
                                 _wideField(
-                                  textValue: profile.name.isEmpty ? 'Р”РјРёС‚СЂРёР№' : profile.name,
+                                  textValue: profile.name.isEmpty ? 'Дмитрий' : profile.name,
                                   onTap: () => _showNameInputSheet(context, profile),
                                 ),
 
@@ -9248,12 +9385,12 @@ class ProfileScreen extends StatelessWidget {
 
                                 Row(
                                   children: [
-                                    Expanded(child: Text('РџРѕР»', style: labelStyle)),
+                                    Expanded(child: Text(l10n.gender, style: labelStyle)),
                                     SizedBox(width: dp(context, space.s20)),
                                     Expanded(
                                       child: Align(
                                         alignment: Alignment.centerRight,
-                                        child: Text('Р”Р°С‚Р° СЂРѕР¶РґРµРЅРёСЏ', style: labelStyle),
+                                        child: Text(l10n.birthDate, style: labelStyle),
                                       ),
                                     ),
                                   ],
@@ -9272,7 +9409,7 @@ class ProfileScreen extends StatelessWidget {
                                         child: Row(
                                           children: [
                                             _segPill(
-                                              title: 'РњСѓР¶.',
+                                              title: l10n.male,
                                               selected: profile.gender == 'male',
                                               activeBg: segActiveBg,
                                               inactiveText: segText,
@@ -9281,7 +9418,7 @@ class ProfileScreen extends StatelessWidget {
                                             ),
                                             SizedBox(width: pad4),
                                             _segPill(
-                                              title: 'Р–РµРЅ.',
+                                              title: l10n.female,
                                               selected: profile.gender == 'female',
                                               activeBg: segActiveBg,
                                               inactiveText: segText,
@@ -9302,20 +9439,20 @@ class ProfileScreen extends StatelessWidget {
 
                                 SizedBox(height: pad10),
 
-                                Text('РќРѕСЂРјС‹ РґР°РІР»РµРЅРёСЏ', style: labelStyle),
+                                Text(l10n.pressureNorms, style: labelStyle),
                                 SizedBox(height: pad6),
                                 normsBlock(
                                   topValue: profile.targetSystolic.toString(),
                                   bottomValue: profile.targetDiastolic.toString(),
                                   onTapTop: () => _showIntInputSheet(
                                     context,
-                                    title: 'Р’РµСЂС…РЅРµРµ',
+                                    title: 'Верхнее',
                                     initialValue: profile.targetSystolic,
                                     onSubmit: (v) => context.read<ProfileCubit>().updateProfile(targetSystolic: v),
                                   ),
                                   onTapBottom: () => _showIntInputSheet(
                                     context,
-                                    title: 'РќРёР¶РЅРµРµ',
+                                    title: 'Нижнее',
                                     initialValue: profile.targetDiastolic,
                                     onSubmit: (v) => context.read<ProfileCubit>().updateProfile(targetDiastolic: v),
                                   ),
@@ -9326,8 +9463,8 @@ class ProfileScreen extends StatelessWidget {
                                 SizedBox(
                                   width: double.infinity,
                                   child: _primaryButton(
-                                    title: 'РЈР±СЂР°С‚СЊ СЂРµРєР»Р°РјСѓ',
-                                    subtitle: 'Р Р°Р·РѕРІС‹Р№ РїР»Р°С‚РµР¶ 2,99 в‚¬ -  РЅР°РІСЃРµРіРґР°',
+                                    title: l10n.buyPremium,
+                                    subtitle: l10n.oneTimePayment,
                                     bg: isDark ? AppPalette.dark900 : AppPalette.blue900,
                                     fg: isDark ? colors.textPrimary : colors.textOnBrand,
                                     onTap: () {},
@@ -9340,7 +9477,7 @@ class ProfileScreen extends StatelessWidget {
                       ),
 
                       //SizedBox(height: pad12),
-                      //Text('РџРѕР»РёС‚РёРєР° РєРѕРЅС„РёРґРµРЅС†РёР°Р»СЊРЅРѕСЃС‚Рё', style: privacyStyle, textAlign: TextAlign.center),
+                      //Text('Политика конфиденциальности', style: privacyStyle, textAlign: TextAlign.center),
                     ],
                   ),
                 ),
@@ -9358,7 +9495,7 @@ part 'settings_model.g.dart';
 
 @collection
 class AppSettings {
-  Id id = 0; // Р’СЃРµРіРґР° 0, С‚Р°Рє РєР°Рє Сѓ РЅР°СЃ С‚РѕР»СЊРєРѕ РѕРґРЅР° Р·Р°РїРёСЃСЊ РЅР°СЃС‚СЂРѕРµРє
+  Id id = 0; // Всегда 0, так как у нас только одна запись настроек
 
   @enumerated
   AppThemeMode themeMode = AppThemeMode.light;
@@ -9369,12 +9506,12 @@ class AppSettings {
 
   bool notificationsEnabled = false;
 
-  // --- Account (Р»РѕРєР°Р»СЊРЅР°СЏ РїСЂРёРІСЏР·РєР° Р°РєРєР°СѓРЅС‚Р°)
-  // РЎРµР№С‡Р°СЃ СЌС‚Рѕ РїСЂРѕСЃС‚РѕР№ "РїСЂРѕС„РёР»СЊ РїСЂРёРІСЏР·РєРё" (email/РїСЂРѕРІР°Р№РґРµСЂ) Р±РµР· СЂРµР°Р»СЊРЅРѕР№ Р°РІС‚РѕСЂРёР·Р°С†РёРё.
-  // РќСѓР¶РµРЅ, С‡С‚РѕР±С‹ СЌРєСЂР°РЅ РџСЂРѕС„РёР»СЏ РјРѕРі "РІРѕР№С‚Рё/РІС‹Р№С‚Рё" Рё РІ Р±СѓРґСѓС‰РµРј РёСЃРїРѕР»СЊР·РѕРІР°С‚СЊ СЃРёРЅС…СЂРѕРЅРёР·Р°С†РёСЋ.
+  // --- Account (локальная привязка аккаунта)
+  // Сейчас это простой "профиль привязки" (email/провайдер) без реальной авторизации.
+  // Нужен, чтобы экран Профиля мог "войти/выйти" и в будущем использовать синхронизацию.
   bool accountLinked = false;
   String accountEmail = '';
-  String accountProvider = ''; // РЅР°РїСЂРёРјРµСЂ: 'email', 'google', 'apple'
+  String accountProvider = ''; // например: 'email', 'google', 'apple'
 
   AppSettings({
     this.themeMode = AppThemeMode.light,
@@ -10725,7 +10862,7 @@ class SettingsCubit extends Cubit<SettingsState> {
   }
 
   Future<void> _loadSettings() async {
-    // вњ… РќР°РґС‘Р¶РЅРѕ: РІСЃРµРіРґР° РїРѕР»СѓС‡Р°РµРј singleton-РЅР°СЃС‚СЂРѕР№РєРё РёР· Isar
+    // ✅ Надёжно: всегда получаем singleton-настройки из Isar
     final settings = await _isarService.getOrCreateSettings();
     emit(SettingsState(settings, appVersion: state.appVersion));
   }
@@ -10829,7 +10966,7 @@ class SettingsCubit extends Cubit<SettingsState> {
       final granted = await _notificationService.requestPermissions();
       if (!granted) {
         final message = state.settings.languageCode == 'ru'
-            ? 'Р Р°Р·СЂРµС€РµРЅРёРµ РЅР° СѓРІРµРґРѕРјР»РµРЅРёСЏ РЅРµ РїРѕР»СѓС‡РµРЅРѕ'
+            ? 'Разрешение на уведомления не получено'
             : 'Notification permission not granted';
         emit(state.copyWith(errorMessage: message));
         emit(state.copyWith(errorMessage: null));
@@ -10871,7 +11008,7 @@ class SettingsCubit extends Cubit<SettingsState> {
     final records = await _pressureRepository.getAllRecords();
 
     if (records.isEmpty) {
-      final message = state.settings.languageCode == 'ru' ? 'РќРµС‚ РґР°РЅРЅС‹С… РґР»СЏ СЌРєСЃРїРѕСЂС‚Р°' : 'No data to export';
+      final message = state.settings.languageCode == 'ru' ? 'Нет данных для экспорта' : 'No data to export';
       emit(state.copyWith(errorMessage: message));
       emit(state.copyWith(errorMessage: null));
       return;
@@ -10881,7 +11018,7 @@ class SettingsCubit extends Cubit<SettingsState> {
     try {
       await _exportService.exportData(records, format, state.settings.languageCode);
     } catch (e) {
-      final message = state.settings.languageCode == 'ru' ? 'РћС€РёР±РєР° РїСЂРё СЌРєСЃРїРѕСЂС‚Рµ: $e' : 'Export error: $e';
+      final message = state.settings.languageCode == 'ru' ? 'Ошибка при экспорте: $e' : 'Export error: $e';
       emit(state.copyWith(errorMessage: message));
       emit(state.copyWith(errorMessage: null));
     } finally {
@@ -10974,7 +11111,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // С„РёРєСЃРёСЂРѕРІР°РЅРЅС‹Р№ РІРЅРµС€РЅРёР№ РіРѕСЂРёР·РѕРЅС‚Р°Р»СЊРЅС‹Р№ РїР°РґРґРёРЅРі (РєР°Рє РЅР° СЌРєСЂР°РЅРµ РІРІРѕРґР°)
+    // фиксированный внешний горизонтальный паддинг (как на экране ввода)
     final side = dp(context, space.s20);
 
     final topInset = MediaQuery.paddingOf(context).top;
@@ -11021,7 +11158,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
       backgroundColor: colors.background,
       body: Column(
         children: [
-          // РЁРђРџРљРђ вЂ” РєР°Рє РЅР° СЌРєСЂР°РЅРµ РІРІРѕРґР°: С†РІРµС‚, РѕС‚СЃС‚СѓРїС‹, РєСЂРµСЃС‚РёРє
+          // ШАПКА — как на экране ввода: цвет, отступы, крестик
           Container(
             height: headerH + topInset,
             width: double.infinity,
@@ -11056,7 +11193,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
             ),
           ),
 
-          // РљРћРќРўР•РќРў
+          // КОНТЕНТ
           Expanded(
             child: SingleChildScrollView(
               physics: const BouncingScrollPhysics(),
@@ -11123,17 +11260,24 @@ import 'package:blood_pressure_diary/core/database/isar_service.dart';
 import 'package:blood_pressure_diary/core/di/service_locator.dart';
 import 'package:blood_pressure_diary/core/theme/app_theme.dart';
 import 'package:blood_pressure_diary/core/theme/scale.dart';
-import 'package:blood_pressure_diary/features/settings/data/models/settings_model.dart';
 import 'package:blood_pressure_diary/features/settings/presentation/bloc/settings_cubit.dart';
 import 'package:blood_pressure_diary/features/settings/presentation/bloc/settings_state.dart';
+import 'package:blood_pressure_diary/features/settings/presentation/privacy_policy_screen.dart';
 import 'package:blood_pressure_diary/l10n/generated/app_localizations.dart';
 
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:file_picker/file_picker.dart';
 
+import '../data/models/settings_model.dart';
+
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
+
+  String _tr(BuildContext context, String ru, String en) {
+    final lang = Localizations.localeOf(context).languageCode.toLowerCase();
+    return lang.startsWith('ru') ? ru : en;
+  }
 
   double _contentBottomInset(BuildContext context) {
     final s = context.appSpace;
@@ -11195,13 +11339,11 @@ class SettingsScreen extends StatelessWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Р’РѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёРµ РёР· РєРѕРїРёРё'),
-        content: const Text(
-          'Р­С‚Рѕ РґРµР№СЃС‚РІРёРµ Р·Р°РјРµРЅРёС‚ РІСЃРµ С‚РµРєСѓС‰РёРµ РґР°РЅРЅС‹Рµ РїСЂРёР»РѕР¶РµРЅРёСЏ (РїСЂРѕС„РёР»СЊ, РЅР°СЃС‚СЂРѕР№РєРё Рё Р·Р°РїРёСЃРё РґР°РІР»РµРЅРёСЏ). РџСЂРѕРґРѕР»Р¶РёС‚СЊ?',
-        ),
+        title: Text(_tr(context, 'Восстановление из копии', 'Restore from backup')),
+        content: Text(_tr(context, 'Это действие заменит все текущие данные приложения (профиль, настройки и записи давления). Продолжить?', 'This will replace all current app data (profile, settings, and measurements). Continue?')),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('РћС‚РјРµРЅР°')),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Р’РѕСЃСЃС‚Р°РЅРѕРІРёС‚СЊ')),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: Text(_tr(context, 'Отмена', 'Cancel'))),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: Text(_tr(context, 'Восстановить', 'Restore'))),
         ],
       ),
     );
@@ -11215,7 +11357,7 @@ class SettingsScreen extends StatelessWidget {
 
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Р”Р°РЅРЅС‹Рµ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅС‹')),
+      SnackBar(content: Text(_tr(context, 'Данные восстановлены', 'Data restored'))),
     );
   }
 
@@ -11344,9 +11486,21 @@ class SettingsScreen extends StatelessWidget {
           final s = state.settings;
           final enabled = s.notificationsEnabled;
 
+          Future<void> ensureDefaultRemindersPersisted() async {
+            // UI shows 2 default reminders (08:00 / 20:00) when the list is empty.
+            // Persist them on first interaction so that add/remove/edit works consistently.
+            if (s.reminders.isNotEmpty || !context.mounted) return;
+            final cubit = context.read<SettingsCubit>();
+            await cubit.addReminder(const TimeOfDay(hour: 8, minute: 0));
+            if (context.mounted) {
+              await cubit.addReminder(const TimeOfDay(hour: 20, minute: 0));
+            }
+          }
+
           Future<void> pickAndAddTime() async {
             final picked = await _pickTimeInput(context);
             if (picked != null && context.mounted) {
+              await ensureDefaultRemindersPersisted();
               context.read<SettingsCubit>().addReminder(picked);
             }
           }
@@ -11354,6 +11508,8 @@ class SettingsScreen extends StatelessWidget {
           Future<void> pickReplaceAt(int index) async {
             final picked = await _pickTimeInput(context);
             if (picked == null || !context.mounted) return;
+
+            await ensureDefaultRemindersPersisted();
 
             if (s.reminders.length > index) {
               await context.read<SettingsCubit>().removeReminder(index);
@@ -11364,8 +11520,13 @@ class SettingsScreen extends StatelessWidget {
           }
 
           void removeAt(int index) {
-            if (index < 0 || index >= s.reminders.length) return;
-            context.read<SettingsCubit>().removeReminder(index);
+            if (index < 0) return;
+            ensureDefaultRemindersPersisted().then((_) {
+              if (!context.mounted) return;
+              final curr = context.read<SettingsCubit>().state.settings.reminders;
+              if (index >= curr.length) return;
+              context.read<SettingsCubit>().removeReminder(index);
+            });
           }
 
           Widget cardAuto({required Widget child}) {
@@ -11454,9 +11615,9 @@ class SettingsScreen extends StatelessWidget {
             final betweenMinusAndField = dp(context, space.s6);
 
             String labelForIndex(int i) {
-              if (i == 0) return 'РЈС‚СЂРѕ';
-              if (i == 1) return 'Р’РµС‡РµСЂ';
-              return 'Р’СЂРµРјСЏ';
+              if (i == 0) return _tr(context, 'Утро', 'Morning');
+              if (i == 1) return _tr(context, 'Вечер', 'Evening');
+              return _tr(context, 'Время', 'Time');
             }
 
             double rowHeightForIndex(int i) => i == 0 ? h43 : h44;
@@ -11467,7 +11628,8 @@ class SettingsScreen extends StatelessWidget {
               required String value,
               required double h,
             }) {
-              final removable = index >= 2;
+              // Morning (index 0) is fixed; evening (index 1) and further can be removed.
+              final removable = index >= 1;
 
               return SizedBox(
                 height: h,
@@ -11508,9 +11670,9 @@ class SettingsScreen extends StatelessWidget {
                 child: Column(
                   children: [
                     if (s.reminders.isEmpty) ...[
-                      row(index: 0, label: 'РЈС‚СЂРѕ', value: '08:00', h: h43),
+                      row(index: 0, label: _tr(context, 'Утро', 'Morning'), value: '08:00', h: h43),
                       SizedBox(height: betweenRows),
-                      row(index: 1, label: 'Р’РµС‡РµСЂ', value: '20:00', h: h44),
+                      row(index: 1, label: _tr(context, 'Вечер', 'Evening'), value: '20:00', h: h44),
                     ] else ...[
                       for (int i = 0; i < s.reminders.length; i++) ...[
                         row(
@@ -11629,7 +11791,7 @@ class SettingsScreen extends StatelessWidget {
             String titleFor(String code) {
               switch (code) {
                 case 'ru':
-                  return 'Р СѓСЃСЃРєРёР№';
+                  return 'Русский';
                 case 'en':
                   return 'English';
                 default:
@@ -11714,18 +11876,21 @@ class SettingsScreen extends StatelessWidget {
                   right: 0,
                   top: 0,
                   height: headerH,
-                  child: DecoratedBox(
+                  child: Container(
                     decoration: BoxDecoration(
                       color: headerBg,
                       boxShadow: [shadows.strong],
                     ),
+                    padding: EdgeInsets.only(
+                      left: side,
+                      right: side,
+                      top: safeTop + dp(context, space.s20),
+                    ),
+                    alignment: Alignment.centerLeft,
+                    child: Text(l10n.settings, style: titleStyle),
                   ),
                 ),
-                Positioned(
-                  left: side,
-                  top: safeTop + dp(context, space.s20) + dp(context, space.s10),
-                  child: Text(l10n.settings, style: titleStyle),
-                ),
+
                 Positioned.fill(
                   top: safeTop + headerH - dp(context, space.s20),
                   child: SingleChildScrollView(
@@ -11744,15 +11909,15 @@ class SettingsScreen extends StatelessWidget {
                         languageCard(),
                         SizedBox(height: gap16),
 
-                        actionButton(title: 'Р РµР·РµСЂРІРЅР°СЏ РєРѕРїРёСЏ (JSON)', onTap: () => _backupToJson(context)),
+                        actionButton(title: _tr(context, 'Резервная копия (JSON)', 'Backup (JSON)'), onTap: () => _backupToJson(context)),
                         SizedBox(height: gap8),
-                        actionButton(title: 'Р’РѕСЃСЃС‚Р°РЅРѕРІРёС‚СЊ РёР· РєРѕРїРёРё', onTap: () => _restoreFromJson(context)),
+                        actionButton(title: _tr(context, 'Восстановить из копии', 'Restore from backup'), onTap: () => _restoreFromJson(context)),
                         SizedBox(height: gap8),
 
                         actionButton(title: l10n.clearData, onTap: () => _showClearDataDialog(context, l10n)),
                         SizedBox(height: gap8),
                         actionButton(
-                          title: '${l10n.export} (CSV)',
+                          title: '${l10n.export} (CSV, PDF)',
                           onTap: state.isExporting ? () {} : () => _showExportBottomSheet(context, l10n),
                         ),
                         SizedBox(height: gap8),
@@ -11762,11 +11927,20 @@ class SettingsScreen extends StatelessWidget {
                         ),
                         SizedBox(height: gap8),
                         actionButton(title: l10n.rateApp, onTap: () => context.read<SettingsCubit>().rateApp()),
+                        SizedBox(height: gap8),
+                        actionButton(
+                          title: l10n.privacyPolicy,
+                          onTap: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(builder: (_) => const PrivacyPolicyScreen()),
+                            );
+                          },
+                        ),
                         Padding(
                           padding: EdgeInsets.only(top: gap16),
                           child: Center(
                             child: Text(
-                              '${l10n.versionLabel} ${state.appVersion ?? 'вЂ”'}',
+                              '${l10n.versionLabel} ${state.appVersion ?? '—'}',
                               style: versionStyle,
                             ),
                           ),
@@ -11834,8 +12008,11 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
-
-  Future<String?> _showLanguageSheet(BuildContext context, AppLocalizations l10n, String current) {
+  Future<String?> _showLanguageSheet(
+      BuildContext context,
+      AppLocalizations l10n,
+      String current,
+      ) {
     return showModalBottomSheet<String>(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -11855,7 +12032,7 @@ class SettingsScreen extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              item('ru', 'Р СѓСЃСЃРєРёР№'),
+              item('ru', 'Русский'),
               item('en', 'English'),
               const SizedBox(height: 8),
             ],
@@ -11864,6 +12041,7 @@ class SettingsScreen extends StatelessWidget {
       },
     );
   }
+
 
   void _showExportBottomSheet(BuildContext context, AppLocalizations l10n) {
     showModalBottomSheet(
@@ -11977,500 +12155,6 @@ class _FigmaSwitch extends StatelessWidget {
     );
   }
 }
-import 'dart:async';
-
-import 'package:flutter/foundation.dart';
-import 'package:flutter/widgets.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:intl/intl.dart' as intl;
-
-import 'app_localizations_en.dart';
-import 'app_localizations_ru.dart';
-
-// ignore_for_file: type=lint
-
-/// Callers can lookup localized strings with an instance of AppLocalizations
-/// returned by `AppLocalizations.of(context)`.
-///
-/// Applications need to include `AppLocalizations.delegate()` in their app's
-/// `localizationDelegates` list, and the locales they support in the app's
-/// `supportedLocales` list. For example:
-///
-/// ```dart
-/// import 'generated/app_localizations.dart';
-///
-/// return MaterialApp(
-///   localizationsDelegates: AppLocalizations.localizationsDelegates,
-///   supportedLocales: AppLocalizations.supportedLocales,
-///   home: MyApplicationHome(),
-/// );
-/// ```
-///
-/// ## Update pubspec.yaml
-///
-/// Please make sure to update your pubspec.yaml to include the following
-/// packages:
-///
-/// ```yaml
-/// dependencies:
-///   # Internationalization support.
-///   flutter_localizations:
-///     sdk: flutter
-///   intl: any # Use the pinned version from flutter_localizations
-///
-///   # Rest of dependencies
-/// ```
-///
-/// ## iOS Applications
-///
-/// iOS applications define key application metadata, including supported
-/// locales, in an Info.plist file that is built into the application bundle.
-/// To configure the locales supported by your app, youвЂ™ll need to edit this
-/// file.
-///
-/// First, open your projectвЂ™s ios/Runner.xcworkspace Xcode workspace file.
-/// Then, in the Project Navigator, open the Info.plist file under the Runner
-/// projectвЂ™s Runner folder.
-///
-/// Next, select the Information Property List item, select Add Item from the
-/// Editor menu, then select Localizations from the pop-up menu.
-///
-/// Select and expand the newly-created Localizations item then, for each
-/// locale your application supports, add a new item and select the locale
-/// you wish to add from the pop-up menu in the Value field. This list should
-/// be consistent with the languages listed in the AppLocalizations.supportedLocales
-/// property.
-abstract class AppLocalizations {
-  AppLocalizations(String locale)
-    : localeName = intl.Intl.canonicalizedLocale(locale.toString());
-
-  final String localeName;
-
-  static AppLocalizations? of(BuildContext context) {
-    return Localizations.of<AppLocalizations>(context, AppLocalizations);
-  }
-
-  static const LocalizationsDelegate<AppLocalizations> delegate =
-      _AppLocalizationsDelegate();
-
-  /// A list of this localizations delegate along with the default localizations
-  /// delegates.
-  ///
-  /// Returns a list of localizations delegates containing this delegate along with
-  /// GlobalMaterialLocalizations.delegate, GlobalCupertinoLocalizations.delegate,
-  /// and GlobalWidgetsLocalizations.delegate.
-  ///
-  /// Additional delegates can be added by appending to this list in
-  /// MaterialApp. This list does not have to be used at all if a custom list
-  /// of delegates is preferred or required.
-  static const List<LocalizationsDelegate<dynamic>> localizationsDelegates =
-      <LocalizationsDelegate<dynamic>>[
-        delegate,
-        GlobalMaterialLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-      ];
-
-  /// A list of this localizations delegate's supported locales.
-  static const List<Locale> supportedLocales = <Locale>[
-    Locale('en'),
-    Locale('ru'),
-  ];
-
-  /// No description provided for @backupJson.
-  ///
-  /// In ru, this message translates to:
-  /// **'Р РµР·РµСЂРІРЅР°СЏ РєРѕРїРёСЏ (JSON)'**
-  String get backupJson;
-
-  /// No description provided for @restoreFromBackup.
-  ///
-  /// In ru, this message translates to:
-  /// **'Р’РѕСЃСЃС‚Р°РЅРѕРІРёС‚СЊ РёР· РєРѕРїРёРё'**
-  String get restoreFromBackup;
-
-  /// No description provided for @restoreDialogTitle.
-  ///
-  /// In ru, this message translates to:
-  /// **'Р’РѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёРµ РёР· РєРѕРїРёРё'**
-  String get restoreDialogTitle;
-
-  /// No description provided for @restoreDialogBody.
-  ///
-  /// In ru, this message translates to:
-  /// **'Р­С‚Рѕ РґРµР№СЃС‚РІРёРµ Р·Р°РјРµРЅРёС‚ РІСЃРµ С‚РµРєСѓС‰РёРµ РґР°РЅРЅС‹Рµ РїСЂРёР»РѕР¶РµРЅРёСЏ (РїСЂРѕС„РёР»СЊ, РЅР°СЃС‚СЂРѕР№РєРё Рё Р·Р°РїРёСЃРё РґР°РІР»РµРЅРёСЏ). РџСЂРѕРґРѕР»Р¶РёС‚СЊ?'**
-  String get restoreDialogBody;
-
-  /// No description provided for @restoreAction.
-  ///
-  /// In ru, this message translates to:
-  /// **'Р’РѕСЃСЃС‚Р°РЅРѕРІРёС‚СЊ'**
-  String get restoreAction;
-
-  /// No description provided for @dataRestoredSnack.
-  ///
-  /// In ru, this message translates to:
-  /// **'Р”Р°РЅРЅС‹Рµ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅС‹'**
-  String get dataRestoredSnack;
-
-  /// No description provided for @reminderMorning.
-  ///
-  /// In ru, this message translates to:
-  /// **'РЈС‚СЂРѕ'**
-  String get reminderMorning;
-
-  /// No description provided for @reminderEvening.
-  ///
-  /// In ru, this message translates to:
-  /// **'Р’РµС‡РµСЂ'**
-  String get reminderEvening;
-
-  /// No description provided for @reminderTime.
-  ///
-  /// In ru, this message translates to:
-  /// **'Р’СЂРµРјСЏ'**
-  String get reminderTime;
-
-  /// No description provided for @languageRu.
-  ///
-  /// In ru, this message translates to:
-  /// **'Р СѓСЃСЃРєРёР№'**
-  String get languageRu;
-
-  /// No description provided for @languageEn.
-  ///
-  /// In ru, this message translates to:
-  /// **'English'**
-  String get languageEn;
-
-  /// No description provided for @noRecordsForPeriod.
-  ///
-  /// In ru, this message translates to:
-  /// **'РќРµС‚ Р·Р°РїРёСЃРµР№ Р·Р° РІС‹Р±СЂР°РЅРЅС‹Р№ РїРµСЂРёРѕРґ'**
-  String get noRecordsForPeriod;
-
-  /// No description provided for @noDataForPeriod.
-  ///
-  /// In ru, this message translates to:
-  /// **'РќРµС‚ РґР°РЅРЅС‹С… Р·Р° СЌС‚РѕС‚ РїРµСЂРёРѕРґ'**
-  String get noDataForPeriod;
-
-  /// No description provided for @noData.
-  ///
-  /// In ru, this message translates to:
-  /// **'РќРµС‚ РґР°РЅРЅС‹С…'**
-  String get noData;
-
-  /// No description provided for @chartsTitle.
-  ///
-  /// In ru, this message translates to:
-  /// **'Р“СЂР°С„РёРєРё'**
-  String get chartsTitle;
-
-  /// No description provided for @tabPressure.
-  ///
-  /// In ru, this message translates to:
-  /// **'Р”Р°РІР»РµРЅРёРµ'**
-  String get tabPressure;
-
-  /// No description provided for @tabPulse.
-  ///
-  /// In ru, this message translates to:
-  /// **'РџСѓР»СЊСЃ'**
-  String get tabPulse;
-
-  /// No description provided for @periodWeek.
-  ///
-  /// In ru, this message translates to:
-  /// **'РќРµРґРµР»СЏ'**
-  String get periodWeek;
-
-  /// No description provided for @periodMonth.
-  ///
-  /// In ru, this message translates to:
-  /// **'РњРµСЃСЏС†'**
-  String get periodMonth;
-
-  /// No description provided for @periodAll.
-  ///
-  /// In ru, this message translates to:
-  /// **'Р’СЃРµ'**
-  String get periodAll;
-
-  /// No description provided for @avgLabel.
-  ///
-  /// In ru, this message translates to:
-  /// **'РЎСЂРµРґРЅРµРµ:'**
-  String get avgLabel;
-
-  /// No description provided for @maxLabelShort.
-  ///
-  /// In ru, this message translates to:
-  /// **'РњР°РєСЃ.:'**
-  String get maxLabelShort;
-
-  /// No description provided for @minLabelShort.
-  ///
-  /// In ru, this message translates to:
-  /// **'РњРёРЅ.:'**
-  String get minLabelShort;
-
-  /// No description provided for @bpmUnit.
-  ///
-  /// In ru, this message translates to:
-  /// **'СѓРґ/РјРёРЅ'**
-  String get bpmUnit;
-
-  /// No description provided for @tagHeader.
-  ///
-  /// In ru, this message translates to:
-  /// **'РўРµРіРё'**
-  String get tagHeader;
-
-  /// No description provided for @tagHeaderWithCount.
-  ///
-  /// In ru, this message translates to:
-  /// **'РўРµРіРё ({count})'**
-  String tagHeaderWithCount(int count);
-
-  /// No description provided for @tagAfterCoffee.
-  ///
-  /// In ru, this message translates to:
-  /// **'РџРѕСЃР»Рµ РєРѕС„Рµ'**
-  String get tagAfterCoffee;
-
-  /// No description provided for @tagAlcohol.
-  ///
-  /// In ru, this message translates to:
-  /// **'РђР»РєРѕРіРѕР»СЊ'**
-  String get tagAlcohol;
-
-  /// No description provided for @tagAfterMeal.
-  ///
-  /// In ru, this message translates to:
-  /// **'РџРѕСЃР»Рµ РµРґС‹'**
-  String get tagAfterMeal;
-
-  /// No description provided for @tagAfterWalk.
-  ///
-  /// In ru, this message translates to:
-  /// **'РџРѕСЃР»Рµ РїСЂРѕРіСѓР»РєРё'**
-  String get tagAfterWalk;
-
-  /// No description provided for @tagAfterTraining.
-  ///
-  /// In ru, this message translates to:
-  /// **'РџРѕСЃР»Рµ С‚СЂРµРЅРёСЂРѕРІРєРё'**
-  String get tagAfterTraining;
-
-  /// No description provided for @tagStress.
-  ///
-  /// In ru, this message translates to:
-  /// **'РЎС‚СЂРµСЃСЃ'**
-  String get tagStress;
-
-  /// No description provided for @tagBadSleep.
-  ///
-  /// In ru, this message translates to:
-  /// **'РџР»РѕС…РѕР№ СЃРѕРЅ'**
-  String get tagBadSleep;
-
-  /// No description provided for @tagHeadache.
-  ///
-  /// In ru, this message translates to:
-  /// **'Р“РѕР»РѕРІРЅР°СЏ Р±РѕР»СЊ'**
-  String get tagHeadache;
-
-  /// No description provided for @tagTookMeds.
-  ///
-  /// In ru, this message translates to:
-  /// **'РџСЂРёРЅСЏР» Р»РµРєР°СЂСЃС‚РІРѕ'**
-  String get tagTookMeds;
-
-  /// No description provided for @tagMissedDose.
-  ///
-  /// In ru, this message translates to:
-  /// **'РџСЂРѕРїСѓСЃС‚РёР» РїСЂРёС‘Рј'**
-  String get tagMissedDose;
-
-  /// No description provided for @bpLevelLow.
-  ///
-  /// In ru, this message translates to:
-  /// **'РџРѕРЅРёР¶РµРЅРѕ'**
-  String get bpLevelLow;
-
-  /// No description provided for @bpLevelNormal.
-  ///
-  /// In ru, this message translates to:
-  /// **'РќРѕСЂРјР°'**
-  String get bpLevelNormal;
-
-  /// No description provided for @bpLevelElevated.
-  ///
-  /// In ru, this message translates to:
-  /// **'РџРѕРІС‹С€РµРЅРѕ'**
-  String get bpLevelElevated;
-
-  /// No description provided for @bpLevelHtn1.
-  ///
-  /// In ru, this message translates to:
-  /// **'Р“РёРїРµСЂС‚РѕРЅРёСЏ 1'**
-  String get bpLevelHtn1;
-
-  /// No description provided for @bpLevelHtn2.
-  ///
-  /// In ru, this message translates to:
-  /// **'Р“РёРїРµСЂС‚РѕРЅРёСЏ 2'**
-  String get bpLevelHtn2;
-
-  /// No description provided for @bpLevelCrisis.
-  ///
-  /// In ru, this message translates to:
-  /// **'РљСЂРёР·РёСЃ'**
-  String get bpLevelCrisis;
-
-  /// No description provided for @notifTitleMeasureNow.
-  ///
-  /// In ru, this message translates to:
-  /// **'РџРѕСЂР° РёР·РјРµСЂРёС‚СЊ РґР°РІР»РµРЅРёРµ'**
-  String get notifTitleMeasureNow;
-
-  /// No description provided for @notifBodyDontForget.
-  ///
-  /// In ru, this message translates to:
-  /// **'РќРµ Р·Р°Р±СѓРґСЊС‚Рµ РІРЅРµСЃС‚Рё РґР°РЅРЅС‹Рµ РІ РґРЅРµРІРЅРёРє РґР»СЏ РєРѕРЅС‚СЂРѕР»СЏ Р·РґРѕСЂРѕРІСЊСЏ.'**
-  String get notifBodyDontForget;
-
-  /// No description provided for @notifChannelName.
-  ///
-  /// In ru, this message translates to:
-  /// **'РќР°РїРѕРјРёРЅР°РЅРёСЏ Рѕ РґР°РІР»РµРЅРёРё'**
-  String get notifChannelName;
-
-  /// No description provided for @notifChannelDescription.
-  ///
-  /// In ru, this message translates to:
-  /// **'Р•Р¶РµРґРЅРµРІРЅС‹Рµ СѓРІРµРґРѕРјР»РµРЅРёСЏ Рѕ РЅРµРѕР±С…РѕРґРёРјРѕСЃС‚Рё Р·Р°РјРµСЂР° РґР°РІР»РµРЅРёСЏ'**
-  String get notifChannelDescription;
-
-  /// No description provided for @profileAccount.
-  ///
-  /// In ru, this message translates to:
-  /// **'РђРєРєР°СѓРЅС‚'**
-  String get profileAccount;
-
-  /// No description provided for @profileConnect.
-  ///
-  /// In ru, this message translates to:
-  /// **'РџРѕРґРєР»СЋС‡РёС‚СЊ'**
-  String get profileConnect;
-
-  /// No description provided for @profileNotSignedIn.
-  ///
-  /// In ru, this message translates to:
-  /// **'Р’С‹ РЅРµ РІРѕС€Р»Рё РІ Р°РєРєР°СѓРЅС‚'**
-  String get profileNotSignedIn;
-
-  /// No description provided for @profileSignIn.
-  ///
-  /// In ru, this message translates to:
-  /// **'Р’РѕР№С‚Рё'**
-  String get profileSignIn;
-
-  /// No description provided for @profileLinked.
-  ///
-  /// In ru, this message translates to:
-  /// **'РђРєРєР°СѓРЅС‚ РїРѕРґРєР»СЋС‡РµРЅ'**
-  String get profileLinked;
-
-  /// No description provided for @profileSignOut.
-  ///
-  /// In ru, this message translates to:
-  /// **'Р’С‹Р№С‚Рё'**
-  String get profileSignOut;
-
-  /// No description provided for @profileChooseSignIn.
-  ///
-  /// In ru, this message translates to:
-  /// **'Р’С‹Р±РµСЂРёС‚Рµ СЃРїРѕСЃРѕР± РІС…РѕРґР°'**
-  String get profileChooseSignIn;
-
-  /// No description provided for @profileSystolicLabel.
-  ///
-  /// In ru, this message translates to:
-  /// **'Р’РµСЂС…РЅРµРµ'**
-  String get profileSystolicLabel;
-
-  /// No description provided for @profileDiastolicLabel.
-  ///
-  /// In ru, this message translates to:
-  /// **'РќРёР¶РЅРµРµ'**
-  String get profileDiastolicLabel;
-
-  /// No description provided for @premiumRemoveAds.
-  ///
-  /// In ru, this message translates to:
-  /// **'РЈР±СЂР°С‚СЊ СЂРµРєР»Р°РјСѓ'**
-  String get premiumRemoveAds;
-
-  /// No description provided for @premiumSubtitleOneTime.
-  ///
-  /// In ru, this message translates to:
-  /// **'Р Р°Р·РѕРІС‹Р№ РїР»Р°С‚РµР¶ 2,99 в‚¬ -  РЅР°РІСЃРµРіРґР°'**
-  String get premiumSubtitleOneTime;
-
-  /// No description provided for @dobLabel.
-  ///
-  /// In ru, this message translates to:
-  /// **'Р”Р°С‚Р° СЂРѕР¶РґРµРЅРёСЏ'**
-  String get dobLabel;
-
-  /// No description provided for @genderShortMale.
-  ///
-  /// In ru, this message translates to:
-  /// **'РњСѓР¶.'**
-  String get genderShortMale;
-
-  /// No description provided for @genderShortFemale.
-  ///
-  /// In ru, this message translates to:
-  /// **'Р–РµРЅ.'**
-  String get genderShortFemale;
-}
-
-class _AppLocalizationsDelegate
-    extends LocalizationsDelegate<AppLocalizations> {
-  const _AppLocalizationsDelegate();
-
-  @override
-  Future<AppLocalizations> load(Locale locale) {
-    return SynchronousFuture<AppLocalizations>(lookupAppLocalizations(locale));
-  }
-
-  @override
-  bool isSupported(Locale locale) =>
-      <String>['en', 'ru'].contains(locale.languageCode);
-
-  @override
-  bool shouldReload(_AppLocalizationsDelegate old) => false;
-}
-
-AppLocalizations lookupAppLocalizations(Locale locale) {
-  // Lookup logic when only language code is specified.
-  switch (locale.languageCode) {
-    case 'en':
-      return AppLocalizationsEn();
-    case 'ru':
-      return AppLocalizationsRu();
-  }
-
-  throw FlutterError(
-    'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
-    'an issue with the localizations generation tool. Please file an issue '
-    'on GitHub with a reproducible sample app and the gen-l10n configuration '
-    'that was used.',
-  );
-}
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
 import 'app_localizations.dart';
@@ -12492,7 +12176,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get restoreDialogBody =>
-      'This action will replace all current app data (profile, settings, and pressure records). Continue?';
+      'This will replace all current app data (profile, settings, and blood pressure records). Continue?';
 
   @override
   String get restoreAction => 'Restore';
@@ -12543,7 +12227,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get periodAll => 'All';
 
   @override
-  String get avgLabel => 'Avg:';
+  String get avgLabel => 'Average:';
 
   @override
   String get maxLabelShort => 'Max:';
@@ -12602,27 +12286,25 @@ class AppLocalizationsEn extends AppLocalizations {
   String get bpLevelElevated => 'Elevated';
 
   @override
-  String get bpLevelHtn1 => 'Hypertension 1';
+  String get bpLevelHtn1 => 'Hypertension (Stage 1)';
 
   @override
-  String get bpLevelHtn2 => 'Hypertension 2';
+  String get bpLevelHtn2 => 'Hypertension (Stage 2)';
 
   @override
-  String get bpLevelCrisis => 'Crisis';
+  String get bpLevelCrisis => 'Hypertensive crisis';
 
   @override
-  String get notifTitleMeasureNow => 'Time to measure blood pressure';
+  String get notifTitleMeasureNow => 'Time to measure';
 
   @override
-  String get notifBodyDontForget =>
-      'DonвЂ™t forget to log your measurements to track your health.';
+  String get notifBodyDontForget => 'Don’t forget to log your blood pressure.';
 
   @override
-  String get notifChannelName => 'Blood pressure reminders';
+  String get notifChannelName => 'Reminders';
 
   @override
-  String get notifChannelDescription =>
-      'Daily reminders to measure blood pressure';
+  String get notifChannelDescription => 'Blood pressure measurement reminders';
 
   @override
   String get profileAccount => 'Account';
@@ -12631,19 +12313,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileConnect => 'Connect';
 
   @override
-  String get profileNotSignedIn => 'You are not signed in';
+  String get profileNotSignedIn => 'Not signed in';
 
   @override
   String get profileSignIn => 'Sign in';
 
   @override
-  String get profileLinked => 'Account connected';
+  String get profileLinked => 'Connected';
 
   @override
   String get profileSignOut => 'Sign out';
 
   @override
-  String get profileChooseSignIn => 'Choose a sign-in method';
+  String get profileChooseSignIn => 'Choose sign-in method';
 
   @override
   String get profileSystolicLabel => 'Systolic';
@@ -12655,7 +12337,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get premiumRemoveAds => 'Remove ads';
 
   @override
-  String get premiumSubtitleOneTime => 'One-time payment в‚¬2.99 вЂ” forever';
+  String get premiumSubtitleOneTime => 'One-time purchase';
 
   @override
   String get dobLabel => 'Date of birth';
@@ -12665,6 +12347,289 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get genderShortFemale => 'F';
+
+  @override
+  String get appTitle => 'Blood Pressure Diary';
+
+  @override
+  String get yourCondition => 'Your condition';
+
+  @override
+  String get normalStatus => 'Normal';
+
+  @override
+  String get history => 'History';
+
+  @override
+  String get systolic => 'Systolic';
+
+  @override
+  String get diastolic => 'Diastolic';
+
+  @override
+  String get pulse => 'Pulse';
+
+  @override
+  String get addRecord => 'Add record';
+
+  @override
+  String get save => 'Save';
+
+  @override
+  String get cancel => 'Cancel';
+
+  @override
+  String get settings => 'Settings';
+
+  @override
+  String get today => 'Today';
+
+  @override
+  String get week => 'Week';
+
+  @override
+  String get month => 'Month';
+
+  @override
+  String get allShort => 'All';
+
+  @override
+  String get allTime => 'All time';
+
+  @override
+  String get myDiary => 'My diary';
+
+  @override
+  String recordsOne(Object count) {
+    return '$count record';
+  }
+
+  @override
+  String recordsFew(Object count) {
+    return '$count records';
+  }
+
+  @override
+  String recordsMany(Object count) {
+    return '$count records';
+  }
+
+  @override
+  String get profile => 'Profile';
+
+  @override
+  String get language => 'Language';
+
+  @override
+  String get theme => 'Theme';
+
+  @override
+  String get unitMmHg => 'mmHg';
+
+  @override
+  String get unitBpm => 'bpm';
+
+  @override
+  String get noRecords => 'No records yet';
+
+  @override
+  String lastMeasurement(String date) {
+    return 'Last measurement';
+  }
+
+  @override
+  String get pickTime => 'Pick time';
+
+  @override
+  String get pickDate => 'Pick date';
+
+  @override
+  String get deleteRecordQ => 'Delete this record?';
+
+  @override
+  String get cannotUndo => 'This action cannot be undone.';
+
+  @override
+  String get delete => 'Delete';
+
+  @override
+  String get commentHint => 'Comment';
+
+  @override
+  String get newRecord => 'New record';
+
+  @override
+  String get systolicShort => 'SYS';
+
+  @override
+  String get diastolicShort => 'DIA';
+
+  @override
+  String get reminders => 'Reminders';
+
+  @override
+  String get addReminder => 'Add reminder';
+
+  @override
+  String get clearData => 'Clear data';
+
+  @override
+  String get clearDataConfirm => 'Delete all data? This cannot be undone.';
+
+  @override
+  String get export => 'Export';
+
+  @override
+  String get exportCSV => 'Export CSV';
+
+  @override
+  String get exportPDF => 'Export PDF';
+
+  @override
+  String get contactSupport => 'Contact support';
+
+  @override
+  String get rateApp => 'Rate the app';
+
+  @override
+  String get versionLabel => 'Version:';
+
+  @override
+  String get yes => 'Yes';
+
+  @override
+  String get no => 'No';
+
+  @override
+  String get light => 'Light';
+
+  @override
+  String get dark => 'Dark';
+
+  @override
+  String get system => 'System';
+
+  @override
+  String get privacyPolicy => 'Privacy Policy';
+
+  @override
+  String get privacyPolicyLastUpdate => 'Last updated:';
+
+  @override
+  String get privacyPolicyFullText =>
+      'We respect your privacy.\n\nWhat the app stores\n• Blood pressure records (systolic/diastolic), pulse, date/time.\n• Optional notes and tags.\n• Settings (language, theme, reminders).\n\nWhere data is stored\n• By default, all data is stored locally on your device.\n\nReminders\n• If you enable reminders, the app schedules local notifications on your device.\n• The app does not transmit your measurements to a server to trigger reminders.\n\nBackups and export\n• When you create a backup (JSON) or export (PDF/CSV), the app prepares a file on your device.\n• If you share that file via other apps, those apps handle the data according to their own privacy policies.\n\nAnalytics and ads\n• The app does not intentionally sell personal data.\n• If third‑party services (e.g., sign‑in providers or store billing) are used, they may process limited technical information needed to provide their service.\n\nYour choices\n• You can delete records and clear all app data from within the app.\n• You can disable reminders at any time.\n\nContact\n• If you contact support, the information you send (email content) is processed by your email provider.\n\nThis text is provided for informational purposes and may be updated as the app evolves.';
+
+  @override
+  String get averageLabel => 'Average';
+
+  @override
+  String get minLabel => 'Min';
+
+  @override
+  String get maxLabel => 'Max';
+
+  @override
+  String get pressureLabel => 'Pressure';
+
+  @override
+  String get restoreBackupTitle => 'Restore from backup';
+
+  @override
+  String get restoreBackupConfirm =>
+      'This will replace your current data. Continue?';
+
+  @override
+  String get restore => 'Restore';
+
+  @override
+  String get dataRestored => 'Data restored';
+
+  @override
+  String get morning => 'Morning';
+
+  @override
+  String get evening => 'Evening';
+
+  @override
+  String get time => 'Time';
+
+  @override
+  String get russian => 'Russian';
+
+  @override
+  String get account => 'Account';
+
+  @override
+  String get accountConnected => 'Connected';
+
+  @override
+  String get accountNotConnected => 'Not connected';
+
+  @override
+  String get chooseSignIn => 'Choose sign-in method';
+
+  @override
+  String get connect => 'Connect';
+
+  @override
+  String get signIn => 'Sign in';
+
+  @override
+  String get signOut => 'Sign out';
+
+  @override
+  String get name => 'Name';
+
+  @override
+  String get gender => 'Gender';
+
+  @override
+  String get maleShort => 'M';
+
+  @override
+  String get femaleShort => 'F';
+
+  @override
+  String get birthDate => 'Date of birth';
+
+  @override
+  String get pressureNorms => 'Target pressure';
+
+  @override
+  String get upper => 'Upper';
+
+  @override
+  String get lower => 'Lower';
+
+  @override
+  String get removeAds => 'Remove ads';
+
+  @override
+  String get removeAdsSubtitle => 'One-time purchase';
+
+  @override
+  String get bpm => 'bpm';
+
+  @override
+  String get accountLinked => 'Account linked';
+
+  @override
+  String get notSignedIn => 'You are not signed in';
+
+  @override
+  String get link => 'Link';
+
+  @override
+  String get buyPremium => 'Remove ads';
+
+  @override
+  String get oneTimePayment => 'One-time payment €2.99 — lifetime';
+
+  @override
+  String get male => 'Male';
+
+  @override
+  String get female => 'Fem.учзщке';
 }
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
@@ -12677,189 +12642,1512 @@ class AppLocalizationsRu extends AppLocalizations {
   AppLocalizationsRu([String locale = 'ru']) : super(locale);
 
   @override
-  String get backupJson => 'Р РµР·РµСЂРІРЅР°СЏ РєРѕРїРёСЏ (JSON)';
+  String get backupJson => 'Резервная копия (JSON)';
 
   @override
-  String get restoreFromBackup => 'Р’РѕСЃСЃС‚Р°РЅРѕРІРёС‚СЊ РёР· РєРѕРїРёРё';
+  String get restoreFromBackup => 'Восстановить из копии';
 
   @override
-  String get restoreDialogTitle => 'Р’РѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёРµ РёР· РєРѕРїРёРё';
+  String get restoreDialogTitle => 'Восстановление из копии';
 
   @override
   String get restoreDialogBody =>
-      'Р­С‚Рѕ РґРµР№СЃС‚РІРёРµ Р·Р°РјРµРЅРёС‚ РІСЃРµ С‚РµРєСѓС‰РёРµ РґР°РЅРЅС‹Рµ РїСЂРёР»РѕР¶РµРЅРёСЏ (РїСЂРѕС„РёР»СЊ, РЅР°СЃС‚СЂРѕР№РєРё Рё Р·Р°РїРёСЃРё РґР°РІР»РµРЅРёСЏ). РџСЂРѕРґРѕР»Р¶РёС‚СЊ?';
+      'Это действие заменит все текущие данные приложения (профиль, настройки и записи давления). Продолжить?';
 
   @override
-  String get restoreAction => 'Р’РѕСЃСЃС‚Р°РЅРѕРІРёС‚СЊ';
+  String get restoreAction => 'Восстановить';
 
   @override
-  String get dataRestoredSnack => 'Р”Р°РЅРЅС‹Рµ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅС‹';
+  String get dataRestoredSnack => 'Данные восстановлены';
 
   @override
-  String get reminderMorning => 'РЈС‚СЂРѕ';
+  String get reminderMorning => 'Утро';
 
   @override
-  String get reminderEvening => 'Р’РµС‡РµСЂ';
+  String get reminderEvening => 'Вечер';
 
   @override
-  String get reminderTime => 'Р’СЂРµРјСЏ';
+  String get reminderTime => 'Время';
 
   @override
-  String get languageRu => 'Р СѓСЃСЃРєРёР№';
+  String get languageRu => 'Русский';
 
   @override
   String get languageEn => 'English';
 
   @override
-  String get noRecordsForPeriod => 'РќРµС‚ Р·Р°РїРёСЃРµР№ Р·Р° РІС‹Р±СЂР°РЅРЅС‹Р№ РїРµСЂРёРѕРґ';
+  String get noRecordsForPeriod => 'Нет записей за выбранный период';
 
   @override
-  String get noDataForPeriod => 'РќРµС‚ РґР°РЅРЅС‹С… Р·Р° СЌС‚РѕС‚ РїРµСЂРёРѕРґ';
+  String get noDataForPeriod => 'Нет данных за этот период';
 
   @override
-  String get noData => 'РќРµС‚ РґР°РЅРЅС‹С…';
+  String get noData => 'Нет данных';
 
   @override
-  String get chartsTitle => 'Р“СЂР°С„РёРєРё';
+  String get chartsTitle => 'Графики';
 
   @override
-  String get tabPressure => 'Р”Р°РІР»РµРЅРёРµ';
+  String get tabPressure => 'Давление';
 
   @override
-  String get tabPulse => 'РџСѓР»СЊСЃ';
+  String get tabPulse => 'Пульс';
 
   @override
-  String get periodWeek => 'РќРµРґРµР»СЏ';
+  String get periodWeek => 'Неделя';
 
   @override
-  String get periodMonth => 'РњРµСЃСЏС†';
+  String get periodMonth => 'Месяц';
 
   @override
-  String get periodAll => 'Р’СЃРµ';
+  String get periodAll => 'Все';
 
   @override
-  String get avgLabel => 'РЎСЂРµРґРЅРµРµ:';
+  String get avgLabel => 'Среднее:';
 
   @override
-  String get maxLabelShort => 'РњР°РєСЃ.:';
+  String get maxLabelShort => 'Макс.:';
 
   @override
-  String get minLabelShort => 'РњРёРЅ.:';
+  String get minLabelShort => 'Мин.:';
 
   @override
-  String get bpmUnit => 'СѓРґ/РјРёРЅ';
+  String get bpmUnit => 'уд/мин';
 
   @override
-  String get tagHeader => 'РўРµРіРё';
+  String get tagHeader => 'Теги';
 
   @override
   String tagHeaderWithCount(int count) {
-    return 'РўРµРіРё ($count)';
+    return 'Теги ($count)';
   }
 
   @override
-  String get tagAfterCoffee => 'РџРѕСЃР»Рµ РєРѕС„Рµ';
+  String get tagAfterCoffee => 'После кофе';
 
   @override
-  String get tagAlcohol => 'РђР»РєРѕРіРѕР»СЊ';
+  String get tagAlcohol => 'Алкоголь';
 
   @override
-  String get tagAfterMeal => 'РџРѕСЃР»Рµ РµРґС‹';
+  String get tagAfterMeal => 'После еды';
 
   @override
-  String get tagAfterWalk => 'РџРѕСЃР»Рµ РїСЂРѕРіСѓР»РєРё';
+  String get tagAfterWalk => 'После прогулки';
 
   @override
-  String get tagAfterTraining => 'РџРѕСЃР»Рµ С‚СЂРµРЅРёСЂРѕРІРєРё';
+  String get tagAfterTraining => 'После тренировки';
 
   @override
-  String get tagStress => 'РЎС‚СЂРµСЃСЃ';
+  String get tagStress => 'Стресс';
 
   @override
-  String get tagBadSleep => 'РџР»РѕС…РѕР№ СЃРѕРЅ';
+  String get tagBadSleep => 'Плохой сон';
 
   @override
-  String get tagHeadache => 'Р“РѕР»РѕРІРЅР°СЏ Р±РѕР»СЊ';
+  String get tagHeadache => 'Головная боль';
 
   @override
-  String get tagTookMeds => 'РџСЂРёРЅСЏР» Р»РµРєР°СЂСЃС‚РІРѕ';
+  String get tagTookMeds => 'Принял лекарство';
 
   @override
-  String get tagMissedDose => 'РџСЂРѕРїСѓСЃС‚РёР» РїСЂРёС‘Рј';
+  String get tagMissedDose => 'Пропустил приём';
 
   @override
-  String get bpLevelLow => 'РџРѕРЅРёР¶РµРЅРѕ';
+  String get bpLevelLow => 'Понижено';
 
   @override
-  String get bpLevelNormal => 'РќРѕСЂРјР°';
+  String get bpLevelNormal => 'Норма';
 
   @override
-  String get bpLevelElevated => 'РџРѕРІС‹С€РµРЅРѕ';
+  String get bpLevelElevated => 'Повышено';
 
   @override
-  String get bpLevelHtn1 => 'Р“РёРїРµСЂС‚РѕРЅРёСЏ 1';
+  String get bpLevelHtn1 => 'Гипертония 1';
 
   @override
-  String get bpLevelHtn2 => 'Р“РёРїРµСЂС‚РѕРЅРёСЏ 2';
+  String get bpLevelHtn2 => 'Гипертония 2';
 
   @override
-  String get bpLevelCrisis => 'РљСЂРёР·РёСЃ';
+  String get bpLevelCrisis => 'Кризис';
 
   @override
-  String get notifTitleMeasureNow => 'РџРѕСЂР° РёР·РјРµСЂРёС‚СЊ РґР°РІР»РµРЅРёРµ';
+  String get notifTitleMeasureNow => 'Пора измерить давление';
 
   @override
   String get notifBodyDontForget =>
-      'РќРµ Р·Р°Р±СѓРґСЊС‚Рµ РІРЅРµСЃС‚Рё РґР°РЅРЅС‹Рµ РІ РґРЅРµРІРЅРёРє РґР»СЏ РєРѕРЅС‚СЂРѕР»СЏ Р·РґРѕСЂРѕРІСЊСЏ.';
+      'Не забудьте внести данные в дневник для контроля здоровья.';
 
   @override
-  String get notifChannelName => 'РќР°РїРѕРјРёРЅР°РЅРёСЏ Рѕ РґР°РІР»РµРЅРёРё';
+  String get notifChannelName => 'Напоминания о давлении';
 
   @override
   String get notifChannelDescription =>
-      'Р•Р¶РµРґРЅРµРІРЅС‹Рµ СѓРІРµРґРѕРјР»РµРЅРёСЏ Рѕ РЅРµРѕР±С…РѕРґРёРјРѕСЃС‚Рё Р·Р°РјРµСЂР° РґР°РІР»РµРЅРёСЏ';
+      'Ежедневные уведомления о необходимости замера давления';
 
   @override
-  String get profileAccount => 'РђРєРєР°СѓРЅС‚';
+  String get profileAccount => 'Аккаунт';
 
   @override
-  String get profileConnect => 'РџРѕРґРєР»СЋС‡РёС‚СЊ';
+  String get profileConnect => 'Подключить';
 
   @override
-  String get profileNotSignedIn => 'Р’С‹ РЅРµ РІРѕС€Р»Рё РІ Р°РєРєР°СѓРЅС‚';
+  String get profileNotSignedIn => 'Вы не вошли в аккаунт';
 
   @override
-  String get profileSignIn => 'Р’РѕР№С‚Рё';
+  String get profileSignIn => 'Войти';
 
   @override
-  String get profileLinked => 'РђРєРєР°СѓРЅС‚ РїРѕРґРєР»СЋС‡РµРЅ';
+  String get profileLinked => 'Аккаунт подключен';
 
   @override
-  String get profileSignOut => 'Р’С‹Р№С‚Рё';
+  String get profileSignOut => 'Выйти';
 
   @override
-  String get profileChooseSignIn => 'Р’С‹Р±РµСЂРёС‚Рµ СЃРїРѕСЃРѕР± РІС…РѕРґР°';
+  String get profileChooseSignIn => 'Выберите способ входа';
 
   @override
-  String get profileSystolicLabel => 'Р’РµСЂС…РЅРµРµ';
+  String get profileSystolicLabel => 'Верхнее';
 
   @override
-  String get profileDiastolicLabel => 'РќРёР¶РЅРµРµ';
+  String get profileDiastolicLabel => 'Нижнее';
 
   @override
-  String get premiumRemoveAds => 'РЈР±СЂР°С‚СЊ СЂРµРєР»Р°РјСѓ';
+  String get premiumRemoveAds => 'Убрать рекламу';
 
   @override
-  String get premiumSubtitleOneTime => 'Р Р°Р·РѕРІС‹Р№ РїР»Р°С‚РµР¶ 2,99 в‚¬ -  РЅР°РІСЃРµРіРґР°';
+  String get premiumSubtitleOneTime => 'Разовый платеж 2,99 € -  навсегда';
 
   @override
-  String get dobLabel => 'Р”Р°С‚Р° СЂРѕР¶РґРµРЅРёСЏ';
+  String get dobLabel => 'Дата рождения';
 
   @override
-  String get genderShortMale => 'РњСѓР¶.';
+  String get genderShortMale => 'Муж.';
 
   @override
-  String get genderShortFemale => 'Р–РµРЅ.';
+  String get genderShortFemale => 'Жен.';
+
+  @override
+  String get appTitle => 'Дневник давления';
+
+  @override
+  String get yourCondition => 'Ваше состояние';
+
+  @override
+  String get normalStatus => 'В норме';
+
+  @override
+  String get history => 'История';
+
+  @override
+  String get systolic => 'Верхнее';
+
+  @override
+  String get diastolic => 'Нижнее';
+
+  @override
+  String get pulse => 'Пульс';
+
+  @override
+  String get addRecord => 'Новая запись';
+
+  @override
+  String get save => 'Сохранить';
+
+  @override
+  String get cancel => 'Отмена';
+
+  @override
+  String get settings => 'Настройки';
+
+  @override
+  String get today => 'Сегодня';
+
+  @override
+  String get week => 'Неделя';
+
+  @override
+  String get month => 'Месяц';
+
+  @override
+  String get allShort => 'Все';
+
+  @override
+  String get allTime => 'Всё время';
+
+  @override
+  String get myDiary => 'Мой дневник';
+
+  @override
+  String recordsOne(Object count) {
+    return 'запись';
+  }
+
+  @override
+  String recordsFew(Object count) {
+    return 'записи';
+  }
+
+  @override
+  String recordsMany(Object count) {
+    return 'записей';
+  }
+
+  @override
+  String get profile => 'Профиль';
+
+  @override
+  String get language => 'Язык';
+
+  @override
+  String get theme => 'Тема';
+
+  @override
+  String get unitMmHg => 'мм рт. ст.';
+
+  @override
+  String get unitBpm => 'уд/мин';
+
+  @override
+  String get noRecords => 'Записей пока нет';
+
+  @override
+  String lastMeasurement(String date) {
+    return 'Последнее замер: $date';
+  }
+
+  @override
+  String get pickTime => 'Выберите время';
+
+  @override
+  String get pickDate => 'Выберите дату';
+
+  @override
+  String get deleteRecordQ => 'Удалить запись?';
+
+  @override
+  String get cannotUndo => 'Это действие нельзя отменить.';
+
+  @override
+  String get delete => 'Удалить';
+
+  @override
+  String get commentHint => 'Комментарий';
+
+  @override
+  String get newRecord => 'Новая запись';
+
+  @override
+  String get systolicShort => 'Сист.';
+
+  @override
+  String get diastolicShort => 'Диаст.';
+
+  @override
+  String get reminders => 'Напоминания';
+
+  @override
+  String get addReminder => 'Добавить напоминание';
+
+  @override
+  String get clearData => 'Очистить данные';
+
+  @override
+  String get clearDataConfirm => 'Точно очистить все данные?';
+
+  @override
+  String get export => 'Экспорт';
+
+  @override
+  String get exportCSV => 'Экспорт в CSV';
+
+  @override
+  String get exportPDF => 'Экспорт в PDF';
+
+  @override
+  String get contactSupport => 'Написать нам';
+
+  @override
+  String get rateApp => 'Оценить приложение';
+
+  @override
+  String get versionLabel => 'Версия';
+
+  @override
+  String get yes => 'Да';
+
+  @override
+  String get no => 'Нет';
+
+  @override
+  String get light => 'Светлая';
+
+  @override
+  String get dark => 'Тёмная';
+
+  @override
+  String get system => 'Системная';
+
+  @override
+  String get privacyPolicy => 'Политика конфиденциальности';
+
+  @override
+  String get privacyPolicyLastUpdate => 'Обновлено:';
+
+  @override
+  String get privacyPolicyFullText =>
+      'Мы уважаем вашу конфиденциальность.\n\nКакие данные хранит приложение\n• Записи артериального давления (верхнее/нижнее), пульс, дата/время.\n• Необязательные комментарии и теги.\n• Настройки (язык, тема, напоминания).\n\nГде хранятся данные\n• По умолчанию все данные хранятся локально на вашем устройстве.\n\nНапоминания\n• Если вы включаете напоминания, приложение планирует локальные уведомления на устройстве.\n• Приложение не передаёт ваши измерения на сервер, чтобы запускать напоминания.\n\nРезервные копии и экспорт\n• При создании резервной копии (JSON) или экспорта (PDF/CSV) приложение формирует файл на вашем устройстве.\n• Если вы делитесь этим файлом через другие приложения, эти приложения обрабатывают данные согласно своим политикам конфиденциальности.\n\nАналитика и реклама\n• Приложение не продаёт ваши персональные данные намеренно.\n• Если используются сторонние сервисы (например, провайдеры входа или биллинг магазина), они могут обрабатывать ограниченную техническую информацию, необходимую для предоставления сервиса.\n\nВаш выбор\n• Вы можете удалять записи и очистить все данные приложения внутри приложения.\n• Вы можете отключить напоминания в любой момент.\n\nКонтакты\n• Если вы обращаетесь в поддержку, информация, которую вы отправляете (содержимое письма), обрабатывается вашим почтовым провайдером.\n\nЭтот текст предоставлен в информационных целях и может обновляться по мере развития приложения.';
+
+  @override
+  String get averageLabel => 'Среднее:';
+
+  @override
+  String get minLabel => 'Мин.:';
+
+  @override
+  String get maxLabel => 'Макс.:';
+
+  @override
+  String get pressureLabel => 'Давление';
+
+  @override
+  String get restoreBackupTitle => 'Восстановление из копии';
+
+  @override
+  String get restoreBackupConfirm =>
+      'Это действие заменит все текущие данные приложения (профиль, настройки и записи давления). Продолжить?';
+
+  @override
+  String get restore => 'Восстановить';
+
+  @override
+  String get dataRestored => 'Данные восстановлены';
+
+  @override
+  String get morning => 'Утро';
+
+  @override
+  String get evening => 'Вечер';
+
+  @override
+  String get time => 'Время';
+
+  @override
+  String get russian => 'Русский';
+
+  @override
+  String get account => 'Аккаунт';
+
+  @override
+  String get accountConnected => 'Аккаунт подключен';
+
+  @override
+  String get accountNotConnected => 'Вы не вошли в аккаунт';
+
+  @override
+  String get chooseSignIn => 'Выберите способ входа';
+
+  @override
+  String get connect => 'Подключить';
+
+  @override
+  String get signIn => 'Войти';
+
+  @override
+  String get signOut => 'Выйти';
+
+  @override
+  String get name => 'Имя';
+
+  @override
+  String get gender => 'Пол';
+
+  @override
+  String get maleShort => 'Муж.';
+
+  @override
+  String get femaleShort => 'Жен.';
+
+  @override
+  String get birthDate => 'Дата рождения';
+
+  @override
+  String get pressureNorms => 'Нормы давления';
+
+  @override
+  String get upper => 'Верхнее';
+
+  @override
+  String get lower => 'Нижнее';
+
+  @override
+  String get removeAds => 'Убрать рекламу';
+
+  @override
+  String get removeAdsSubtitle => 'Разовый платеж 2,99 € — навсегда';
+
+  @override
+  String get bpm => 'уд/мин';
+
+  @override
+  String get accountLinked => 'Аккаунт подключен';
+
+  @override
+  String get notSignedIn => 'Вы не вошли в аккаунт';
+
+  @override
+  String get link => 'Подключить';
+
+  @override
+  String get buyPremium => 'Убрать рекламу';
+
+  @override
+  String get oneTimePayment => 'Разовый платеж 2,99 € — навсегда';
+
+  @override
+  String get male => 'Муж.';
+
+  @override
+  String get female => 'Жен.';
+}
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:intl/intl.dart' as intl;
+
+import 'app_localizations_en.dart';
+import 'app_localizations_ru.dart';
+
+// ignore_for_file: type=lint
+
+/// Callers can lookup localized strings with an instance of AppLocalizations
+/// returned by `AppLocalizations.of(context)`.
+///
+/// Applications need to include `AppLocalizations.delegate()` in their app's
+/// `localizationDelegates` list, and the locales they support in the app's
+/// `supportedLocales` list. For example:
+///
+/// ```dart
+/// import 'generated/app_localizations.dart';
+///
+/// return MaterialApp(
+///   localizationsDelegates: AppLocalizations.localizationsDelegates,
+///   supportedLocales: AppLocalizations.supportedLocales,
+///   home: MyApplicationHome(),
+/// );
+/// ```
+///
+/// ## Update pubspec.yaml
+///
+/// Please make sure to update your pubspec.yaml to include the following
+/// packages:
+///
+/// ```yaml
+/// dependencies:
+///   # Internationalization support.
+///   flutter_localizations:
+///     sdk: flutter
+///   intl: any # Use the pinned version from flutter_localizations
+///
+///   # Rest of dependencies
+/// ```
+///
+/// ## iOS Applications
+///
+/// iOS applications define key application metadata, including supported
+/// locales, in an Info.plist file that is built into the application bundle.
+/// To configure the locales supported by your app, you’ll need to edit this
+/// file.
+///
+/// First, open your project’s ios/Runner.xcworkspace Xcode workspace file.
+/// Then, in the Project Navigator, open the Info.plist file under the Runner
+/// project’s Runner folder.
+///
+/// Next, select the Information Property List item, select Add Item from the
+/// Editor menu, then select Localizations from the pop-up menu.
+///
+/// Select and expand the newly-created Localizations item then, for each
+/// locale your application supports, add a new item and select the locale
+/// you wish to add from the pop-up menu in the Value field. This list should
+/// be consistent with the languages listed in the AppLocalizations.supportedLocales
+/// property.
+abstract class AppLocalizations {
+  AppLocalizations(String locale)
+    : localeName = intl.Intl.canonicalizedLocale(locale.toString());
+
+  final String localeName;
+
+  static AppLocalizations of(BuildContext context) {
+    return Localizations.of<AppLocalizations>(context, AppLocalizations)!;
+  }
+
+  static const LocalizationsDelegate<AppLocalizations> delegate =
+      _AppLocalizationsDelegate();
+
+  /// A list of this localizations delegate along with the default localizations
+  /// delegates.
+  ///
+  /// Returns a list of localizations delegates containing this delegate along with
+  /// GlobalMaterialLocalizations.delegate, GlobalCupertinoLocalizations.delegate,
+  /// and GlobalWidgetsLocalizations.delegate.
+  ///
+  /// Additional delegates can be added by appending to this list in
+  /// MaterialApp. This list does not have to be used at all if a custom list
+  /// of delegates is preferred or required.
+  static const List<LocalizationsDelegate<dynamic>> localizationsDelegates =
+      <LocalizationsDelegate<dynamic>>[
+        delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+      ];
+
+  /// A list of this localizations delegate's supported locales.
+  static const List<Locale> supportedLocales = <Locale>[
+    Locale('en'),
+    Locale('ru'),
+  ];
+
+  /// No description provided for @backupJson.
+  ///
+  /// In ru, this message translates to:
+  /// **'Резервная копия (JSON)'**
+  String get backupJson;
+
+  /// No description provided for @restoreFromBackup.
+  ///
+  /// In ru, this message translates to:
+  /// **'Восстановить из копии'**
+  String get restoreFromBackup;
+
+  /// No description provided for @restoreDialogTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Восстановление из копии'**
+  String get restoreDialogTitle;
+
+  /// No description provided for @restoreDialogBody.
+  ///
+  /// In ru, this message translates to:
+  /// **'Это действие заменит все текущие данные приложения (профиль, настройки и записи давления). Продолжить?'**
+  String get restoreDialogBody;
+
+  /// No description provided for @restoreAction.
+  ///
+  /// In ru, this message translates to:
+  /// **'Восстановить'**
+  String get restoreAction;
+
+  /// No description provided for @dataRestoredSnack.
+  ///
+  /// In ru, this message translates to:
+  /// **'Данные восстановлены'**
+  String get dataRestoredSnack;
+
+  /// No description provided for @reminderMorning.
+  ///
+  /// In ru, this message translates to:
+  /// **'Утро'**
+  String get reminderMorning;
+
+  /// No description provided for @reminderEvening.
+  ///
+  /// In ru, this message translates to:
+  /// **'Вечер'**
+  String get reminderEvening;
+
+  /// No description provided for @reminderTime.
+  ///
+  /// In ru, this message translates to:
+  /// **'Время'**
+  String get reminderTime;
+
+  /// No description provided for @languageRu.
+  ///
+  /// In ru, this message translates to:
+  /// **'Русский'**
+  String get languageRu;
+
+  /// No description provided for @languageEn.
+  ///
+  /// In ru, this message translates to:
+  /// **'English'**
+  String get languageEn;
+
+  /// No description provided for @noRecordsForPeriod.
+  ///
+  /// In ru, this message translates to:
+  /// **'Нет записей за выбранный период'**
+  String get noRecordsForPeriod;
+
+  /// No description provided for @noDataForPeriod.
+  ///
+  /// In ru, this message translates to:
+  /// **'Нет данных за этот период'**
+  String get noDataForPeriod;
+
+  /// No description provided for @noData.
+  ///
+  /// In ru, this message translates to:
+  /// **'Нет данных'**
+  String get noData;
+
+  /// No description provided for @chartsTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Графики'**
+  String get chartsTitle;
+
+  /// No description provided for @tabPressure.
+  ///
+  /// In ru, this message translates to:
+  /// **'Давление'**
+  String get tabPressure;
+
+  /// No description provided for @tabPulse.
+  ///
+  /// In ru, this message translates to:
+  /// **'Пульс'**
+  String get tabPulse;
+
+  /// No description provided for @periodWeek.
+  ///
+  /// In ru, this message translates to:
+  /// **'Неделя'**
+  String get periodWeek;
+
+  /// No description provided for @periodMonth.
+  ///
+  /// In ru, this message translates to:
+  /// **'Месяц'**
+  String get periodMonth;
+
+  /// No description provided for @periodAll.
+  ///
+  /// In ru, this message translates to:
+  /// **'Все'**
+  String get periodAll;
+
+  /// No description provided for @avgLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Среднее:'**
+  String get avgLabel;
+
+  /// No description provided for @maxLabelShort.
+  ///
+  /// In ru, this message translates to:
+  /// **'Макс.:'**
+  String get maxLabelShort;
+
+  /// No description provided for @minLabelShort.
+  ///
+  /// In ru, this message translates to:
+  /// **'Мин.:'**
+  String get minLabelShort;
+
+  /// No description provided for @bpmUnit.
+  ///
+  /// In ru, this message translates to:
+  /// **'уд/мин'**
+  String get bpmUnit;
+
+  /// No description provided for @tagHeader.
+  ///
+  /// In ru, this message translates to:
+  /// **'Теги'**
+  String get tagHeader;
+
+  /// No description provided for @tagHeaderWithCount.
+  ///
+  /// In ru, this message translates to:
+  /// **'Теги ({count})'**
+  String tagHeaderWithCount(int count);
+
+  /// No description provided for @tagAfterCoffee.
+  ///
+  /// In ru, this message translates to:
+  /// **'После кофе'**
+  String get tagAfterCoffee;
+
+  /// No description provided for @tagAlcohol.
+  ///
+  /// In ru, this message translates to:
+  /// **'Алкоголь'**
+  String get tagAlcohol;
+
+  /// No description provided for @tagAfterMeal.
+  ///
+  /// In ru, this message translates to:
+  /// **'После еды'**
+  String get tagAfterMeal;
+
+  /// No description provided for @tagAfterWalk.
+  ///
+  /// In ru, this message translates to:
+  /// **'После прогулки'**
+  String get tagAfterWalk;
+
+  /// No description provided for @tagAfterTraining.
+  ///
+  /// In ru, this message translates to:
+  /// **'После тренировки'**
+  String get tagAfterTraining;
+
+  /// No description provided for @tagStress.
+  ///
+  /// In ru, this message translates to:
+  /// **'Стресс'**
+  String get tagStress;
+
+  /// No description provided for @tagBadSleep.
+  ///
+  /// In ru, this message translates to:
+  /// **'Плохой сон'**
+  String get tagBadSleep;
+
+  /// No description provided for @tagHeadache.
+  ///
+  /// In ru, this message translates to:
+  /// **'Головная боль'**
+  String get tagHeadache;
+
+  /// No description provided for @tagTookMeds.
+  ///
+  /// In ru, this message translates to:
+  /// **'Принял лекарство'**
+  String get tagTookMeds;
+
+  /// No description provided for @tagMissedDose.
+  ///
+  /// In ru, this message translates to:
+  /// **'Пропустил приём'**
+  String get tagMissedDose;
+
+  /// No description provided for @bpLevelLow.
+  ///
+  /// In ru, this message translates to:
+  /// **'Понижено'**
+  String get bpLevelLow;
+
+  /// No description provided for @bpLevelNormal.
+  ///
+  /// In ru, this message translates to:
+  /// **'Норма'**
+  String get bpLevelNormal;
+
+  /// No description provided for @bpLevelElevated.
+  ///
+  /// In ru, this message translates to:
+  /// **'Повышено'**
+  String get bpLevelElevated;
+
+  /// No description provided for @bpLevelHtn1.
+  ///
+  /// In ru, this message translates to:
+  /// **'Гипертония 1'**
+  String get bpLevelHtn1;
+
+  /// No description provided for @bpLevelHtn2.
+  ///
+  /// In ru, this message translates to:
+  /// **'Гипертония 2'**
+  String get bpLevelHtn2;
+
+  /// No description provided for @bpLevelCrisis.
+  ///
+  /// In ru, this message translates to:
+  /// **'Кризис'**
+  String get bpLevelCrisis;
+
+  /// No description provided for @notifTitleMeasureNow.
+  ///
+  /// In ru, this message translates to:
+  /// **'Пора измерить давление'**
+  String get notifTitleMeasureNow;
+
+  /// No description provided for @notifBodyDontForget.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не забудьте внести данные в дневник для контроля здоровья.'**
+  String get notifBodyDontForget;
+
+  /// No description provided for @notifChannelName.
+  ///
+  /// In ru, this message translates to:
+  /// **'Напоминания о давлении'**
+  String get notifChannelName;
+
+  /// No description provided for @notifChannelDescription.
+  ///
+  /// In ru, this message translates to:
+  /// **'Ежедневные уведомления о необходимости замера давления'**
+  String get notifChannelDescription;
+
+  /// No description provided for @profileAccount.
+  ///
+  /// In ru, this message translates to:
+  /// **'Аккаунт'**
+  String get profileAccount;
+
+  /// No description provided for @profileConnect.
+  ///
+  /// In ru, this message translates to:
+  /// **'Подключить'**
+  String get profileConnect;
+
+  /// No description provided for @profileNotSignedIn.
+  ///
+  /// In ru, this message translates to:
+  /// **'Вы не вошли в аккаунт'**
+  String get profileNotSignedIn;
+
+  /// No description provided for @profileSignIn.
+  ///
+  /// In ru, this message translates to:
+  /// **'Войти'**
+  String get profileSignIn;
+
+  /// No description provided for @profileLinked.
+  ///
+  /// In ru, this message translates to:
+  /// **'Аккаунт подключен'**
+  String get profileLinked;
+
+  /// No description provided for @profileSignOut.
+  ///
+  /// In ru, this message translates to:
+  /// **'Выйти'**
+  String get profileSignOut;
+
+  /// No description provided for @profileChooseSignIn.
+  ///
+  /// In ru, this message translates to:
+  /// **'Выберите способ входа'**
+  String get profileChooseSignIn;
+
+  /// No description provided for @profileSystolicLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Верхнее'**
+  String get profileSystolicLabel;
+
+  /// No description provided for @profileDiastolicLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Нижнее'**
+  String get profileDiastolicLabel;
+
+  /// No description provided for @premiumRemoveAds.
+  ///
+  /// In ru, this message translates to:
+  /// **'Убрать рекламу'**
+  String get premiumRemoveAds;
+
+  /// No description provided for @premiumSubtitleOneTime.
+  ///
+  /// In ru, this message translates to:
+  /// **'Разовый платеж 2,99 € -  навсегда'**
+  String get premiumSubtitleOneTime;
+
+  /// No description provided for @dobLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Дата рождения'**
+  String get dobLabel;
+
+  /// No description provided for @genderShortMale.
+  ///
+  /// In ru, this message translates to:
+  /// **'Муж.'**
+  String get genderShortMale;
+
+  /// No description provided for @genderShortFemale.
+  ///
+  /// In ru, this message translates to:
+  /// **'Жен.'**
+  String get genderShortFemale;
+
+  /// No description provided for @appTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Дневник давления'**
+  String get appTitle;
+
+  /// No description provided for @yourCondition.
+  ///
+  /// In ru, this message translates to:
+  /// **'Ваше состояние'**
+  String get yourCondition;
+
+  /// No description provided for @normalStatus.
+  ///
+  /// In ru, this message translates to:
+  /// **'В норме'**
+  String get normalStatus;
+
+  /// No description provided for @history.
+  ///
+  /// In ru, this message translates to:
+  /// **'История'**
+  String get history;
+
+  /// No description provided for @systolic.
+  ///
+  /// In ru, this message translates to:
+  /// **'Верхнее'**
+  String get systolic;
+
+  /// No description provided for @diastolic.
+  ///
+  /// In ru, this message translates to:
+  /// **'Нижнее'**
+  String get diastolic;
+
+  /// No description provided for @pulse.
+  ///
+  /// In ru, this message translates to:
+  /// **'Пульс'**
+  String get pulse;
+
+  /// No description provided for @addRecord.
+  ///
+  /// In ru, this message translates to:
+  /// **'Новая запись'**
+  String get addRecord;
+
+  /// No description provided for @save.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сохранить'**
+  String get save;
+
+  /// No description provided for @cancel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Отмена'**
+  String get cancel;
+
+  /// No description provided for @settings.
+  ///
+  /// In ru, this message translates to:
+  /// **'Настройки'**
+  String get settings;
+
+  /// No description provided for @today.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сегодня'**
+  String get today;
+
+  /// No description provided for @week.
+  ///
+  /// In ru, this message translates to:
+  /// **'Неделя'**
+  String get week;
+
+  /// No description provided for @month.
+  ///
+  /// In ru, this message translates to:
+  /// **'Месяц'**
+  String get month;
+
+  /// No description provided for @allShort.
+  ///
+  /// In ru, this message translates to:
+  /// **'Все'**
+  String get allShort;
+
+  /// No description provided for @allTime.
+  ///
+  /// In ru, this message translates to:
+  /// **'Всё время'**
+  String get allTime;
+
+  /// No description provided for @myDiary.
+  ///
+  /// In ru, this message translates to:
+  /// **'Мой дневник'**
+  String get myDiary;
+
+  /// No description provided for @recordsOne.
+  ///
+  /// In ru, this message translates to:
+  /// **'запись'**
+  String recordsOne(Object count);
+
+  /// No description provided for @recordsFew.
+  ///
+  /// In ru, this message translates to:
+  /// **'записи'**
+  String recordsFew(Object count);
+
+  /// No description provided for @recordsMany.
+  ///
+  /// In ru, this message translates to:
+  /// **'записей'**
+  String recordsMany(Object count);
+
+  /// No description provided for @profile.
+  ///
+  /// In ru, this message translates to:
+  /// **'Профиль'**
+  String get profile;
+
+  /// No description provided for @language.
+  ///
+  /// In ru, this message translates to:
+  /// **'Язык'**
+  String get language;
+
+  /// No description provided for @theme.
+  ///
+  /// In ru, this message translates to:
+  /// **'Тема'**
+  String get theme;
+
+  /// No description provided for @unitMmHg.
+  ///
+  /// In ru, this message translates to:
+  /// **'мм рт. ст.'**
+  String get unitMmHg;
+
+  /// No description provided for @unitBpm.
+  ///
+  /// In ru, this message translates to:
+  /// **'уд/мин'**
+  String get unitBpm;
+
+  /// No description provided for @noRecords.
+  ///
+  /// In ru, this message translates to:
+  /// **'Записей пока нет'**
+  String get noRecords;
+
+  /// No description provided for @lastMeasurement.
+  ///
+  /// In ru, this message translates to:
+  /// **'Последнее замер: {date}'**
+  String lastMeasurement(String date);
+
+  /// No description provided for @pickTime.
+  ///
+  /// In ru, this message translates to:
+  /// **'Выберите время'**
+  String get pickTime;
+
+  /// No description provided for @pickDate.
+  ///
+  /// In ru, this message translates to:
+  /// **'Выберите дату'**
+  String get pickDate;
+
+  /// No description provided for @deleteRecordQ.
+  ///
+  /// In ru, this message translates to:
+  /// **'Удалить запись?'**
+  String get deleteRecordQ;
+
+  /// No description provided for @cannotUndo.
+  ///
+  /// In ru, this message translates to:
+  /// **'Это действие нельзя отменить.'**
+  String get cannotUndo;
+
+  /// No description provided for @delete.
+  ///
+  /// In ru, this message translates to:
+  /// **'Удалить'**
+  String get delete;
+
+  /// No description provided for @commentHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'Комментарий'**
+  String get commentHint;
+
+  /// No description provided for @newRecord.
+  ///
+  /// In ru, this message translates to:
+  /// **'Новая запись'**
+  String get newRecord;
+
+  /// No description provided for @systolicShort.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сист.'**
+  String get systolicShort;
+
+  /// No description provided for @diastolicShort.
+  ///
+  /// In ru, this message translates to:
+  /// **'Диаст.'**
+  String get diastolicShort;
+
+  /// No description provided for @reminders.
+  ///
+  /// In ru, this message translates to:
+  /// **'Напоминания'**
+  String get reminders;
+
+  /// No description provided for @addReminder.
+  ///
+  /// In ru, this message translates to:
+  /// **'Добавить напоминание'**
+  String get addReminder;
+
+  /// No description provided for @clearData.
+  ///
+  /// In ru, this message translates to:
+  /// **'Очистить данные'**
+  String get clearData;
+
+  /// No description provided for @clearDataConfirm.
+  ///
+  /// In ru, this message translates to:
+  /// **'Точно очистить все данные?'**
+  String get clearDataConfirm;
+
+  /// No description provided for @export.
+  ///
+  /// In ru, this message translates to:
+  /// **'Экспорт'**
+  String get export;
+
+  /// No description provided for @exportCSV.
+  ///
+  /// In ru, this message translates to:
+  /// **'Экспорт в CSV'**
+  String get exportCSV;
+
+  /// No description provided for @exportPDF.
+  ///
+  /// In ru, this message translates to:
+  /// **'Экспорт в PDF'**
+  String get exportPDF;
+
+  /// No description provided for @contactSupport.
+  ///
+  /// In ru, this message translates to:
+  /// **'Написать нам'**
+  String get contactSupport;
+
+  /// No description provided for @rateApp.
+  ///
+  /// In ru, this message translates to:
+  /// **'Оценить приложение'**
+  String get rateApp;
+
+  /// No description provided for @versionLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Версия'**
+  String get versionLabel;
+
+  /// No description provided for @yes.
+  ///
+  /// In ru, this message translates to:
+  /// **'Да'**
+  String get yes;
+
+  /// No description provided for @no.
+  ///
+  /// In ru, this message translates to:
+  /// **'Нет'**
+  String get no;
+
+  /// No description provided for @light.
+  ///
+  /// In ru, this message translates to:
+  /// **'Светлая'**
+  String get light;
+
+  /// No description provided for @dark.
+  ///
+  /// In ru, this message translates to:
+  /// **'Тёмная'**
+  String get dark;
+
+  /// No description provided for @system.
+  ///
+  /// In ru, this message translates to:
+  /// **'Системная'**
+  String get system;
+
+  /// No description provided for @privacyPolicy.
+  ///
+  /// In ru, this message translates to:
+  /// **'Политика конфиденциальности'**
+  String get privacyPolicy;
+
+  /// No description provided for @privacyPolicyLastUpdate.
+  ///
+  /// In ru, this message translates to:
+  /// **'Обновлено:'**
+  String get privacyPolicyLastUpdate;
+
+  /// No description provided for @privacyPolicyFullText.
+  ///
+  /// In ru, this message translates to:
+  /// **'Мы уважаем вашу конфиденциальность.\n\nКакие данные хранит приложение\n• Записи артериального давления (верхнее/нижнее), пульс, дата/время.\n• Необязательные комментарии и теги.\n• Настройки (язык, тема, напоминания).\n\nГде хранятся данные\n• По умолчанию все данные хранятся локально на вашем устройстве.\n\nНапоминания\n• Если вы включаете напоминания, приложение планирует локальные уведомления на устройстве.\n• Приложение не передаёт ваши измерения на сервер, чтобы запускать напоминания.\n\nРезервные копии и экспорт\n• При создании резервной копии (JSON) или экспорта (PDF/CSV) приложение формирует файл на вашем устройстве.\n• Если вы делитесь этим файлом через другие приложения, эти приложения обрабатывают данные согласно своим политикам конфиденциальности.\n\nАналитика и реклама\n• Приложение не продаёт ваши персональные данные намеренно.\n• Если используются сторонние сервисы (например, провайдеры входа или биллинг магазина), они могут обрабатывать ограниченную техническую информацию, необходимую для предоставления сервиса.\n\nВаш выбор\n• Вы можете удалять записи и очистить все данные приложения внутри приложения.\n• Вы можете отключить напоминания в любой момент.\n\nКонтакты\n• Если вы обращаетесь в поддержку, информация, которую вы отправляете (содержимое письма), обрабатывается вашим почтовым провайдером.\n\nЭтот текст предоставлен в информационных целях и может обновляться по мере развития приложения.'**
+  String get privacyPolicyFullText;
+
+  /// No description provided for @averageLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Среднее:'**
+  String get averageLabel;
+
+  /// No description provided for @minLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Мин.:'**
+  String get minLabel;
+
+  /// No description provided for @maxLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Макс.:'**
+  String get maxLabel;
+
+  /// No description provided for @pressureLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Давление'**
+  String get pressureLabel;
+
+  /// No description provided for @restoreBackupTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Восстановление из копии'**
+  String get restoreBackupTitle;
+
+  /// No description provided for @restoreBackupConfirm.
+  ///
+  /// In ru, this message translates to:
+  /// **'Это действие заменит все текущие данные приложения (профиль, настройки и записи давления). Продолжить?'**
+  String get restoreBackupConfirm;
+
+  /// No description provided for @restore.
+  ///
+  /// In ru, this message translates to:
+  /// **'Восстановить'**
+  String get restore;
+
+  /// No description provided for @dataRestored.
+  ///
+  /// In ru, this message translates to:
+  /// **'Данные восстановлены'**
+  String get dataRestored;
+
+  /// No description provided for @morning.
+  ///
+  /// In ru, this message translates to:
+  /// **'Утро'**
+  String get morning;
+
+  /// No description provided for @evening.
+  ///
+  /// In ru, this message translates to:
+  /// **'Вечер'**
+  String get evening;
+
+  /// No description provided for @time.
+  ///
+  /// In ru, this message translates to:
+  /// **'Время'**
+  String get time;
+
+  /// No description provided for @russian.
+  ///
+  /// In ru, this message translates to:
+  /// **'Русский'**
+  String get russian;
+
+  /// auto-added
+  ///
+  /// In ru, this message translates to:
+  /// **'Аккаунт'**
+  String get account;
+
+  /// auto-added
+  ///
+  /// In ru, this message translates to:
+  /// **'Аккаунт подключен'**
+  String get accountConnected;
+
+  /// auto-added
+  ///
+  /// In ru, this message translates to:
+  /// **'Вы не вошли в аккаунт'**
+  String get accountNotConnected;
+
+  /// auto-added
+  ///
+  /// In ru, this message translates to:
+  /// **'Выберите способ входа'**
+  String get chooseSignIn;
+
+  /// auto-added
+  ///
+  /// In ru, this message translates to:
+  /// **'Подключить'**
+  String get connect;
+
+  /// auto-added
+  ///
+  /// In ru, this message translates to:
+  /// **'Войти'**
+  String get signIn;
+
+  /// auto-added
+  ///
+  /// In ru, this message translates to:
+  /// **'Выйти'**
+  String get signOut;
+
+  /// auto-added
+  ///
+  /// In ru, this message translates to:
+  /// **'Имя'**
+  String get name;
+
+  /// auto-added
+  ///
+  /// In ru, this message translates to:
+  /// **'Пол'**
+  String get gender;
+
+  /// auto-added
+  ///
+  /// In ru, this message translates to:
+  /// **'Муж.'**
+  String get maleShort;
+
+  /// auto-added
+  ///
+  /// In ru, this message translates to:
+  /// **'Жен.'**
+  String get femaleShort;
+
+  /// auto-added
+  ///
+  /// In ru, this message translates to:
+  /// **'Дата рождения'**
+  String get birthDate;
+
+  /// auto-added
+  ///
+  /// In ru, this message translates to:
+  /// **'Нормы давления'**
+  String get pressureNorms;
+
+  /// auto-added
+  ///
+  /// In ru, this message translates to:
+  /// **'Верхнее'**
+  String get upper;
+
+  /// auto-added
+  ///
+  /// In ru, this message translates to:
+  /// **'Нижнее'**
+  String get lower;
+
+  /// auto-added
+  ///
+  /// In ru, this message translates to:
+  /// **'Убрать рекламу'**
+  String get removeAds;
+
+  /// auto-added
+  ///
+  /// In ru, this message translates to:
+  /// **'Разовый платеж 2,99 € — навсегда'**
+  String get removeAdsSubtitle;
+
+  /// auto-added
+  ///
+  /// In ru, this message translates to:
+  /// **'уд/мин'**
+  String get bpm;
+
+  /// No description provided for @accountLinked.
+  ///
+  /// In ru, this message translates to:
+  /// **'Аккаунт подключен'**
+  String get accountLinked;
+
+  /// No description provided for @notSignedIn.
+  ///
+  /// In ru, this message translates to:
+  /// **'Вы не вошли в аккаунт'**
+  String get notSignedIn;
+
+  /// No description provided for @link.
+  ///
+  /// In ru, this message translates to:
+  /// **'Подключить'**
+  String get link;
+
+  /// No description provided for @buyPremium.
+  ///
+  /// In ru, this message translates to:
+  /// **'Убрать рекламу'**
+  String get buyPremium;
+
+  /// No description provided for @oneTimePayment.
+  ///
+  /// In ru, this message translates to:
+  /// **'Разовый платеж 2,99 € — навсегда'**
+  String get oneTimePayment;
+
+  /// No description provided for @male.
+  ///
+  /// In ru, this message translates to:
+  /// **'Муж.'**
+  String get male;
+
+  /// No description provided for @female.
+  ///
+  /// In ru, this message translates to:
+  /// **'Жен.'**
+  String get female;
+}
+
+class _AppLocalizationsDelegate
+    extends LocalizationsDelegate<AppLocalizations> {
+  const _AppLocalizationsDelegate();
+
+  @override
+  Future<AppLocalizations> load(Locale locale) {
+    return SynchronousFuture<AppLocalizations>(lookupAppLocalizations(locale));
+  }
+
+  @override
+  bool isSupported(Locale locale) =>
+      <String>['en', 'ru'].contains(locale.languageCode);
+
+  @override
+  bool shouldReload(_AppLocalizationsDelegate old) => false;
+}
+
+AppLocalizations lookupAppLocalizations(Locale locale) {
+  // Lookup logic when only language code is specified.
+  switch (locale.languageCode) {
+    case 'en':
+      return AppLocalizationsEn();
+    case 'ru':
+      return AppLocalizationsRu();
+  }
+
+  throw FlutterError(
+    'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
+    'an issue with the localizations generation tool. Please file an issue '
+    'on GitHub with a reproducible sample app and the gen-l10n configuration '
+    'that was used.',
+  );
 }
 import 'package:flutter/material.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -12916,7 +14204,7 @@ class BloodPressureApp extends StatelessWidget {
             ],
             supportedLocales: AppLocalizations.supportedLocales,
 
-            // вњ… Р¤РёРєСЃРёСЂСѓРµРј СЃРёСЃС‚РµРјРЅС‹Р№ РјР°СЃС€С‚Р°Р± С€СЂРёС„С‚Р° (РґР»СЏ РїРёРєСЃРµР»СЊ-РїРµСЂС„РµРєС‚Р°)
+            // ✅ Фиксируем системный масштаб шрифта (для пиксель-перфекта)
             builder: (context, child) {
               final mq = MediaQuery.of(context);
               return MediaQuery(

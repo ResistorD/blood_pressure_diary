@@ -5,13 +5,26 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/scale.dart';
-import '../../../../core/utils/app_strings.dart';
 import '../data/blood_pressure_model.dart';
 import 'bloc/home_bloc.dart';
 import 'bloc/home_state.dart';
 import 'widgets/summary_card.dart';
 import 'widgets/record_list_item.dart';
 import '../../add_record/presentation/add_record_screen.dart';
+
+String _tr(BuildContext context, {required String ru, required String en}) {
+  final code = Localizations.localeOf(context).languageCode.toLowerCase();
+  return code == 'ru' ? ru : en;
+}
+
+String _recordsWord(BuildContext context, int n) {
+  if (Localizations.localeOf(context).languageCode.toLowerCase() != 'ru') {
+    return n == 1 ? 'record' : 'records';
+  }
+  if (n % 10 == 1 && n % 100 != 11) return 'запись';
+  if ([2, 3, 4].contains(n % 10) && ![12, 13, 14].contains(n % 100)) return 'записи';
+  return 'записей';
+}
 
 enum _FilterPeriod { today, week, month, all }
 
@@ -25,20 +38,18 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   _FilterPeriod _period = _FilterPeriod.week;
 
-  String _periodLabel(_FilterPeriod p) {
+  String _periodLabel(BuildContext context, _FilterPeriod p) {
     switch (p) {
       case _FilterPeriod.today:
-        return AppStrings.today;
+        return _tr(context, ru: 'Сегодня', en: 'Today');
       case _FilterPeriod.week:
-        return AppStrings.week;
+        return _tr(context, ru: 'Неделя', en: 'Week');
       case _FilterPeriod.month:
-        return AppStrings.month;
+        return _tr(context, ru: 'Месяц', en: 'Month');
       case _FilterPeriod.all:
-        return AppStrings.allShort;
+        return _tr(context, ru: 'Все', en: 'All');
     }
   }
-
-  String _recordsWord(int n) => AppStrings.recordsWord(n);
 
   List<BloodPressureRecord> _applyFilter(List<BloodPressureRecord> records) {
     final now = DateTime.now();
@@ -203,14 +214,14 @@ class _HomeScreenState extends State<HomeScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            AppStrings.myDiary,
+                            _tr(context, ru: 'Мой дневник', en: 'My diary'),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: titleStyle,
                           ),
                           SizedBox(height: dp(context, space.s20)),
                           Text(
-                            '$filteredCount ${_recordsWord(filteredCount)}',
+                            '$filteredCount ${_recordsWord(context, filteredCount)}',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: countStyle,
@@ -220,11 +231,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     PopupMenuButton<_FilterPeriod>(
                       onSelected: (value) => setState(() => _period = value),
-                      itemBuilder: (context) => const [
-                        PopupMenuItem(value: _FilterPeriod.today, child: Text(AppStrings.today)),
-                        PopupMenuItem(value: _FilterPeriod.week, child: Text(AppStrings.week)),
-                        PopupMenuItem(value: _FilterPeriod.month, child: Text(AppStrings.month)),
-                        PopupMenuItem(value: _FilterPeriod.all, child: Text(AppStrings.allTime)),
+                      itemBuilder: (context) => [
+                        PopupMenuItem(value: _FilterPeriod.today, child: Text(_tr(context, ru: 'Сегодня', en: 'Today'))),
+                        PopupMenuItem(value: _FilterPeriod.week, child: Text(_tr(context, ru: 'Неделя', en: 'Week'))),
+                        PopupMenuItem(value: _FilterPeriod.month, child: Text(_tr(context, ru: 'Месяц', en: 'Month'))),
+                        PopupMenuItem(value: _FilterPeriod.all, child: Text(_tr(context, ru: 'За всё время', en: 'All time'))),
                       ],
                       offset: Offset(0, dp(context, space.s30 - space.s2)), // 28
                       child: Container(
@@ -238,7 +249,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              _periodLabel(_period),
+                              _periodLabel(context, _period),
                               style: TextStyle(
                                 fontFamily: appText.family,
                                 fontSize: sp(context, appText.fs16),
@@ -271,7 +282,7 @@ class _HomeScreenState extends State<HomeScreen> {
               SliverToBoxAdapter(
                 child: Padding(
                   padding: EdgeInsets.only(top: dp(context, space.s24)),
-                  child: Center(child: Text('Нет записей за выбранный период', style: emptyStyle)),
+                  child: Center(child: Text(_tr(context, ru: 'Нет записей за выбранный период', en: 'No records for selected period'), style: emptyStyle)),
                 ),
               ),
               SliverToBoxAdapter(child: SizedBox(height: bottomListPadding)),
@@ -287,7 +298,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     child: Align(
                       alignment: Alignment.centerRight,
-                      child: Text(_formatDate(entry.$2.key), textAlign: TextAlign.right, style: dateStyle),
+                      child: Text(_formatDate(context, entry.$2.key), textAlign: TextAlign.right, style: dateStyle),
                     ),
                   ),
                 ),
@@ -350,13 +361,16 @@ class _HomeScreenState extends State<HomeScreen> {
     return [for (final k in keys) MapEntry(k, grouped[k]!)];
   }
 
-  String _formatDate(DateTime date) {
+  String _formatDate(BuildContext context, DateTime date) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
+    final locale = Localizations.localeOf(context).toString();
 
     if (date == today) {
-      return '${AppStrings.today}, ${DateFormat('d MMMM', 'ru').format(date)}';
+      return '${_tr(context, ru: 'Сегодня', en: 'Today')}, ${DateFormat('d MMMM', locale).format(date)}';
     }
-    return DateFormat('d MMMM yyyy, EEEE', 'ru').format(date);
+
+    // На EN будет "d MMMM yyyy, EEEE" нормально, на RU тоже.
+    return DateFormat('d MMMM yyyy, EEEE', locale).format(date);
   }
 }

@@ -227,6 +227,39 @@ class AppLocalizationsRu extends AppLocalizations {
   String get settings => 'Настройки';
 
   @override
+  String get today => 'Сегодня';
+
+  @override
+  String get week => 'Неделя';
+
+  @override
+  String get month => 'Месяц';
+
+  @override
+  String get allShort => 'Все';
+
+  @override
+  String get allTime => 'Всё время';
+
+  @override
+  String get myDiary => 'Мой дневник';
+
+  @override
+  String recordsOne(Object count) {
+    return 'запись';
+  }
+
+  @override
+  String recordsFew(Object count) {
+    return 'записи';
+  }
+
+  @override
+  String recordsMany(Object count) {
+    return 'записей';
+  }
+
+  @override
   String get profile => 'Профиль';
 
   @override
@@ -248,4 +281,198 @@ class AppLocalizationsRu extends AppLocalizations {
   String lastMeasurement(String date) {
     return 'Последнее замер: $date';
   }
+
+  @override
+  String get pickTime => 'Выберите время';
+
+  @override
+  String get pickDate => 'Выберите дату';
+
+  @override
+  String get deleteRecordQ => 'Удалить запись?';
+
+  @override
+  String get cannotUndo => 'Это действие нельзя отменить.';
+
+  @override
+  String get delete => 'Удалить';
+
+  @override
+  String get commentHint => 'Комментарий';
+
+  @override
+  String get newRecord => 'Новая запись';
+
+  @override
+  String get systolicShort => 'Сист.';
+
+  @override
+  String get diastolicShort => 'Диаст.';
+
+  @override
+  String get reminders => 'Напоминания';
+
+  @override
+  String get addReminder => 'Добавить напоминание';
+
+  @override
+  String get clearData => 'Очистить данные';
+
+  @override
+  String get clearDataConfirm => 'Точно очистить все данные?';
+
+  @override
+  String get export => 'Экспорт';
+
+  @override
+  String get exportCSV => 'Экспорт в CSV';
+
+  @override
+  String get exportPDF => 'Экспорт в PDF';
+
+  @override
+  String get contactSupport => 'Написать нам';
+
+  @override
+  String get rateApp => 'Оценить приложение';
+
+  @override
+  String get versionLabel => 'Версия';
+
+  @override
+  String get yes => 'Да';
+
+  @override
+  String get no => 'Нет';
+
+  @override
+  String get light => 'Светлая';
+
+  @override
+  String get dark => 'Тёмная';
+
+  @override
+  String get system => 'Системная';
+
+  @override
+  String get privacyPolicy => 'Политика конфиденциальности';
+
+  @override
+  String get privacyPolicyLastUpdate => 'Обновлено:';
+
+  @override
+  String get privacyPolicyFullText =>
+      'Мы уважаем вашу конфиденциальность.\n\nКакие данные хранит приложение\n• Записи артериального давления (верхнее/нижнее), пульс, дата/время.\n• Необязательные комментарии и теги.\n• Настройки (язык, тема, напоминания).\n\nГде хранятся данные\n• По умолчанию все данные хранятся локально на вашем устройстве.\n\nНапоминания\n• Если вы включаете напоминания, приложение планирует локальные уведомления на устройстве.\n• Приложение не передаёт ваши измерения на сервер, чтобы запускать напоминания.\n\nРезервные копии и экспорт\n• При создании резервной копии (JSON) или экспорта (PDF/CSV) приложение формирует файл на вашем устройстве.\n• Если вы делитесь этим файлом через другие приложения, эти приложения обрабатывают данные согласно своим политикам конфиденциальности.\n\nАналитика и реклама\n• Приложение не продаёт ваши персональные данные намеренно.\n• Если используются сторонние сервисы (например, провайдеры входа или биллинг магазина), они могут обрабатывать ограниченную техническую информацию, необходимую для предоставления сервиса.\n\nВаш выбор\n• Вы можете удалять записи и очистить все данные приложения внутри приложения.\n• Вы можете отключить напоминания в любой момент.\n\nКонтакты\n• Если вы обращаетесь в поддержку, информация, которую вы отправляете (содержимое письма), обрабатывается вашим почтовым провайдером.\n\nЭтот текст предоставлен в информационных целях и может обновляться по мере развития приложения.';
+
+  @override
+  String get averageLabel => 'Среднее:';
+
+  @override
+  String get minLabel => 'Мин.:';
+
+  @override
+  String get maxLabel => 'Макс.:';
+
+  @override
+  String get pressureLabel => 'Давление';
+
+  @override
+  String get restoreBackupTitle => 'Восстановление из копии';
+
+  @override
+  String get restoreBackupConfirm =>
+      'Это действие заменит все текущие данные приложения (профиль, настройки и записи давления). Продолжить?';
+
+  @override
+  String get restore => 'Восстановить';
+
+  @override
+  String get dataRestored => 'Данные восстановлены';
+
+  @override
+  String get morning => 'Утро';
+
+  @override
+  String get evening => 'Вечер';
+
+  @override
+  String get time => 'Время';
+
+  @override
+  String get russian => 'Русский';
+
+  @override
+  String get account => 'Аккаунт';
+
+  @override
+  String get accountConnected => 'Аккаунт подключен';
+
+  @override
+  String get accountNotConnected => 'Вы не вошли в аккаунт';
+
+  @override
+  String get chooseSignIn => 'Выберите способ входа';
+
+  @override
+  String get connect => 'Подключить';
+
+  @override
+  String get signIn => 'Войти';
+
+  @override
+  String get signOut => 'Выйти';
+
+  @override
+  String get name => 'Имя';
+
+  @override
+  String get gender => 'Пол';
+
+  @override
+  String get maleShort => 'Муж.';
+
+  @override
+  String get femaleShort => 'Жен.';
+
+  @override
+  String get birthDate => 'Дата рождения';
+
+  @override
+  String get pressureNorms => 'Нормы давления';
+
+  @override
+  String get upper => 'Верхнее';
+
+  @override
+  String get lower => 'Нижнее';
+
+  @override
+  String get removeAds => 'Убрать рекламу';
+
+  @override
+  String get removeAdsSubtitle => 'Разовый платеж 2,99 € — навсегда';
+
+  @override
+  String get bpm => 'уд/мин';
+
+  @override
+  String get accountLinked => 'Аккаунт подключен';
+
+  @override
+  String get notSignedIn => 'Вы не вошли в аккаунт';
+
+  @override
+  String get link => 'Подключить';
+
+  @override
+  String get buyPremium => 'Убрать рекламу';
+
+  @override
+  String get oneTimePayment => 'Разовый платеж 2,99 € — навсегда';
+
+  @override
+  String get male => 'Муж.';
+
+  @override
+  String get female => 'Жен.';
 }

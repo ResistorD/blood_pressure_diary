@@ -52,13 +52,15 @@ class ExportService {
 
     String csv = const ListToCsvConverter().convert(rows);
     final dir = await getTemporaryDirectory();
-    final file = File('${dir.path}/blood_pressure_export_${DateTime.now().millisecondsSinceEpoch}.csv');
+    final file = File(
+      '${dir.path}/blood_pressure_export_${DateTime.now().millisecondsSinceEpoch}.csv',
+    );
 
     await file.writeAsBytes(Uint8List.fromList(csv.codeUnits));
     await Share.shareXFiles([XFile(file.path)]);
   }
 
-  // --- ОБНОВЛЕННЫЙ PDF (ПО ВСЕМ ТРЕБОВАНИЯМ) ---
+  // --- PDF (Doctor report) ---
   Future<void> _exportToPDFDoctorReport({
     required List<BloodPressureRecord> records,
     required String languageCode,
@@ -78,9 +80,11 @@ class ExportService {
     final ttf = pw.Font.ttf(fontData);
     final ttfBold = pw.Font.ttf(boldData);
 
-    final dobDate = _tryParseDob(profile);
-    final dobStr = dobDate != null ? DateFormat('dd.MM.yyyy').format(dobDate) : '—';
-    final periodStr = '${DateFormat('dd.MM.yyyy').format(threshold)} – ${DateFormat('dd.MM.yyyy').format(now)}';
+    final ageYears = _tryGetAgeYears(profile, now);
+    final ageStr = ageYears != null ? ageYears.toString() : '—';
+
+    final periodStr =
+        '${DateFormat('dd.MM.yyyy').format(threshold)} – ${DateFormat('dd.MM.yyyy').format(now)}';
 
     final pdf = pw.Document();
     final stats = _calculateStats(filtered, profile);
@@ -90,67 +94,96 @@ class ExportService {
         theme: pw.ThemeData.withFont(base: ttf, bold: ttfBold),
         margin: const pw.EdgeInsets.all(35),
         build: (context) => [
-          pw.Text(isRu ? 'Отчёт по артериальному давлению' : 'Blood Pressure Report',
-              style: pw.TextStyle(font: ttfBold, fontSize: 18, color: primaryColor)),
+          pw.Text(
+            isRu ? 'Отчёт по артериальному давлению' : 'Blood Pressure Report',
+            style: pw.TextStyle(
+              font: ttfBold,
+              fontSize: 18,
+              color: primaryColor,
+            ),
+          ),
           pw.SizedBox(height: 12),
 
-          pw.Text('${isRu ? 'Период' : 'Period'}: $periodStr', style: const pw.TextStyle(fontSize: 10)),
-          pw.Text('${isRu ? 'Пациент' : 'Patient'}: ${profile?.name ?? '—'}', style: const pw.TextStyle(fontSize: 10)),
-          pw.Text('${isRu ? 'Дата рождения' : 'DOB'}: $dobStr', style: const pw.TextStyle(fontSize: 10)),
-          pw.Text('${isRu ? 'Целевые значения' : 'Target values'}: ${profile?.targetSystolic ?? 120}/${profile?.targetDiastolic ?? 80}',
+          pw.Text('${isRu ? 'Период' : 'Period'}: $periodStr',
               style: const pw.TextStyle(fontSize: 10)),
+          pw.Text('${isRu ? 'Пациент' : 'Patient'}: ${_profileName(profile)}',
+              style: const pw.TextStyle(fontSize: 10)),
+          pw.Text('${isRu ? 'Возраст' : 'Age'}: $ageStr',
+              style: const pw.TextStyle(fontSize: 10)),
+          pw.Text(
+            '${isRu ? 'Целевые значения' : 'Target values'}: ${profile?.targetSystolic ?? 120}/${profile?.targetDiastolic ?? 80}',
+            style: const pw.TextStyle(fontSize: 10),
+          ),
 
           pw.SizedBox(height: 20),
 
-          // 1. РЕЗЮМЕ: Светло-серая заливка, без внутренних линий, центр во втором столбце
+          // 1. РЕЗЮМЕ
           _buildTitle(isRu ? 'Резюме' : 'Summary', primaryColor),
           _buildResumeTable(
             rows: [
               [isRu ? 'Среднее за период' : 'Average', '${stats.avgSys}/${stats.avgDia}'],
               [isRu ? 'Минимум' : 'Minimum', '${stats.minSys}/${stats.minDia}'],
               [isRu ? 'Максимум' : 'Maximum', '${stats.maxSys}/${stats.maxDia}'],
-              [isRu ? 'Выше нормы' : 'Above normal', '${stats.outOfRangePct.round()}% (${stats.outOfRangeCount}/${stats.n})'],
+              [
+                isRu ? 'Выше нормы' : 'Above normal',
+                '${stats.outOfRangePct.round()}% (${stats.outOfRangeCount}/${stats.n})'
+              ],
             ],
             bgColor: lightGrey,
           ),
 
           pw.SizedBox(height: 10),
 
-          // 2. АНАЛИТИКА: Чёрная сетка везде (внешняя и внутренняя)
+          // 2. АНАЛИТИКА
           _buildTitle(isRu ? 'Аналитика по времени суток' : 'Time of day analytics', primaryColor),
           _buildStandardTable(
-            headers: [isRu ? 'Время суток' : 'Time of day', isRu ? 'Среднее (SYS/DIA)' : 'Avg (SYS/DIA)'],
+            headers: [
+              isRu ? 'Время суток' : 'Time of day',
+              isRu ? 'Среднее (SYS/DIA)' : 'Avg (SYS/DIA)'
+            ],
             rows: _calcTimeBuckets(filtered, isRu),
             headerColor: primaryColor,
           ),
 
           pw.SizedBox(height: 10),
 
-          // 3. ЖУРНАЛ: Чёрная сетка, Примечания широкие
+          // 3. ЖУРНАЛ
           _buildTitle(isRu ? 'Журнал измерений' : 'Measurement log', primaryColor),
           _buildStandardTable(
-            headers: isRu ? ['Дата', 'Время', 'SYS/DIA', 'Пульс', 'Примечание'] : ['Date', 'Time', 'SYS/DIA', 'Pulse', 'Note'],
-            rows: filtered.map((r) => [
+            headers: isRu
+                ? ['Дата', 'Время', 'SYS/DIA', 'Пульс', 'Примечание']
+                : ['Date', 'Time', 'SYS/DIA', 'Pulse', 'Note'],
+            rows: filtered
+                .map((r) => [
               DateFormat('dd.MM.yyyy').format(r.dateTime),
               DateFormat('HH:mm').format(r.dateTime),
               '${r.systolic}/${r.diastolic}',
               r.pulse.toString(),
-              r.note ?? '',
-            ]).toList(),
+              _noteWithTags(r), // ✅ note + tags
+            ])
+                .toList(),
             headerColor: primaryColor,
             isJournal: true,
           ),
 
           pw.SizedBox(height: 20),
 
-          // 4. ЗАМЕТКИ ВРАЧА (Линии)
-          pw.Text(isRu ? 'Заметки врача:' : 'Doctor\'s notes:', style: pw.TextStyle(font: ttfBold, fontSize: 10)),
+          // 4. ЗАМЕТКИ ВРАЧА
+          pw.Text(isRu ? 'Заметки врача:' : 'Doctor\'s notes:',
+              style: pw.TextStyle(font: ttfBold, fontSize: 10)),
           pw.SizedBox(height: 5),
           pw.Column(
-            children: List.generate(7, (index) => pw.Container(
+            children: List.generate(
+              7,
+                  (index) => pw.Container(
                 height: 18,
-                decoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(color: PdfColors.black, width: 0.5)))
-            )),
+                decoration: const pw.BoxDecoration(
+                  border: pw.Border(
+                    bottom: pw.BorderSide(color: PdfColors.black, width: 0.5),
+                  ),
+                ),
+              ),
+            ),
           ),
           pw.SizedBox(height: 20),
           pw.Text(
@@ -170,9 +203,29 @@ class ExportService {
     await Share.shareXFiles([XFile(file.path)]);
   }
 
+  // ✅ ЕДИНСТВЕННОЕ целевое добавление: теги попадают в "Примечание" в PDF
+  String _noteWithTags(BloodPressureRecord r) {
+    final note = (r.note ?? '').trim();
+    final tags = r.tags; // List<String>, по модели не nullable
+
+    final tagText = tags.join(', ').trim();
+    if (tagText.isEmpty) return note;
+
+    if (note.isEmpty) return tagText;
+
+    return '$note\n$tagText';
+  }
+
   pw.Widget _buildTitle(String text, PdfColor color) => pw.Padding(
     padding: const pw.EdgeInsets.only(bottom: 6),
-    child: pw.Text(text, style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: color)),
+    child: pw.Text(
+      text,
+      style: pw.TextStyle(
+        fontSize: 12,
+        fontWeight: pw.FontWeight.bold,
+        color: color,
+      ),
+    ),
   );
 
   pw.Widget _buildResumeTable({required List<List<String>> rows, required PdfColor bgColor}) {
@@ -182,7 +235,8 @@ class ExportService {
         borderRadius: pw.BorderRadius.circular(8),
       ),
       child: pw.ClipRRect(
-        horizontalRadius: 8, verticalRadius: 8,
+        horizontalRadius: 8,
+        verticalRadius: 8,
         child: pw.TableHelper.fromTextArray(
           border: null,
           cellStyle: const pw.TextStyle(fontSize: 9),
@@ -207,13 +261,18 @@ class ExportService {
         borderRadius: pw.BorderRadius.circular(8),
       ),
       child: pw.ClipRRect(
-        horizontalRadius: 8, verticalRadius: 8,
+        horizontalRadius: 8,
+        verticalRadius: 8,
         child: pw.TableHelper.fromTextArray(
           border: const pw.TableBorder(
             horizontalInside: pw.BorderSide(color: PdfColors.black, width: 0.5),
             verticalInside: pw.BorderSide(color: PdfColors.black, width: 0.5),
           ),
-          headerStyle: pw.TextStyle(color: PdfColors.white, fontSize: 9, fontWeight: pw.FontWeight.bold),
+          headerStyle: pw.TextStyle(
+            color: PdfColors.white,
+            fontSize: 9,
+            fontWeight: pw.FontWeight.bold,
+          ),
           headerDecoration: pw.BoxDecoration(color: headerColor),
           cellStyle: const pw.TextStyle(fontSize: 9),
           cellAlignment: pw.Alignment.center,
@@ -234,11 +293,40 @@ class ExportService {
     );
   }
 
+  String _profileName(UserProfile? p) {
+    final name = (p?.name ?? '').trim();
+    return name.isEmpty ? '—' : name;
+  }
+
   DateTime? _tryParseDob(UserProfile? p) {
     if (p == null || p.age == 0) return null;
     final s = p.age.toString();
     if (s.length != 8) return null;
-    return DateTime(int.parse(s.substring(0, 4)), int.parse(s.substring(4, 6)), int.parse(s.substring(6, 8)));
+    return DateTime(
+      int.parse(s.substring(0, 4)),
+      int.parse(s.substring(4, 6)),
+      int.parse(s.substring(6, 8)),
+    );
+  }
+
+  int? _tryGetAgeYears(UserProfile? p, DateTime now) {
+    if (p == null) return null;
+    final v = p.age;
+    if (v == 0) return null;
+
+    final s = v.toString();
+    if (s.length == 8) {
+      final dob = _tryParseDob(p);
+      if (dob == null) return null;
+      int years = now.year - dob.year;
+      final hadBirthdayThisYear =
+          (now.month > dob.month) || (now.month == dob.month && now.day >= dob.day);
+      if (!hadBirthdayThisYear) years -= 1;
+      return years;
+    }
+
+    // иначе считаем, что age хранится как "возраст в годах"
+    return v;
   }
 
   _Stats _calculateStats(List<BloodPressureRecord> records, UserProfile? profile) {
@@ -248,7 +336,8 @@ class ExportService {
     final tS = profile?.targetSystolic ?? 140;
     final tD = profile?.targetDiastolic ?? 90;
     for (var r in records) {
-      sSum += r.systolic; dSum += r.diastolic;
+      sSum += r.systolic;
+      dSum += r.diastolic;
       if (r.systolic < minS) minS = r.systolic;
       if (r.systolic > maxS) maxS = r.systolic;
       if (r.diastolic < minD) minD = r.diastolic;
@@ -256,33 +345,50 @@ class ExportService {
       if (r.systolic > tS || r.diastolic > tD) outCount++;
     }
     return _Stats(
-      n: records.length, avgSys: (sSum / records.length).round(), avgDia: (dSum / records.length).round(),
-      minSys: minS, maxSys: maxS, minDia: minD, maxDia: maxD,
-      outOfRangeCount: outCount, outOfRangePct: (outCount / records.length) * 100,
+      n: records.length,
+      avgSys: (sSum / records.length).round(),
+      avgDia: (dSum / records.length).round(),
+      minSys: minS,
+      maxSys: maxS,
+      minDia: minD,
+      maxDia: maxD,
+      outOfRangeCount: outCount,
+      outOfRangePct: (outCount / records.length) * 100,
     );
   }
 
   List<List<String>> _calcTimeBuckets(List<BloodPressureRecord> records, bool isRu) {
-    final b = {'m': <BloodPressureRecord>[], 'd': <BloodPressureRecord>[], 'e': <BloodPressureRecord>[], 'n': <BloodPressureRecord>[]};
+    final b = {
+      'm': <BloodPressureRecord>[],
+      'd': <BloodPressureRecord>[],
+      'e': <BloodPressureRecord>[],
+      'n': <BloodPressureRecord>[],
+    };
     for (var r in records) {
       final h = r.dateTime.hour;
-      if (h >= 6 && h < 10) b['m']!.add(r);
-      else if (h >= 12 && h < 16) b['d']!.add(r);
-      else if (h >= 18 && h < 22) b['e']!.add(r);
-      else if (h >= 22 || h < 6) b['n']!.add(r);
+      if (h >= 6 && h < 11) b['m']!.add(r);
+      else if (h >= 11 && h < 18) b['d']!.add(r);
+      else if (h >= 18 && h < 23) b['e']!.add(r);
+      else if (h >= 23 || h < 6) b['n']!.add(r);
     }
     String f(List<BloodPressureRecord> l) {
       if (l.isEmpty) return '—';
-      final s = (l.map((e) => e.systolic).reduce((a, b) => a + b) / l.length).round();
-      final d = (l.map((e) => e.diastolic).reduce((a, b) => a + b) / l.length).round();
-      final label = isRu ? (l.length == 1 ? 'измерение' : (l.length < 5 ? 'измерения' : 'измерений')) : 'records';
+      final s =
+      (l.map((e) => e.systolic).reduce((a, b) => a + b) / l.length).round();
+      final d =
+      (l.map((e) => e.diastolic).reduce((a, b) => a + b) / l.length).round();
+      final label = isRu
+          ? (l.length == 1
+          ? 'измерение'
+          : (l.length < 5 ? 'измерения' : 'измерений'))
+          : 'records';
       return '$s/$d (${l.length} $label)';
     }
     return [
-      [isRu ? 'Утро (06-10)' : 'Morning', f(b['m']!)],
-      [isRu ? 'День (12-16)' : 'Day', f(b['d']!)],
-      [isRu ? 'Вечер (18-22)' : 'Evening', f(b['e']!)],
-      [isRu ? 'Ночь (22-06)' : 'Night', f(b['n']!)],
+      [isRu ? 'Утро (06-11)' : 'Morning', f(b['m']!)],
+      [isRu ? 'День (11-18)' : 'Day', f(b['d']!)],
+      [isRu ? 'Вечер (18-23)' : 'Evening', f(b['e']!)],
+      [isRu ? 'Ночь (23-06)' : 'Night', f(b['n']!)],
     ];
   }
 }
@@ -290,6 +396,26 @@ class ExportService {
 class _Stats {
   final int n, avgSys, avgDia, minSys, maxSys, minDia, maxDia, outOfRangeCount;
   final double outOfRangePct;
-  _Stats({required this.n, required this.avgSys, required this.avgDia, required this.minSys, required this.maxSys, required this.minDia, required this.maxDia, required this.outOfRangeCount, required this.outOfRangePct});
-  static _Stats empty() => _Stats(n: 0, avgSys: 0, avgDia: 0, minSys: 0, maxSys: 0, minDia: 0, maxDia: 0, outOfRangeCount: 0, outOfRangePct: 0);
+  _Stats({
+    required this.n,
+    required this.avgSys,
+    required this.avgDia,
+    required this.minSys,
+    required this.maxSys,
+    required this.minDia,
+    required this.maxDia,
+    required this.outOfRangeCount,
+    required this.outOfRangePct,
+  });
+  static _Stats empty() => _Stats(
+    n: 0,
+    avgSys: 0,
+    avgDia: 0,
+    minSys: 0,
+    maxSys: 0,
+    minDia: 0,
+    maxDia: 0,
+    outOfRangeCount: 0,
+    outOfRangePct: 0,
+  );
 }
