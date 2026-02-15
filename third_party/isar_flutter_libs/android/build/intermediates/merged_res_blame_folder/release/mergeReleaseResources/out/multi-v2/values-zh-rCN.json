@@ -4,7 +4,7 @@
             "outputFile": "dev.isar.isar_flutter_libs-release-23:/values-zh-rCN/values-zh-rCN.xml",
             "map": [
                 {
-                    "source": "C:\\GradleCache\\caches\\8.12.1\\transforms\\4fec3bd46d797566e0c24ff7e23ad2e4\\transformed\\core-1.13.1\\res\\values-zh-rCN\\values-zh-rCN.xml",
+                    "source": "C:\\GradleCache\\caches\\8.12.1\\transforms\\e0cc78211d4da8f1e4f98c59d464cc54\\transformed\\core-1.13.1\\res\\values-zh-rCN\\values-zh-rCN.xml",
                     "from": {
                         "startLines": "2,3,4,5,6,7,8,9",
                         "startColumns": "4,4,4,4,4,4,4,4",
@@ -19,7 +19,7 @@
             "outputFile": "dev.isar.isar_flutter_libs-mergeReleaseResources-21:/values-zh-rCN/values-zh-rCN.xml",
             "map": [
                 {
-                    "source": "C:\\GradleCache\\caches\\8.12.1\\transforms\\4fec3bd46d797566e0c24ff7e23ad2e4\\transformed\\core-1.13.1\\res\\values-zh-rCN\\values-zh-rCN.xml",
+                    "source": "C:\\GradleCache\\caches\\8.12.1\\transforms\\e0cc78211d4da8f1e4f98c59d464cc54\\transformed\\core-1.13.1\\res\\values-zh-rCN\\values-zh-rCN.xml",
                     "from": {
                         "startLines": "2,3,4,5,6,7,8,9",
                         "startColumns": "4,4,4,4,4,4,4,4",

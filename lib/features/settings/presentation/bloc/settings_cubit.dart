@@ -214,13 +214,20 @@ class SettingsCubit extends Cubit<SettingsState> {
   }
 
   Future<void> contactSupport() async {
-    final Uri emailLaunchUri = Uri(
+    final Uri uri = Uri(
       scheme: 'mailto',
-      path: 'your_email@mail.com',
-      query: 'subject=Blood Pressure Diary Feedback',
+      path: 'resistor.rs@gmail.com', // ✅ твой реальный адрес
+      queryParameters: <String, String>{
+        'subject': 'Pressure Diary — обратная связь',
+        'body': 'Опишите проблему или предложение.\n',
+      },
     );
-    if (await canLaunchUrl(emailLaunchUri)) {
-      await launchUrl(emailLaunchUri);
+
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      // если хочешь — можно эмитить errorMessage
+      // emit(state.copyWith(errorMessage: 'Не удалось открыть почту'));
     }
   }
 

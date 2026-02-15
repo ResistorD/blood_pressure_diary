@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'about_app_screen.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -11,7 +12,7 @@ import 'package:blood_pressure_diary/core/theme/app_theme.dart';
 import 'package:blood_pressure_diary/core/theme/scale.dart';
 import 'package:blood_pressure_diary/features/settings/presentation/bloc/settings_cubit.dart';
 import 'package:blood_pressure_diary/features/settings/presentation/bloc/settings_state.dart';
-import 'package:blood_pressure_diary/features/settings/presentation/privacy_policy_screen.dart';
+
 import 'package:blood_pressure_diary/l10n/generated/app_localizations.dart';
 
 import 'package:path_provider/path_provider.dart';
@@ -752,20 +753,14 @@ class SettingsScreen extends StatelessWidget {
                         ),
                         SizedBox(height: gap8),
                         actionButton(
-                          title: l10n.contactSupport,
-                          onTap: () => context.read<SettingsCubit>().contactSupport(),
-                        ),
-                        SizedBox(height: gap8),
-                        actionButton(title: l10n.rateApp, onTap: () => context.read<SettingsCubit>().rateApp()),
-                        SizedBox(height: gap8),
-                        actionButton(
-                          title: l10n.privacyPolicy,
-                          onTap: () {
+                          title: _tr(context, 'О приложении', 'About'),
+                          onTap: () async {
                             Navigator.of(context).push(
-                              MaterialPageRoute(builder: (_) => const PrivacyPolicyScreen()),
+                              MaterialPageRoute(builder: (_) => const AboutAppScreen()),
                             );
                           },
                         ),
+
                         Padding(
                           padding: EdgeInsets.only(top: gap16),
                           child: Center(

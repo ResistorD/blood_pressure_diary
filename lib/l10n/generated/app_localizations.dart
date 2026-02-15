@@ -842,11 +842,113 @@ abstract class AppLocalizations {
   /// **'Вечер'**
   String get evening;
 
+  /// No description provided for @aboutApp.
+  ///
+  /// In ru, this message translates to:
+  /// **'О приложении'**
+  String get aboutApp;
+
+  /// No description provided for @appAboutText.
+  ///
+  /// In ru, this message translates to:
+  /// **'Pressure Diary — дневник измерений давления и пульса. Данные вводятся пользователем и могут быть полезны для наблюдения динамики.'**
+  String get appAboutText;
+
+  /// No description provided for @version.
+  ///
+  /// In ru, this message translates to:
+  /// **'Версия'**
+  String get version;
+
+  /// No description provided for @supportProject.
+  ///
+  /// In ru, this message translates to:
+  /// **'Поддержать проект'**
+  String get supportProject;
+
+  /// No description provided for @supportProjectHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'Добровольная благодарность разработчику'**
+  String get supportProjectHint;
+
+  /// No description provided for @emailClientNotFound.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не найдено приложение для отправки почты'**
+  String get emailClientNotFound;
+
+  /// No description provided for @actionFailed.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось выполнить действие'**
+  String get actionFailed;
+
   /// No description provided for @time.
   ///
   /// In ru, this message translates to:
   /// **'Время'**
   String get time;
+
+  /// No description provided for @supportProjectText.
+  ///
+  /// In ru, this message translates to:
+  /// **'Если приложение оказалось полезным — можно символически поддержать разработку. Да, кнопку «бургер» можно нажимать хоть каждый день 🙂'**
+  String get supportProjectText;
+
+  /// No description provided for @supportCoffee.
+  ///
+  /// In ru, this message translates to:
+  /// **'€2 — кофе'**
+  String get supportCoffee;
+
+  /// No description provided for @supportCoffeeHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'Символическая благодарность'**
+  String get supportCoffeeHint;
+
+  /// No description provided for @supportPizza.
+  ///
+  /// In ru, this message translates to:
+  /// **'€3 — пицца'**
+  String get supportPizza;
+
+  /// No description provided for @supportPizzaHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'Чуть щедрее, всё ещё по-человечески'**
+  String get supportPizzaHint;
+
+  /// No description provided for @supportBurger.
+  ///
+  /// In ru, this message translates to:
+  /// **'€5 — бургер'**
+  String get supportBurger;
+
+  /// No description provided for @supportBurgerHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'Максимальный уровень гражданской доблести'**
+  String get supportBurgerHint;
+
+  /// No description provided for @shareApp.
+  ///
+  /// In ru, this message translates to:
+  /// **'Поделиться приложением'**
+  String get shareApp;
+
+  /// No description provided for @shareAppHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'Отправить ссылку друзьям'**
+  String get shareAppHint;
+
+  /// No description provided for @shareAppText.
+  ///
+  /// In ru, this message translates to:
+  /// **'Ссылка на приложение:'**
+  String get shareAppText;
 
   /// No description provided for @russian.
   ///

@@ -44,6 +44,7 @@ class StatisticsScreen extends StatelessWidget {
             }
 
             return BlocProvider(
+              key: ValueKey('stats-$targetSys-$targetDia'),
               create: (_) => StatisticsCubit(
                 homeState.records,
                 targetSystolic: targetSys,

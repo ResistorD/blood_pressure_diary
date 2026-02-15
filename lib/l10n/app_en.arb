@@ -138,7 +138,24 @@
   "morning": "Morning",
   "evening": "Evening",
   "time": "Time",
+  "aboutApp": "About app",
+  "appAboutText": "Pressure Diary is a blood pressure and pulse log. Data is entered by the user and may help track trends.",
+  "version": "Version",
+  "supportProject": "Support the project",
+  "supportProjectHint": "A voluntary thank-you to the developer",
+  "emailClientNotFound": "No email app found",
+  "actionFailed": "Action failed",
   "russian": "Russian",
+  "supportProjectText": "If the app is useful — you can support development. Yes, you can tap “burger” every day 🙂",
+  "supportCoffee": "€2 — coffee",
+  "supportCoffeeHint": "Small thank-you",
+  "supportPizza": "€3 — pizza",
+  "supportPizzaHint": "A bit more generous",
+  "supportBurger": "€5 — burger",
+  "supportBurgerHint": "Maximum civic virtue",
+  "shareApp": "Share the app",
+  "shareAppHint": "Send the link to friends",
+  "shareAppText": "App link:",
   "account": "Account",
   "@account": {
     "description": "auto-added"
@@ -217,5 +234,5 @@
   "buyPremium": "Remove ads",
   "oneTimePayment": "One-time payment €2.99 — lifetime",
   "male": "Male",
-  "female": "Fem.учзщке"
+  "female": "Female"
 }

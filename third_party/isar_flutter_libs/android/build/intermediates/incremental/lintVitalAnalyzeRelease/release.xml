@@ -6,7 +6,7 @@
     mergedManifest="build\intermediates\merged_manifest\release\processReleaseManifest\AndroidManifest.xml"
     proguardFiles="build\intermediates\default_proguard_files\global\proguard-android.txt-8.9.2"
     partialResultsDir="build\intermediates\lint_vital_partial_results\release\lintVitalAnalyzeRelease\out"
-    desugaredMethodsFiles="C:\GradleCache\caches\8.12.1\transforms\3dde3e09f6fc195f4aea79e52e6c6feb\transformed\D8BackportedDesugaredMethods.txt">
+    desugaredMethodsFiles="C:\GradleCache\caches\8.12.1\transforms\cc1f9c9e7ace96b1d33fc81115d7502f\transformed\D8BackportedDesugaredMethods.txt">
   <buildFeatures
       namespacing="REQUIRED"/>
   <sourceProviders>
@@ -26,6 +26,6 @@
       applicationId="dev.isar.isar_flutter_libs"
       generatedSourceFolders="build\generated\ap_generated_sources\release\out"
       generatedResourceFolders="build\generated\res\resValues\release"
-      desugaredMethodsFiles="C:\GradleCache\caches\8.12.1\transforms\3dde3e09f6fc195f4aea79e52e6c6feb\transformed\D8BackportedDesugaredMethods.txt">
+      desugaredMethodsFiles="C:\GradleCache\caches\8.12.1\transforms\cc1f9c9e7ace96b1d33fc81115d7502f\transformed\D8BackportedDesugaredMethods.txt">
   </artifact>
 </variant>

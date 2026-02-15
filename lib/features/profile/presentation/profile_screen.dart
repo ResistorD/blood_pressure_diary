@@ -460,13 +460,31 @@ class ProfileScreen extends StatelessWidget {
                         ),
                       ),
                       SizedBox(height: dp(context, space.s12)),
-                      ElevatedButton(
-                        onPressed: () {
-                          final v = controller.text.trim();
-                          context.read<ProfileCubit>().updateProfile(name: v);
-                          Navigator.of(ctx).pop();
-                        },
-                        child: Text(l10n.save),
+                      SizedBox(
+                        width: double.infinity,
+                        height: fieldH,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: isDark ? AppPalette.dark900 : AppPalette.blue900,
+                            foregroundColor: isDark ? colors.textPrimary : colors.textOnBrand,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(fieldR),
+                            ),
+                            elevation: 0,
+                          ),
+                          onPressed: () {
+                            final v = controller.text.trim();
+                            context.read<ProfileCubit>().updateProfile(name: v);
+                            Navigator.of(ctx).pop();
+                          },
+                          child: Text(
+                            l10n.save,
+                            style: valueStyle.copyWith(
+                              fontWeight: text.w600,
+                              color: isDark ? colors.textPrimary : colors.textOnBrand,
+                            ),
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -532,14 +550,38 @@ class ProfileScreen extends StatelessWidget {
                         ),
                       ),
                       SizedBox(height: dp(context, space.s12)),
-                      ElevatedButton(
-                        onPressed: () {
-                          final v = int.tryParse(controller.text.trim());
-                          if (v == null) return;
-                          onSubmit(v);
-                          Navigator.of(ctx).pop();
-                        },
-                        child: Text(l10n.save),
+                      SizedBox(
+                        width: double.infinity,
+                        height: fieldH,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: isDark
+                                ? AppPalette.dark900
+                                : AppPalette.blue900,
+                            foregroundColor: isDark
+                                ? colors.textPrimary
+                                : colors.textOnBrand,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(fieldR),
+                            ),
+                            elevation: 0,
+                          ),
+                          onPressed: () {
+                            final v = int.tryParse(controller.text.trim());
+                            if (v == null) return;
+                            onSubmit(v);
+                            Navigator.of(ctx).pop();
+                          },
+                          child: Text(
+                            l10n.save,
+                            style: TextStyle(
+                              fontFamily: text.family,
+                              fontSize: sp(context, text.fs20),
+                              fontWeight: text.w600,
+                              height: 1.0,
+                            ),
+                          ),
+                        ),
                       ),
                     ],
                   ),

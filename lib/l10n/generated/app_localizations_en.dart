@@ -394,7 +394,60 @@ class AppLocalizationsEn extends AppLocalizations {
   String get evening => 'Evening';
 
   @override
+  String get aboutApp => 'About app';
+
+  @override
+  String get appAboutText =>
+      'Pressure Diary is a blood pressure and pulse log. Data is entered by the user and may help track trends.';
+
+  @override
+  String get version => 'Version';
+
+  @override
+  String get supportProject => 'Support the project';
+
+  @override
+  String get supportProjectHint => 'A voluntary thank-you to the developer';
+
+  @override
+  String get emailClientNotFound => 'No email app found';
+
+  @override
+  String get actionFailed => 'Action failed';
+
+  @override
   String get time => 'Time';
+
+  @override
+  String get supportProjectText =>
+      'If the app is useful — you can support development. Yes, you can tap “burger” every day 🙂';
+
+  @override
+  String get supportCoffee => '€2 — coffee';
+
+  @override
+  String get supportCoffeeHint => 'Small thank-you';
+
+  @override
+  String get supportPizza => '€3 — pizza';
+
+  @override
+  String get supportPizzaHint => 'A bit more generous';
+
+  @override
+  String get supportBurger => '€5 — burger';
+
+  @override
+  String get supportBurgerHint => 'Maximum civic virtue';
+
+  @override
+  String get shareApp => 'Share the app';
+
+  @override
+  String get shareAppHint => 'Send the link to friends';
+
+  @override
+  String get shareAppText => 'App link:';
 
   @override
   String get russian => 'Russian';
@@ -472,5 +525,5 @@ class AppLocalizationsEn extends AppLocalizations {
   String get male => 'Male';
 
   @override
-  String get female => 'Fem.учзщке';
+  String get female => 'Female';
 }

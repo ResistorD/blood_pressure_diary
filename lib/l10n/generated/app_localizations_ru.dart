@@ -396,7 +396,60 @@ class AppLocalizationsRu extends AppLocalizations {
   String get evening => 'Вечер';
 
   @override
+  String get aboutApp => 'О приложении';
+
+  @override
+  String get appAboutText =>
+      'Pressure Diary — дневник измерений давления и пульса. Данные вводятся пользователем и могут быть полезны для наблюдения динамики.';
+
+  @override
+  String get version => 'Версия';
+
+  @override
+  String get supportProject => 'Поддержать проект';
+
+  @override
+  String get supportProjectHint => 'Добровольная благодарность разработчику';
+
+  @override
+  String get emailClientNotFound => 'Не найдено приложение для отправки почты';
+
+  @override
+  String get actionFailed => 'Не удалось выполнить действие';
+
+  @override
   String get time => 'Время';
+
+  @override
+  String get supportProjectText =>
+      'Если приложение оказалось полезным — можно символически поддержать разработку. Да, кнопку «бургер» можно нажимать хоть каждый день 🙂';
+
+  @override
+  String get supportCoffee => '€2 — кофе';
+
+  @override
+  String get supportCoffeeHint => 'Символическая благодарность';
+
+  @override
+  String get supportPizza => '€3 — пицца';
+
+  @override
+  String get supportPizzaHint => 'Чуть щедрее, всё ещё по-человечески';
+
+  @override
+  String get supportBurger => '€5 — бургер';
+
+  @override
+  String get supportBurgerHint => 'Максимальный уровень гражданской доблести';
+
+  @override
+  String get shareApp => 'Поделиться приложением';
+
+  @override
+  String get shareAppHint => 'Отправить ссылку друзьям';
+
+  @override
+  String get shareAppText => 'Ссылка на приложение:';
 
   @override
   String get russian => 'Русский';
