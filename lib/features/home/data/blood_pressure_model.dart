@@ -17,6 +17,9 @@ class BloodPressureRecord {
 
   String? note;    // Поле для заметок (бывший comment)
   String? emotion; // Твой эмодзи
+  
+  // ✅ Индекс для тегов (для быстрого поиска по тегам в будущем)
+  @Index(type: IndexType.value)
   List<String> tags = const []; // Контекстные теги (после кофе, стресс и т.п.)
 
   @ignore

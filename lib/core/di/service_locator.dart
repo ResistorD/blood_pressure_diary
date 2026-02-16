@@ -29,7 +29,9 @@ Future<void> setupLocator(Isar isar) async {
   getIt.registerFactory<HomeBloc>(() => HomeBloc(getIt<PressureRepository>()));
   
   getIt.registerFactory(() => AddRecordBloc(getIt<PressureRepository>()));
-  getIt.registerSingleton<ProfileCubit>(ProfileCubit(getIt<IsarService>()));
+  
+  // ✅ ProfileCubit теперь factory (не singleton) для правильного lifecycle management
+  getIt.registerFactory<ProfileCubit>(() => ProfileCubit(getIt<IsarService>()));
   
   // SettingsCubit как синглтон, чтобы настройки были доступны везде
   getIt.registerSingleton(SettingsCubit(

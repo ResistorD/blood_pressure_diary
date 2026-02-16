@@ -32,7 +32,7 @@ class NotificationService {
     return false;
   }
 
-  Future<void> scheduleDailyNotification(int id, TimeOfDay time) async {
+  Future<void> scheduleDailyNotification(int id, TimeOfDay time, {String languageCode = 'ru'}) async {
     final now = tz.TZDateTime.now(tz.local);
     var scheduledDate = tz.TZDateTime(
       tz.local,
@@ -47,10 +47,18 @@ class NotificationService {
       scheduledDate = scheduledDate.add(const Duration(days: 1));
     }
 
+    // ✅ Локализованные уведомления
+    final title = languageCode == 'ru'
+        ? 'Пора измерить давление'
+        : 'Time to measure your blood pressure';
+    final body = languageCode == 'ru'
+        ? 'Не забудьте внести данные в дневник для контроля здоровья.'
+        : 'Don\'t forget to log your data for health monitoring.';
+
     await _notificationsPlugin.zonedSchedule(
       id,
-      'Пора измерить давление',
-      'Не забудьте внести данные в дневник для контроля здоровья.',
+      title,
+      body,
       scheduledDate,
       const NotificationDetails(
         android: AndroidNotificationDetails(

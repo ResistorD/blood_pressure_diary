@@ -133,11 +133,18 @@ class BackupService {
     'pulse': r.pulse,
     'note': r.note,
     'emotion': r.emotion,
+    'tags': r.tags,  // ✅ Добавлено сохранение тегов
   };
 
   BloodPressureRecord _recordFromMap(Map<String, dynamic> m) {
     final dtStr = (m['dateTime'] ?? '').toString();
     final dt = DateTime.tryParse(dtStr)?.toLocal() ?? DateTime.now();
+
+    // ✅ Восстановление тегов
+    final tagsRaw = m['tags'];
+    final tags = (tagsRaw is List)
+        ? tagsRaw.map((e) => e.toString()).toList()
+        : <String>[];
 
     final r = BloodPressureRecord()
       ..dateTime = dt
@@ -145,7 +152,8 @@ class BackupService {
       ..diastolic = (m['diastolic'] is num) ? (m['diastolic'] as num).toInt() : 0
       ..pulse = (m['pulse'] is num) ? (m['pulse'] as num).toInt() : 0
       ..note = m['note']?.toString()
-      ..emotion = m['emotion']?.toString();
+      ..emotion = m['emotion']?.toString()
+      ..tags = tags;
 
     // id не переносим — Isar сам выдаст новые id.
     return r;

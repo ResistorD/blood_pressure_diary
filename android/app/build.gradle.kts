@@ -8,13 +8,13 @@ plugins {
 
 android {
     namespace = "com.dmitry.blood_pressure_diary"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     defaultConfig {
         applicationId = "com.dmitry.blood_pressure_diary"
         minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        targetSdk = 35
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }

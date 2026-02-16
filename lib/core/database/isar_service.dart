@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:isar/isar.dart';
 
 import '../../features/home/data/blood_pressure_model.dart';
@@ -24,27 +25,47 @@ class IsarService {
   }
 
   Future<void> saveRecord(BloodPressureRecord record) async {
-    await _isar.writeTxn(() async {
-      await _isar.bloodPressureRecords.put(record);
-    });
+    try {
+      await _isar.writeTxn(() async {
+        await _isar.bloodPressureRecords.put(record);
+      });
+    } on IsarError catch (e) {
+      debugPrint('IsarService.saveRecord error: $e');
+      throw Exception('Failed to save record: $e');
+    }
   }
 
   Future<void> saveRecords(List<BloodPressureRecord> records) async {
-    await _isar.writeTxn(() async {
-      await _isar.bloodPressureRecords.putAll(records);
-    });
+    try {
+      await _isar.writeTxn(() async {
+        await _isar.bloodPressureRecords.putAll(records);
+      });
+    } on IsarError catch (e) {
+      debugPrint('IsarService.saveRecords error: $e');
+      throw Exception('Failed to save records: $e');
+    }
   }
 
   Future<void> deleteRecord(int id) async {
-    await _isar.writeTxn(() async {
-      await _isar.bloodPressureRecords.delete(id);
-    });
+    try {
+      await _isar.writeTxn(() async {
+        await _isar.bloodPressureRecords.delete(id);
+      });
+    } on IsarError catch (e) {
+      debugPrint('IsarService.deleteRecord error: $e');
+      throw Exception('Failed to delete record: $e');
+    }
   }
 
   Future<void> deleteAllRecords() async {
-    await _isar.writeTxn(() async {
-      await _isar.bloodPressureRecords.clear();
-    });
+    try {
+      await _isar.writeTxn(() async {
+        await _isar.bloodPressureRecords.clear();
+      });
+    } on IsarError catch (e) {
+      debugPrint('IsarService.deleteAllRecords error: $e');
+      throw Exception('Failed to delete all records: $e');
+    }
   }
 
   // --- Settings (singleton, id=0) ---
@@ -85,10 +106,15 @@ class IsarService {
   }
 
   Future<void> saveSettings(AppSettings settings) async {
-    await _isar.writeTxn(() async {
-      settings.id = 0;
-      await _isar.appSettings.put(settings);
-    });
+    try {
+      await _isar.writeTxn(() async {
+        settings.id = 0;
+        await _isar.appSettings.put(settings);
+      });
+    } on IsarError catch (e) {
+      debugPrint('IsarService.saveSettings error: $e');
+      throw Exception('Failed to save settings: $e');
+    }
   }
 
   // --- Profile (singleton, id=0) ---
@@ -127,10 +153,15 @@ class IsarService {
   }
 
   Future<void> saveProfile(UserProfile profile) async {
-    await _isar.writeTxn(() async {
-      profile.id = 0;
-      await _isar.userProfiles.put(profile);
-    });
+    try {
+      await _isar.writeTxn(() async {
+        profile.id = 0;
+        await _isar.userProfiles.put(profile);
+      });
+    } on IsarError catch (e) {
+      debugPrint('IsarService.saveProfile error: $e');
+      throw Exception('Failed to save profile: $e');
+    }
   }
 
   /// Полная замена данных приложения (для restore):
@@ -141,15 +172,20 @@ class IsarService {
     required UserProfile profile,
     required List<BloodPressureRecord> records,
   }) async {
-    await _isar.writeTxn(() async {
-      settings.id = 0;
-      profile.id = 0;
+    try {
+      await _isar.writeTxn(() async {
+        settings.id = 0;
+        profile.id = 0;
 
-      await _isar.appSettings.put(settings);
-      await _isar.userProfiles.put(profile);
+        await _isar.appSettings.put(settings);
+        await _isar.userProfiles.put(profile);
 
-      await _isar.bloodPressureRecords.clear();
-      await _isar.bloodPressureRecords.putAll(records);
-    });
+        await _isar.bloodPressureRecords.clear();
+        await _isar.bloodPressureRecords.putAll(records);
+      });
+    } on IsarError catch (e) {
+      debugPrint('IsarService.replaceAllData error: $e');
+      throw Exception('Failed to restore backup: $e');
+    }
   }
 }

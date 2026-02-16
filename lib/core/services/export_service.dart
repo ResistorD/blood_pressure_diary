@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:csv/csv.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show rootBundle, Uint8List;
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
@@ -13,6 +14,24 @@ import 'package:blood_pressure_diary/features/home/data/blood_pressure_model.dar
 enum ExportFormat { csv, pdf }
 
 class ExportService {
+  // ✅ Кэш для шрифтов PDF
+  pw.Font? _cachedTtf;
+  pw.Font? _cachedTtfBold;
+  
+  Future<pw.Font> _loadTtf() async {
+    if (_cachedTtf != null) return _cachedTtf!;
+    final fontData = await rootBundle.load('assets/fonts/Inter-Regular.ttf');
+    _cachedTtf = pw.Font.ttf(fontData);
+    return _cachedTtf!;
+  }
+
+  Future<pw.Font> _loadTtfBold() async {
+    if (_cachedTtfBold != null) return _cachedTtfBold!;
+    final boldData = await rootBundle.load('assets/fonts/Inter-Bold.ttf');
+    _cachedTtfBold = pw.Font.ttf(boldData);
+    return _cachedTtfBold!;
+  }
+
   Future<void> exportData(
       List<BloodPressureRecord> records,
       ExportFormat format,
@@ -75,10 +94,9 @@ class ExportService {
     final threshold = now.subtract(Duration(days: periodDays));
     final filtered = records.where((r) => r.dateTime.isAfter(threshold)).toList();
 
-    final fontData = await rootBundle.load('assets/fonts/Inter-Regular.ttf');
-    final boldData = await rootBundle.load('assets/fonts/Inter-Bold.ttf');
-    final ttf = pw.Font.ttf(fontData);
-    final ttfBold = pw.Font.ttf(boldData);
+    // ✅ Использование кэшированных шрифтов
+    final ttf = await _loadTtf();
+    final ttfBold = await _loadTtfBold();
 
     final ageYears = _tryGetAgeYears(profile, now);
     final ageStr = ageYears != null ? ageYears.toString() : '—';
@@ -197,8 +215,32 @@ class ExportService {
     );
 
     final bytes = await pdf.save();
-    final dir = await getTemporaryDirectory();
-    final file = File('${dir.path}/report_${now.millisecondsSinceEpoch}.pdf');
+    
+    // ✅ Использование постоянного хранилища вместо temporary
+    final dir = await getApplicationDocumentsDirectory();
+    final exportDir = Directory('${dir.path}/exports');
+    
+    // Создаем директорию, если её нет
+    if (!await exportDir.exists()) {
+      await exportDir.create(recursive: true);
+    }
+    
+    // ✅ Cleanup файлов старше 7 дней
+    try {
+      await for (final entity in exportDir.list()) {
+        if (entity is File) {
+          final stat = await entity.stat();
+          if (now.difference(stat.modified).inDays > 7) {
+            await entity.delete();
+          }
+        }
+      }
+    } catch (e) {
+      // Ignore cleanup errors
+      debugPrint('Cleanup old exports error: $e');
+    }
+    
+    final file = File('${exportDir.path}/report_${now.millisecondsSinceEpoch}.pdf');
     await file.writeAsBytes(bytes, flush: true);
     await Share.shareXFiles([XFile(file.path)]);
   }

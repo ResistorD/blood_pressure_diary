@@ -42,31 +42,13 @@ class SettingsCubit extends Cubit<SettingsState> {
   }
 
   Future<void> changeLanguage(String langCode) async {
-    final newSettings = AppSettings(
-      themeMode: state.settings.themeMode,
-      languageCode: langCode,
-      reminders: state.settings.reminders,
-      notificationsEnabled: state.settings.notificationsEnabled,
-      accountLinked: state.settings.accountLinked,
-      accountEmail: state.settings.accountEmail,
-      accountProvider: state.settings.accountProvider,
-    );
-
+    final newSettings = state.settings.copyWith(languageCode: langCode);
     await _isarService.saveSettings(newSettings);
     emit(state.copyWith(settings: newSettings));
   }
 
   Future<void> setThemeMode(AppThemeMode mode) async {
-    final newSettings = AppSettings(
-      themeMode: mode,
-      languageCode: state.settings.languageCode,
-      reminders: state.settings.reminders,
-      notificationsEnabled: state.settings.notificationsEnabled,
-      accountLinked: state.settings.accountLinked,
-      accountEmail: state.settings.accountEmail,
-      accountProvider: state.settings.accountProvider,
-    );
-
+    final newSettings = state.settings.copyWith(themeMode: mode);
     await _isarService.saveSettings(newSettings);
     emit(state.copyWith(settings: newSettings));
   }
@@ -81,21 +63,16 @@ class SettingsCubit extends Cubit<SettingsState> {
     final newList = List<String>.from(state.settings.reminders)..add(timeStr);
     newList.sort();
 
-    final newSettings = AppSettings(
-      themeMode: state.settings.themeMode,
-      languageCode: state.settings.languageCode,
-      reminders: newList,
-      notificationsEnabled: state.settings.notificationsEnabled,
-      accountLinked: state.settings.accountLinked,
-      accountEmail: state.settings.accountEmail,
-      accountProvider: state.settings.accountProvider,
-    );
-
+    final newSettings = state.settings.copyWith(reminders: newList);
     await _isarService.saveSettings(newSettings);
 
     if (state.settings.notificationsEnabled) {
       final id = timeStr.hashCode;
-      await _notificationService.scheduleDailyNotification(id, time);
+      await _notificationService.scheduleDailyNotification(
+        id,
+        time,
+        languageCode: state.settings.languageCode,
+      );
     }
 
     emit(state.copyWith(settings: newSettings));
@@ -107,16 +84,7 @@ class SettingsCubit extends Cubit<SettingsState> {
     final timeStr = state.settings.reminders[index];
     final newList = List<String>.from(state.settings.reminders)..removeAt(index);
 
-    final newSettings = AppSettings(
-      themeMode: state.settings.themeMode,
-      languageCode: state.settings.languageCode,
-      reminders: newList,
-      notificationsEnabled: state.settings.notificationsEnabled,
-      accountLinked: state.settings.accountLinked,
-      accountEmail: state.settings.accountEmail,
-      accountProvider: state.settings.accountProvider,
-    );
-
+    final newSettings = state.settings.copyWith(reminders: newList);
     await _isarService.saveSettings(newSettings);
 
     // Cancel scheduled notification if it exists
@@ -126,16 +94,7 @@ class SettingsCubit extends Cubit<SettingsState> {
   }
 
   Future<void> toggleNotifications(bool enabled) async {
-    final newSettings = AppSettings(
-      themeMode: state.settings.themeMode,
-      languageCode: state.settings.languageCode,
-      reminders: state.settings.reminders,
-      notificationsEnabled: enabled,
-      accountLinked: state.settings.accountLinked,
-      accountEmail: state.settings.accountEmail,
-      accountProvider: state.settings.accountProvider,
-    );
-
+    final newSettings = state.settings.copyWith(notificationsEnabled: enabled);
     await _isarService.saveSettings(newSettings);
 
     if (enabled) {
@@ -147,7 +106,11 @@ class SettingsCubit extends Cubit<SettingsState> {
           hour: int.parse(parts[0]),
           minute: int.parse(parts[1]),
         );
-        await _notificationService.scheduleDailyNotification(timeStr.hashCode, time);
+        await _notificationService.scheduleDailyNotification(
+          timeStr.hashCode,
+          time,
+          languageCode: state.settings.languageCode,
+        );
       }
     } else {
       // Cancel all reminders

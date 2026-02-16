@@ -245,6 +245,7 @@ class AppSpacing extends ThemeExtension<AppSpacing> {
   final double s40;
   final double s46;
   final double s48;
+  final double s50;
   final double s56;
   final double s57;
   final double s72;
@@ -282,6 +283,7 @@ class AppSpacing extends ThemeExtension<AppSpacing> {
     required this.s40,
     required this.s46,
     required this.s48,
+    required this.s50,
     required this.s56,
     required this.s57,
     required this.s72,
@@ -319,6 +321,7 @@ class AppSpacing extends ThemeExtension<AppSpacing> {
     s40: 40,
     s46: 46,
     s48: 48,
+    s50: 50,
     s56: 56,
     s57: 57,
     s72: 72,
@@ -357,6 +360,7 @@ class AppSpacing extends ThemeExtension<AppSpacing> {
     double? s40,
     double? s46,
     double? s48,
+    double? s50,
     double? s56,
     double? s57,
     double? s72,
@@ -393,6 +397,7 @@ class AppSpacing extends ThemeExtension<AppSpacing> {
       s40: s40 ?? this.s40,
       s46: s46 ?? this.s46,
       s48: s48 ?? this.s48,
+      s50: s50 ?? this.s50,
       s56: s56 ?? this.s56,
       s57: s57 ?? this.s57,
       s72: s72 ?? this.s72,

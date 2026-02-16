@@ -31,6 +31,27 @@ class AppSettings {
     this.accountEmail = '',
     this.accountProvider = '',
   });
+  
+  /// ✅ copyWith для избежания дублирования кода в SettingsCubit
+  AppSettings copyWith({
+    AppThemeMode? themeMode,
+    String? languageCode,
+    List<String>? reminders,
+    bool? notificationsEnabled,
+    bool? accountLinked,
+    String? accountEmail,
+    String? accountProvider,
+  }) {
+    return AppSettings(
+      themeMode: themeMode ?? this.themeMode,
+      languageCode: languageCode ?? this.languageCode,
+      reminders: reminders ?? this.reminders,
+      notificationsEnabled: notificationsEnabled ?? this.notificationsEnabled,
+      accountLinked: accountLinked ?? this.accountLinked,
+      accountEmail: accountEmail ?? this.accountEmail,
+      accountProvider: accountProvider ?? this.accountProvider,
+    )..id = this.id;
+  }
 }
 
 enum AppThemeMode {

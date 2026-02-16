@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../data/blood_pressure_model.dart';
 import 'statistics_state.dart';
@@ -24,7 +25,7 @@ class StatisticsCubit extends Cubit<StatisticsState> {
     updatePeriod(state.period);
   }
 
-  void updatePeriod(StatisticsPeriod period) {
+  Future<void> updatePeriod(StatisticsPeriod period) async {
     final now = DateTime.now();
     List<BloodPressureRecord> filtered;
 
@@ -46,19 +47,24 @@ class StatisticsCubit extends Cubit<StatisticsState> {
 
     filtered.sort((a, b) => a.dateTime.compareTo(b.dateTime));
 
-    // Thinning if records > 100
+    // ✅ Прореживание в isolate если записей > 100
     if (filtered.length > 100) {
-      final int skip = (filtered.length / 50).floor();
-      final List<BloodPressureRecord> thinned = [];
-      for (int i = 0; i < filtered.length; i++) {
-        if (skip <= 1 || i % skip == 0 || i == filtered.length - 1) {
-          thinned.add(filtered[i]);
-        }
-      }
-      filtered = thinned;
+      filtered = await compute(_thinRecordsIsolate, filtered);
     }
 
     _calculateAnalytics(filtered, period);
+  }
+
+  /// ✅ Статический метод для выполнения в isolate
+  static List<BloodPressureRecord> _thinRecordsIsolate(List<BloodPressureRecord> filtered) {
+    final int skip = (filtered.length / 50).floor();
+    final List<BloodPressureRecord> thinned = [];
+    for (int i = 0; i < filtered.length; i++) {
+      if (skip <= 1 || i % skip == 0 || i == filtered.length - 1) {
+        thinned.add(filtered[i]);
+      }
+    }
+    return thinned;
   }
 
   void _calculateAnalytics(List<BloodPressureRecord> records, StatisticsPeriod period) {

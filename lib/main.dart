@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -15,18 +17,139 @@ import 'package:blood_pressure_diary/features/settings/presentation/bloc/setting
 import 'package:blood_pressure_diary/l10n/generated/app_localizations.dart';
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  // ✅ Глобальный error handler для Flutter ошибок
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+    debugPrint('Flutter Error: ${details.exceptionAsString()}');
+  };
 
-  final dir = await getApplicationDocumentsDirectory();
-  final isar = await Isar.open(
-    [BloodPressureRecordSchema, AppSettingsSchema, UserProfileSchema],
-    directory: dir.path,
+  // ✅ Глобальный error handler для async ошибок
+  runZonedGuarded(
+    () async {
+      WidgetsFlutterBinding.ensureInitialized();
+      runApp(const BloodPressureAppBootstrap());
+    },
+    (error, stack) {
+      debugPrint('Async Error: $error\n$stack');
+    },
   );
+}
 
-  await setupLocator(isar);
-  await initializeDateFormatting('ru');
+/// ✅ Bootstrap виджет с явной инициализацией
+class BloodPressureAppBootstrap extends StatefulWidget {
+  const BloodPressureAppBootstrap({super.key});
 
-  runApp(const BloodPressureApp());
+  @override
+  State<BloodPressureAppBootstrap> createState() => _BloodPressureAppBootstrapState();
+}
+
+class _BloodPressureAppBootstrapState extends State<BloodPressureAppBootstrap> {
+  Future<void>? _initFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _initFuture = _initializeApp();
+  }
+
+  Future<void> _initializeApp() async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final isar = await Isar.open(
+        [BloodPressureRecordSchema, AppSettingsSchema, UserProfileSchema],
+        directory: dir.path,
+      );
+
+      await setupLocator(isar);
+      await initializeDateFormatting('ru');
+      
+      // ✅ Safety buffer для гарантии инициализации DI
+      await Future.delayed(const Duration(milliseconds: 50));
+    } catch (e, stack) {
+      debugPrint('Initialization Error: $e\n$stack');
+      rethrow;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<void>(
+      future: _initFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.done) {
+          if (snapshot.hasError) {
+            return MaterialApp(
+              debugShowCheckedModeBanner: false,
+              home: Scaffold(
+                body: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.error_outline, size: 64, color: Colors.red),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Failed to initialize app',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          '${snapshot.error}',
+                          style: const TextStyle(fontSize: 14, color: Colors.grey),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }
+          return const BloodPressureApp();
+        }
+
+        // ✅ Splash Screen
+        return MaterialApp(
+          debugShowCheckedModeBanner: false,
+          home: Scaffold(
+            backgroundColor: AppPalette.blue700,
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.favorite,
+                    size: 80,
+                    color: Colors.white,
+                  ),
+                  const SizedBox(height: 24),
+                  const Text(
+                    'Blood Pressure Diary',
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  const SizedBox(
+                    width: 40,
+                    height: 40,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 3,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
 
 class BloodPressureApp extends StatelessWidget {
