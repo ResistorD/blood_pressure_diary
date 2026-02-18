@@ -886,18 +886,6 @@ class ProfileScreen extends StatelessWidget {
                                   ),
                                 ),
 
-                                SizedBox(height: pad12),
-
-                                SizedBox(
-                                  width: double.infinity,
-                                  child: _primaryButton(
-                                    title: l10n.buyPremium,
-                                    subtitle: l10n.oneTimePayment,
-                                    bg: isDark ? AppPalette.dark900 : AppPalette.blue900,
-                                    fg: isDark ? colors.textPrimary : colors.textOnBrand,
-                                    onTap: () {},
-                                  ),
-                                ),
                               ],
                             ),
                           ),

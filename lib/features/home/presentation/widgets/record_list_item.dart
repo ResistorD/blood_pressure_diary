@@ -103,7 +103,7 @@ class RecordListItem extends StatelessWidget {
 
     final iconSize = dp(context, s.s22);
     final iconGap = dp(context, s.s6);
-    final blockGap = dp(context, s.s8);
+    final blockGap = dp(context, s.s12);
 
     final cardR = dp(context, r.r5);
     final padH = dp(context, s.s20);
@@ -191,41 +191,43 @@ class RecordListItem extends StatelessWidget {
                   boxShadow: [sh.card],
                 ),
                 child: hasMeta
-                    ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _MainRow(
-                        record: record,
-                        valueStyle: valueStyle,
-                        iconSize: iconSize,
-                        iconGap: iconGap,
-                        blockGap: blockGap,
-                        iconColor: iconColor,
+                    ? Align(
+                        alignment: Alignment.centerLeft,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _MainRow(
+                              record: record,
+                              valueStyle: valueStyle,
+                              iconSize: iconSize,
+                              iconGap: iconGap,
+                              blockGap: blockGap,
+                              iconColor: iconColor,
+                            ),
+                            SizedBox(height: dp(context, s.s8)),
+                            _TagsMetaRow(
+                              tags: tags,
+                              note: note,
+                              noteStyle: noteStyle,
+                              iconColor: iconColor,
+                              iconSize: dp(context, s.s14),
+                              gap: dp(context, s.s6),
+                            ),
+                          ],
+                        ),
+                      )
+                    : Align(
+                        alignment: Alignment.centerLeft,
+                        child: _MainRow(
+                          record: record,
+                          valueStyle: valueStyle,
+                          iconSize: iconSize,
+                          iconGap: iconGap,
+                          blockGap: blockGap,
+                          iconColor: iconColor,
+                        ),
                       ),
-                      SizedBox(height: dp(context, s.s8)),
-                      _TagsMetaRow(
-                        tags: tags,
-                        note: note,
-                        noteStyle: noteStyle,
-                        iconColor: iconColor,
-                        iconSize: dp(context, s.s14),
-                        gap: dp(context, s.s6),
-                      ),
-                    ],
-                  ),
-                )
-                    : Center(
-                  child: _MainRow(
-                    record: record,
-                    valueStyle: valueStyle,
-                    iconSize: iconSize,
-                    iconGap: iconGap,
-                    blockGap: blockGap,
-                    iconColor: iconColor,
-                  ),
-                ),
               ),
             ),
           ],
