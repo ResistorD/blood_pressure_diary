@@ -28,7 +28,7 @@ class SummaryCard extends StatelessWidget {
     final shadow = context.appShadow;
     final text = context.appText;
 
-    final width = MediaQuery.sizeOf(context).width - dp(context, space.s20) * 2;
+    final width = MediaQuery.sizeOf(context).width - context.horizontalPadding * 2;
     final height = dp(context, space.s114); // фикс по макету
     final r = dp(context, radii.r10);
 

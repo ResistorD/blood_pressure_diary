@@ -38,7 +38,7 @@ class ProfileScreen extends StatelessWidget {
     final text = context.appText;
 
     final headerH = dp(context, space.s128);
-    final side = dp(context, space.s20);
+    final side = context.horizontalPadding;
 
     final cardR = dp(context, radii.r10);
 

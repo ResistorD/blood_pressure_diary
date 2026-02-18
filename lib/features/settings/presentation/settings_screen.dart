@@ -164,7 +164,7 @@ class SettingsScreen extends StatelessWidget {
     final safeTop = MediaQuery.paddingOf(context).top;
 
     final headerH = dp(context, space.s128);
-    final side = dp(context, space.s20);
+    final side = context.horizontalPadding;
 
     final cardW = dp(context, space.w320);
     final innerW = cardW - dp(context, space.s24); // 296

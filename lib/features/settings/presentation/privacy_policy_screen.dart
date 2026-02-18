@@ -15,7 +15,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     // фиксированный внешний горизонтальный паддинг (как на экране ввода)
-    final side = dp(context, space.s20);
+    final side = context.horizontalPadding;
 
     final topInset = MediaQuery.paddingOf(context).top;
     final bottomInset = MediaQuery.paddingOf(context).bottom;

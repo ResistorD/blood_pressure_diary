@@ -139,11 +139,11 @@ class _HomeHeader extends StatelessWidget {
     final radii = context.appRadii;
     final appText = context.appText;
 
-    final side = dp(context, space.s20);
-    final blueH = dp(context, space.s160);
-    final shelfH = dp(context, space.s80);
-    final overlap = dp(context, space.s40 + space.s10);
-    final headerTop = safeTop + dp(context, space.s20);
+    final side = HeaderSizes.horizontalPadding(context);
+    final blueH = HeaderSizes.blueHeight(context);
+    final shelfH = HeaderSizes.shelfHeight(context);
+    final overlap = HeaderSizes.overlap(context);
+    final headerTop = safeTop + context.adaptiveVerticalPadding;
 
     final headerBg = isDark ? AppPalette.dark800 : AppPalette.blue700;
     final shelfBg = isDark ? AppPalette.dark700 : AppPalette.grey050;
@@ -341,7 +341,7 @@ class _RecordsList extends StatelessWidget {
     final colors = context.appColors;
     final space = context.appSpace;
 
-    final side = dp(context, space.s20);
+    final side = HeaderSizes.horizontalPadding(context);
     final bottomListPadding = _bottomInset(context);
 
     final groups = _groupByDate(records);

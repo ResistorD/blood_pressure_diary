@@ -85,7 +85,7 @@ class SupportProjectScreen extends StatelessWidget {
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    final side = dp(context, space.s20);
+    final side = context.horizontalPadding;
     final topInset = MediaQuery.paddingOf(context).top;
     final bottomInset = MediaQuery.paddingOf(context).bottom;
 

@@ -98,7 +98,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final appText = context.appText;
 
     // Layout tokens
-    final side = dp(context, space.s20);
+    final side = context.horizontalPadding;
     final blueH = dp(context, space.s160); // header blue
     final shelfH = dp(context, space.s80); // shelf
     final overlap = dp(context, space.s40 + space.s10); // 50

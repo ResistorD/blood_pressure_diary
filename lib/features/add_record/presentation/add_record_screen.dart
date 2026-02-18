@@ -36,66 +36,16 @@ class TagPreset {
 
 class AddRecordScreen extends StatelessWidget {
   static const List<TagPreset> presetTags = [
-    TagPreset(
-      'После кофе',
-      'assets/icons/tags/coffee.svg',
-      ruLabel: 'После кофе',
-      enLabel: 'After coffee',
-    ),
-    TagPreset(
-      'Алкоголь',
-      'assets/icons/tags/alcohol.svg',
-      ruLabel: 'Алкоголь',
-      enLabel: 'Alcohol',
-    ),
-    TagPreset(
-      'После еды',
-      'assets/icons/tags/hamburger.svg',
-      ruLabel: 'После еды',
-      enLabel: 'After meal',
-    ),
-    TagPreset(
-      'После прогулки',
-      'assets/icons/tags/walk.svg',
-      ruLabel: 'После прогулки',
-      enLabel: 'After walk',
-    ),
-    TagPreset(
-      'После тренировки',
-      'assets/icons/tags/training.svg',
-      ruLabel: 'После тренировки',
-      enLabel: 'After workout',
-    ),
-    TagPreset(
-      'Стресс',
-      'assets/icons/tags/stress.svg',
-      ruLabel: 'Стресс',
-      enLabel: 'Stress',
-    ),
-    TagPreset(
-      'Плохой сон',
-      'assets/icons/tags/sleep.svg',
-      ruLabel: 'Плохой сон',
-      enLabel: 'Poor sleep',
-    ),
-    TagPreset(
-      'Головная боль',
-      'assets/icons/tags/headache.svg',
-      ruLabel: 'Головная боль',
-      enLabel: 'Headache',
-    ),
-    TagPreset(
-      'Принял лекарство',
-      'assets/icons/tags/meds.svg',
-      ruLabel: 'Принял лекарство',
-      enLabel: 'Took meds',
-    ),
-    TagPreset(
-      'Пропустил приём',
-      'assets/icons/tags/missed_meds.svg',
-      ruLabel: 'Пропустил приём',
-      enLabel: 'Missed meds',
-    ),
+    TagPreset('После кофе', 'assets/icons/tags/coffee.svg', ruLabel: 'После кофе', enLabel: 'After coffee'),
+    TagPreset('Алкоголь', 'assets/icons/tags/alcohol.svg', ruLabel: 'Алкоголь', enLabel: 'Alcohol'),
+    TagPreset('После еды', 'assets/icons/tags/hamburger.svg', ruLabel: 'После еды', enLabel: 'After meal'),
+    TagPreset('После прогулки', 'assets/icons/tags/walk.svg', ruLabel: 'После прогулки', enLabel: 'After walk'),
+    TagPreset('После тренировки', 'assets/icons/tags/training.svg', ruLabel: 'После тренировки', enLabel: 'After workout'),
+    TagPreset('Стресс', 'assets/icons/tags/stress.svg', ruLabel: 'Стресс', enLabel: 'Stress'),
+    TagPreset('Плохой сон', 'assets/icons/tags/sleep.svg', ruLabel: 'Плохой сон', enLabel: 'Poor sleep'),
+    TagPreset('Головная боль', 'assets/icons/tags/headache.svg', ruLabel: 'Головная боль', enLabel: 'Headache'),
+    TagPreset('Принял лекарство', 'assets/icons/tags/meds.svg', ruLabel: 'Принял лекарство', enLabel: 'Took meds'),
+    TagPreset('Пропустил приём', 'assets/icons/tags/missed_meds.svg', ruLabel: 'Пропустил приём', enLabel: 'Missed meds'),
   ];
 
   final BloodPressureRecord? record;
@@ -130,11 +80,11 @@ class _AddRecordViewState extends State<_AddRecordView> {
   final TextEditingController _noteController = TextEditingController();
   final FocusNode _noteFocusNode = FocusNode();
 
-  String? _selectedEmoji;
-
   @override
   void initState() {
     super.initState();
+    // ВАЖНО: при фокусе на комментарии отключаем кастомный keypad,
+    // чтобы не было "цифровая под стандартной".
     _noteFocusNode.addListener(() {
       if (_noteFocusNode.hasFocus) {
         context.read<AddRecordBloc>().add(const FieldChanged(InputField.none));
@@ -149,22 +99,27 @@ class _AddRecordViewState extends State<_AddRecordView> {
     super.dispose();
   }
 
-  void _appendEmojiToNote(String emoji) {
-    final controller = _noteController;
+  String? _validationHint(AddRecordState s, bool isRu) {
+    // Минимальный «почему нельзя сохранить», чтобы кнопка не выглядела сломанной.
+    final touched = s.systolic.trim().isNotEmpty || s.diastolic.trim().isNotEmpty || s.pulse.trim().isNotEmpty;
+    if (!touched || s.isValid) return null;
 
-    final text = controller.text;
-    final selection = controller.selection;
+    final sys = int.tryParse(s.systolic.trim());
+    final dia = int.tryParse(s.diastolic.trim());
+    final pul = int.tryParse(s.pulse.trim());
 
-    final start = selection.isValid ? selection.start : text.length;
-    final end = selection.isValid ? selection.end : text.length;
+    if (sys == null) return isRu ? 'Введите SYS (60–300)' : 'Enter SYS (60–300)';
+    if (sys < 60 || sys > 300) return isRu ? 'SYS вне диапазона 60–300' : 'SYS is out of 60–300';
 
-    final newText = text.replaceRange(start, end, emoji);
-    controller.value = TextEditingValue(
-      text: newText,
-      selection: TextSelection.collapsed(offset: start + emoji.length),
-    );
+    // ВАЖНО: DIA проверяем раньше пульса — соответствует потоку ввода (SYS → DIA → Pulse).
+    if (dia == null) return isRu ? 'Введите DIA (40–200)' : 'Enter DIA (40–200)';
+    if (dia < 40 || dia > 200) return isRu ? 'DIA вне диапазона 40–200' : 'DIA is out of 40–200';
+    if (dia >= sys) return isRu ? 'DIA должно быть меньше SYS' : 'DIA must be lower than SYS';
 
-    context.read<AddRecordBloc>().add(NoteChanged(newText));
+    if (pul == null) return isRu ? 'Введите пульс (30–250)' : 'Enter pulse (30–250)';
+    if (pul < 30 || pul > 250) return isRu ? 'Пульс вне диапазона 30–250' : 'Pulse is out of 30–250';
+
+    return isRu ? 'Проверь значения' : 'Check values';
   }
 
   Future<void> _pickTime(BuildContext context, DateTime current) async {
@@ -175,13 +130,7 @@ class _AddRecordViewState extends State<_AddRecordView> {
     );
     if (picked == null || !context.mounted) return;
 
-    final merged = DateTime(
-      current.year,
-      current.month,
-      current.day,
-      picked.hour,
-      picked.minute,
-    );
+    final merged = DateTime(current.year, current.month, current.day, picked.hour, picked.minute);
     context.read<AddRecordBloc>().add(DateTimeSet(merged));
   }
 
@@ -195,13 +144,7 @@ class _AddRecordViewState extends State<_AddRecordView> {
     );
     if (picked == null || !context.mounted) return;
 
-    final merged = DateTime(
-      picked.year,
-      picked.month,
-      picked.day,
-      current.hour,
-      current.minute,
-    );
+    final merged = DateTime(picked.year, picked.month, picked.day, current.hour, current.minute);
     context.read<AddRecordBloc>().add(DateTimeSet(merged));
   }
 
@@ -233,16 +176,12 @@ class _AddRecordViewState extends State<_AddRecordView> {
   double _bottomInset(BuildContext context) {
     final space = context.appSpace;
 
-    final safeBottom = MediaQuery.paddingOf(context).bottom;
-    final keyboard = MediaQuery.viewInsetsOf(context).bottom;
-
-    // Bottom bar in AppNavigation: barH (69) + lift (43) ≈ 112, плюс safeBottom.
+    // Bottom bar in AppNavigation: barH (69) + lift (43) ≈ 112.
     final barH = dp(context, space.s72 - space.s2 - space.s1);
     final outer = dp(context, space.s80 + space.s6);
     final lift = outer / 2;
 
     return barH + lift;
-    //return dp(context, space.s96) + barH + lift + safeBottom + dp(context, space.s12) + keyboard;
   }
 
   Widget _threeColGridSpan23({
@@ -289,8 +228,6 @@ class _AddRecordViewState extends State<_AddRecordView> {
 
     final commentH = dp(context, space.s72);
 
-    final emojiSize = dp(context, space.s24);
-
     final gap20 = dp(context, space.s20);
     final gap16 = dp(context, space.s16);
     final gap12 = dp(context, space.s12);
@@ -305,9 +242,9 @@ class _AddRecordViewState extends State<_AddRecordView> {
     final keypadGap = isSmallScreen ? dp(context, space.s12) : dp(context, space.s16);
     final keypadBg = isDark ? AppPalette.dark800 : surface;
 
-    final hint = isDark ? AppPalette.dark350 : AppPalette.grey500;
-    final value = isDark ? AppPalette.dark400 : AppPalette.blue900;
-    final chevron = isDark ? AppPalette.dark350 : AppPalette.grey500;
+    final hintColor = isDark ? AppPalette.dark350 : AppPalette.grey500;
+    final valueColor = isDark ? AppPalette.dark400 : AppPalette.blue900;
+    final chevronColor = isDark ? AppPalette.dark350 : AppPalette.grey500;
 
     final titleStyle = TextStyle(
       fontFamily: txt.family,
@@ -321,7 +258,7 @@ class _AddRecordViewState extends State<_AddRecordView> {
       fontFamily: txt.family,
       fontSize: sp(context, txt.fs18),
       fontWeight: txt.w600,
-      color: value,
+      color: valueColor,
       height: 1.0,
     );
 
@@ -329,7 +266,7 @@ class _AddRecordViewState extends State<_AddRecordView> {
       fontFamily: txt.family,
       fontSize: sp(context, txt.fs18),
       fontWeight: txt.w400,
-      color: value,
+      color: valueColor,
       height: 1.0,
     );
 
@@ -337,7 +274,7 @@ class _AddRecordViewState extends State<_AddRecordView> {
       fontFamily: txt.family,
       fontSize: sp(context, txt.fs16),
       fontWeight: txt.w500,
-      color: hint,
+      color: hintColor,
       height: 1.0,
     );
 
@@ -345,7 +282,7 @@ class _AddRecordViewState extends State<_AddRecordView> {
       fontFamily: txt.family,
       fontSize: sp(context, txt.fs16),
       fontWeight: txt.w400,
-      color: value,
+      color: valueColor,
       height: 1.0,
     );
 
@@ -353,11 +290,11 @@ class _AddRecordViewState extends State<_AddRecordView> {
       fontFamily: txt.family,
       fontSize: sp(context, txt.fs16),
       fontWeight: txt.w500,
-      color: hint,
+      color: hintColor,
       height: 1.0,
     );
 
-    final focusBorderColor = isDark ? AppPalette.blue500 : AppPalette.blue500;
+    final focusBorderColor = AppPalette.blue500;
     final focusBorderW = dp(context, space.s1);
 
     return BlocListener<AddRecordBloc, AddRecordState>(
@@ -369,6 +306,9 @@ class _AddRecordViewState extends State<_AddRecordView> {
           builder: (context, state) {
             final dt = state.selectedDateTime;
             final showKeypad = state.activeField != InputField.none;
+
+            final isRu = Localizations.localeOf(context).languageCode == 'ru';
+            final validationHint = _validationHint(state, isRu);
 
             if (_noteController.text != state.note) {
               _noteController.value = TextEditingValue(
@@ -437,7 +377,10 @@ class _AddRecordViewState extends State<_AddRecordView> {
                                 isFocused: state.activeField == InputField.systolic,
                                 focusBorderColor: focusBorderColor,
                                 focusBorderWidth: focusBorderW,
-                                onTap: () => context.read<AddRecordBloc>().add(const FieldChanged(InputField.systolic)),
+                                onTap: () {
+                                  FocusScope.of(context).unfocus();
+                                  context.read<AddRecordBloc>().add(const FieldChanged(InputField.systolic));
+                                },
                               ),
                             ),
                             SizedBox(width: gap16),
@@ -452,7 +395,10 @@ class _AddRecordViewState extends State<_AddRecordView> {
                                 isFocused: state.activeField == InputField.diastolic,
                                 focusBorderColor: focusBorderColor,
                                 focusBorderWidth: focusBorderW,
-                                onTap: () => context.read<AddRecordBloc>().add(const FieldChanged(InputField.diastolic)),
+                                onTap: () {
+                                  FocusScope.of(context).unfocus();
+                                  context.read<AddRecordBloc>().add(const FieldChanged(InputField.diastolic));
+                                },
                               ),
                             ),
                             SizedBox(width: gap16),
@@ -467,7 +413,10 @@ class _AddRecordViewState extends State<_AddRecordView> {
                                 isFocused: state.activeField == InputField.pulse,
                                 focusBorderColor: focusBorderColor,
                                 focusBorderWidth: focusBorderW,
-                                onTap: () => context.read<AddRecordBloc>().add(const FieldChanged(InputField.pulse)),
+                                onTap: () {
+                                  FocusScope.of(context).unfocus();
+                                  context.read<AddRecordBloc>().add(const FieldChanged(InputField.pulse));
+                                },
                               ),
                             ),
                           ],
@@ -485,7 +434,7 @@ class _AddRecordViewState extends State<_AddRecordView> {
                             bg: surface,
                             text: DateFormat('HH:mm').format(dt),
                             textStyle: pillValueStyleRegular,
-                            chevronColor: chevron,
+                            chevronColor: chevronColor,
                             shadow: shadows.card,
                             onTap: () => _pickTime(context, dt),
                           ),
@@ -495,7 +444,7 @@ class _AddRecordViewState extends State<_AddRecordView> {
                             bg: surface,
                             text: DateFormat('dd MMMM yyyy', Localizations.localeOf(context).toString()).format(dt),
                             textStyle: pillValueStyleRegular,
-                            chevronColor: chevron,
+                            chevronColor: chevronColor,
                             shadow: shadows.card,
                             onTap: () => _pickDate(context, dt),
                           ),
@@ -503,7 +452,7 @@ class _AddRecordViewState extends State<_AddRecordView> {
 
                         SizedBox(height: gap20),
 
-                        // Комментарий — на всю ширину минус крайние отступы
+                        // Комментарий — стандартная клавиатура
                         Container(
                           height: commentH,
                           decoration: BoxDecoration(
@@ -535,8 +484,9 @@ class _AddRecordViewState extends State<_AddRecordView> {
 
                         SizedBox(height: gap16),
 
-                        // Теги — по той же ширине, выравнивание по правому краю внутри строки
+                        // Теги — hint теперь тут (в одной строке с "Теги +")
                         _TagsDisclosureRow(
+                          hint: validationHint,
                           isExpanded: state.isTagsExpanded,
                           selectedCount: state.tags.length,
                           onTap: () => context.read<AddRecordBloc>().add(TagsExpandedToggled()),
@@ -574,7 +524,7 @@ class _AddRecordViewState extends State<_AddRecordView> {
 
                         SizedBox(height: gap16),
 
-                        // Сохранить — ширина как поле Даты (2/3), выровнено вправо той же структурой
+                        // Сохранить — 2/3, справа
                         _threeColGridSpan23(
                           context: context,
                           gap: gap16,
@@ -588,7 +538,7 @@ class _AddRecordViewState extends State<_AddRecordView> {
                                 backgroundColor: isDark ? AppPalette.dark800 : colors.brandStrong,
                                 disabledBackgroundColor: isDark ? AppPalette.dark700 : AppPalette.grey400,
                                 foregroundColor: colors.textOnBrand,
-                                disabledForegroundColor: hint,
+                                disabledForegroundColor: hintColor,
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(pillR)),
                               ),
                               child: Text(
@@ -616,16 +566,16 @@ class _AddRecordViewState extends State<_AddRecordView> {
                             radius: dp(context, radii.r10),
                             background: keypadBg,
                             deleteBackground: keypadBg,
-                            foreground: value,
+                            foreground: valueColor,
                             textStyle: TextStyle(
                               fontFamily: txt.family,
                               fontSize: sp(context, txt.fs20),
                               fontWeight: txt.w400,
                               height: 1.0,
-                              color: value,
+                              color: valueColor,
                             ),
                             deleteIconSize: dp(context, space.s20),
-                            deleteIconColor: value,
+                            deleteIconColor: valueColor,
                           ),
                         ],
                       ],
@@ -751,7 +701,6 @@ class _ChevronPill extends StatelessWidget {
             borderRadius: BorderRadius.circular(radius),
             boxShadow: [shadow],
           ),
-          // Чуть ужимаем внутренние отступы и иконку: поле времени (1/3 ширины) иначе может не влезать на небольших экранах.
           padding: EdgeInsets.only(
             left: dp(context, space.s12),
             right: dp(context, space.s8),
@@ -779,51 +728,9 @@ class _ChevronPill extends StatelessWidget {
   }
 }
 
-class _EmojiButton extends StatelessWidget {
-  final String emoji;
-  final double size;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _EmojiButton({
-    required this.emoji,
-    required this.size,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.appColors;
-    final radii = context.appRadii;
-
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        width: size,
-        height: size,
-        decoration: isSelected
-            ? BoxDecoration(
-          color: colors.shadow.withValues(alpha: 0.10),
-          borderRadius: BorderRadius.circular(dp(context, radii.r10)),
-        )
-            : null,
-        alignment: Alignment.center,
-        child: Text(
-          emoji,
-          style: TextStyle(
-            fontSize: size,
-            height: 1.0,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _TagsDisclosureRow extends StatelessWidget {
   final bool isExpanded;
+  final String? hint;
   final int selectedCount;
   final VoidCallback onTap;
 
@@ -832,6 +739,7 @@ class _TagsDisclosureRow extends StatelessWidget {
 
   const _TagsDisclosureRow({
     required this.isExpanded,
+    this.hint,
     required this.selectedCount,
     required this.onTap,
     required this.textStyle,
@@ -840,6 +748,7 @@ class _TagsDisclosureRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final space = context.appSpace;
+    final colors = context.appColors;
 
     final base = _tr(context, ru: 'Теги', en: 'Tags');
     final label = selectedCount == 0 ? base : '$base ($selectedCount)';
@@ -856,8 +765,31 @@ class _TagsDisclosureRow extends StatelessWidget {
           mainAxisSize: MainAxisSize.max,
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
+            // ✅ Подсказка стоит ПЕРЕД "Теги+"
+            if (hint != null) ...[
+              Flexible(
+                child: Text(
+                  hint!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                  style: TextStyle(
+                    fontFamily: context.appText.family,
+                    fontSize: sp(context, context.appText.fs12),
+                    fontWeight: context.appText.w500,
+                    color: colors.danger,
+                    height: 1.0,
+                  ),
+                ),
+              ),
+              SizedBox(width: dp(context, space.s10)),
+            ],
+
+            // "Теги (n)"
             Text(label, style: textStyle),
             SizedBox(width: dp(context, space.s10)),
+
+            // "+" / "–" в самом конце
             Text(isExpanded ? '–' : '+', style: textStyle),
           ],
         ),
@@ -865,3 +797,4 @@ class _TagsDisclosureRow extends StatelessWidget {
     );
   }
 }
+

@@ -55,7 +55,7 @@ class ExportService {
   // --- ВОССТАНОВЛЕННЫЙ CSV ---
   Future<void> _exportToCSV(List<BloodPressureRecord> records) async {
     List<List<dynamic>> rows = [
-      ["Date", "Time", "Systolic", "Diastolic", "Pulse", "Note"]
+      ["Date", "Time", "Systolic", "Diastolic", "Pulse", "Note", "Tags"]
     ];
 
     for (var record in records) {
@@ -65,14 +65,38 @@ class ExportService {
         record.systolic,
         record.diastolic,
         record.pulse,
-        record.note ?? ""
+        record.note ?? "",
+        record.tags.join('; '), // ✅ Включаем tags в CSV
       ]);
     }
 
     String csv = const ListToCsvConverter().convert(rows);
-    final dir = await getTemporaryDirectory();
+    
+    // ✅ Использование постоянного хранилища (как в PDF)
+    final dir = await getApplicationDocumentsDirectory();
+    final exportDir = Directory('${dir.path}/exports');
+    
+    if (!await exportDir.exists()) {
+      await exportDir.create(recursive: true);
+    }
+    
+    // ✅ Cleanup файлов старше 7 дней
+    try {
+      final now = DateTime.now();
+      await for (final entity in exportDir.list()) {
+        if (entity is File && entity.path.endsWith('.csv')) {
+          final stat = await entity.stat();
+          if (now.difference(stat.modified).inDays > 7) {
+            await entity.delete();
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Cleanup old CSV exports error: $e');
+    }
+    
     final file = File(
-      '${dir.path}/blood_pressure_export_${DateTime.now().millisecondsSinceEpoch}.csv',
+      '${exportDir.path}/blood_pressure_export_${DateTime.now().millisecondsSinceEpoch}.csv',
     );
 
     await file.writeAsBytes(Uint8List.fromList(csv.codeUnits));
