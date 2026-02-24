@@ -123,9 +123,49 @@
           </td>
           <td class="nowrap">
             {% if market_id %}
-              <div class="paper-cell">
-                <span class="badge badge-gray" data-paper-status>—</span>
-                {{ paper.paper_buttons(market_id) }}
+              <div class="paper-cell" data-paper-state="NONE">
+                <div class="paper-collapsed">
+                  <div class="paper-primary">
+                    <button class="btn btn-success btn-sm trade-action paper-primary-btn" type="button"
+                            data-trade-button="1" data-action="trade" data-paper-action="buy" data-case-id="{{ market_id }}">
+                      Откр.
+                    </button>
+                    <button class="btn btn-danger btn-sm trade-action paper-primary-btn" type="button"
+                            data-trade-button="1" data-action="trade" data-paper-action="close" data-case-id="{{ market_id }}">
+                      Закр.
+                    </button>
+                    <span class="badge badge-gray" data-paper-status>—</span>
+                  </div>
+                  <button class="pill paper-toggle" type="button" data-paper-toggle aria-expanded="false">▾</button>
+                </div>
+                <div class="paper-expanded">
+                  <div class="paper-size" data-paper-size="1">
+                    <button class="size-chip is-active" type="button" data-paper-size="1">1</button>
+                    <button class="size-chip" type="button" data-paper-size="5">5</button>
+                    <button class="size-chip" type="button" data-paper-size="10">10</button>
+                  </div>
+                  <div class="paper-safe" data-safe-size>
+                    Макс. безопасный: Покупка <span data-safe-buy>—</span> / Закрытие <span data-safe-sell>—</span>
+                  </div>
+                  <div class="paper-secondary">
+                    <button class="btn btn-default btn-sm explain-trigger" type="button"
+                            data-explain-trigger data-case-id="{{ market_id }}" data-paper-action="buy">
+                      ?
+                    </button>
+                    <button class="btn btn-default btn-sm preview-trigger" type="button"
+                            data-preview-trigger data-case-id="{{ market_id }}" data-paper-action="buy">
+                      Превью
+                    </button>
+                    <button class="btn btn-default btn-sm explain-trigger" type="button"
+                            data-explain-trigger data-case-id="{{ market_id }}" data-paper-action="close">
+                      ?
+                    </button>
+                    <button class="btn btn-default btn-sm preview-trigger" type="button"
+                            data-preview-trigger data-case-id="{{ market_id }}" data-paper-action="close">
+                      Превью
+                    </button>
+                  </div>
+                </div>
               </div>
             {% else %}
               <span class="muted">—</span>

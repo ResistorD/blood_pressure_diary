@@ -28,6 +28,7 @@
   const bookPill = document.querySelector("#book-pill");
   const progressEl = document.querySelector(".kill-switch-progress");
   const agentCard = document.getElementById("agent-card");
+  const agentPill = document.getElementById("agent-pill");
   const agentStatusPill = document.getElementById("agent-status-pill");
   const agentModePill = document.getElementById("agent-mode-pill");
   const agentCadencePill = document.getElementById("agent-cadence-pill");
@@ -597,6 +598,10 @@
       else statusEl.classList.add("badge-yellow");
       flashCell(statusEl);
     }
+    if (data.new_status) {
+      const cell = row.querySelector(".paper-cell");
+      if (cell) cell.setAttribute("data-paper-state", data.new_status);
+    }
     const posStatus = row.querySelector("[data-position-status]");
     if (posStatus && data.new_status) {
       posStatus.textContent = mapStatus(data.new_status);
@@ -1047,28 +1052,52 @@
   }
 
   async function fetchAgent() {
-    if (!agentCard || inflightAgent) return;
+    if ((!agentCard && !agentPill) || inflightAgent) return;
     inflightAgent = true;
     try {
-      const [stateResp, eventsResp] = await Promise.all([
-        fetch("/agent/state", { cache: "no-store", headers: { "Accept": "application/json" } }),
-        fetch("/agent/events?limit=10", { cache: "no-store", headers: { "Accept": "application/json" } }),
-      ]);
-      if (!stateResp.ok || !eventsResp.ok) {
-        agentErrors += 1;
-        return;
+      let stateData = null;
+      let eventsData = null;
+      if (agentCard) {
+        const [stateResp, eventsResp] = await Promise.all([
+          fetch("/agent/state", { cache: "no-store", headers: { "Accept": "application/json" } }),
+          fetch("/agent/events?limit=10", { cache: "no-store", headers: { "Accept": "application/json" } }),
+        ]);
+        if (!stateResp.ok || !eventsResp.ok) {
+          agentErrors += 1;
+          return;
+        }
+        stateData = await stateResp.json();
+        eventsData = await eventsResp.json();
+      } else {
+        const stateResp = await fetch("/agent/state", { cache: "no-store", headers: { "Accept": "application/json" } });
+        if (!stateResp.ok) {
+          agentErrors += 1;
+          return;
+        }
+        stateData = await stateResp.json();
       }
-      const stateData = await stateResp.json();
-      const eventsData = await eventsResp.json();
       lastAgentState = stateData && stateData.state ? stateData.state : null;
       lastAgentEvents = (eventsData && eventsData.events) ? eventsData.events : [];
       renderAgentPanel(lastAgentState, lastAgentEvents);
+      renderAgentPill(lastAgentState);
       agentErrors = 0;
     } catch (e) {
       agentErrors += 1;
     } finally {
       inflightAgent = false;
     }
+  }
+
+  function renderAgentPill(stateData) {
+    if (!agentPill) return;
+    const st = stateData || {};
+    const enabled = !!st.enabled;
+    const cadence = st.cadence_sec ? `${st.cadence_sec}s` : "—";
+    const openCount = st.current ? 1 : 0;
+    const maxPos = st.max_positions != null ? st.max_positions : "—";
+    agentPill.textContent = `AGENT ${enabled ? "ON" : "OFF"} · ${cadence} · ${openCount}/${maxPos}`;
+    agentPill.classList.remove("pill-ok", "pill-muted", "pill-warn");
+    agentPill.classList.add(enabled ? "pill-ok" : "pill-muted");
   }
 
   function renderAgentPanel(stateData, events) {
@@ -1324,7 +1353,7 @@
       e.preventDefault();
       startHold();
     });
-    ["pointerup", "pointerleave", "pointercancel", "pointerout"].forEach((ev) => {
+    ["pointerup", "pointercancel"].forEach((ev) => {
       killBtn.addEventListener(ev, cancelHold);
     });
   }
@@ -2075,6 +2104,23 @@
     if (btn) handlePreviewTrigger(btn);
   }
 
+  function togglePaperDisclosure(row, force) {
+    if (!row) return;
+    const cell = row.querySelector(".paper-cell");
+    if (!cell) return;
+    const next = force != null ? !!force : !cell.classList.contains("is-expanded");
+    cell.classList.toggle("is-expanded", next);
+    const toggle = cell.querySelector("[data-paper-toggle]");
+    if (toggle) toggle.setAttribute("aria-expanded", next ? "true" : "false");
+  }
+
+  function toggleActivePaperDisclosure() {
+    const rows = getNavRows();
+    if (!rows.length) return;
+    const idx = activeIndex >= 0 ? activeIndex : 0;
+    togglePaperDisclosure(rows[idx]);
+  }
+
   let batchHoldTimer = null;
   let batchHoldRaf = null;
   let batchHoldStart = 0;
@@ -2285,6 +2331,11 @@
       previewActiveRow();
       return;
     }
+    if (key === "e") {
+      e.preventDefault();
+      toggleActivePaperDisclosure();
+      return;
+    }
   }
 
   let microErrors = 0;
@@ -2335,6 +2386,13 @@
   document.addEventListener("click", handleMicroClick);
   document.addEventListener("click", handleExplainClick);
   document.addEventListener("click", handleSizeClick);
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-paper-toggle]");
+    if (!btn) return;
+    e.preventDefault();
+    const row = btn.closest("tr");
+    togglePaperDisclosure(row);
+  });
   document.addEventListener("click", (e) => {
     const btn = e.target.closest("[data-preview-trigger]");
     if (!btn) return;

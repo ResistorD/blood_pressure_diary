@@ -454,6 +454,38 @@ body.is-paused .paused-banner { display: block; }
   align-items: center;
   margin-right: 6px;
 }
+.paper-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.paper-collapsed {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.paper-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.paper-primary-btn[data-paper-action="close"] { display: none; }
+.paper-cell[data-paper-state="OPEN"] .paper-primary-btn[data-paper-action="buy"] { display: none; }
+.paper-cell[data-paper-state="OPEN"] .paper-primary-btn[data-paper-action="close"] { display: inline-flex; }
+.paper-expanded {
+  display: none;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.paper-cell.is-expanded .paper-expanded { display: flex; }
+.paper-secondary {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.paper-toggle { padding: 2px 6px; }
 .paper-safe {
   display: inline-flex;
   gap: 6px;
@@ -485,6 +517,12 @@ body.is-paused .paused-banner { display: block; }
 }
 
 #book-pill {
+  padding: 4px 8px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+}
+#agent-pill {
   padding: 4px 8px;
   font-size: 11px;
   font-family: var(--font-mono);
