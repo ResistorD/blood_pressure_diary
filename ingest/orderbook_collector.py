@@ -130,13 +130,45 @@ class OrderbookCollector:
             if not row:
                 errors += 1
                 if len(error_samples) < 3:
-                    error_samples.append({"market_id": market_id, "reason": "NO_MARKET_ROW"})
+                    error_samples.append(
+                        {
+                            "market_id": market_id,
+                            "token_id": None,
+                            "reason": "NO_MARKET_ROW",
+                            "query": "SELECT market_id, raw_json FROM markets WHERE market_id IN (?)",
+                            "field": "market_id",
+                        }
+                    )
                 continue
-            token_id = self._token_id_for_market(row)
+            tokens = _extract_tokens_from_row(row)
+            pick = None
+            for t in tokens:
+                outcome = str(t.get("outcome") or t.get("name") or "").upper()
+                if outcome == "YES":
+                    pick = t
+                    break
+            if pick is None and tokens:
+                pick = tokens[0]
+            token_id = None
+            if pick:
+                token_id = (
+                    pick.get("token_id")
+                    or pick.get("tokenId")
+                    or pick.get("clobTokenId")
+                    or pick.get("clob_token_id")
+                    or pick.get("id")
+                )
             if not token_id:
                 errors += 1
                 if len(error_samples) < 3:
-                    error_samples.append({"market_id": market_id, "reason": "NO_TOKEN_ID"})
+                    error_samples.append(
+                        {
+                            "market_id": market_id,
+                            "token_id": None,
+                            "reason": "NO_TOKEN_ID",
+                            "field": "tokens/clobTokenIds",
+                        }
+                    )
                 continue
             try:
                 book = _http_json(
@@ -179,14 +211,24 @@ class OrderbookCollector:
                     except Exception:
                         detail = ""
                     error_samples.append(
-                        {"market_id": market_id, "token_id": token_id, "status": e.code, "detail": detail[:200]}
+                        {
+                            "market_id": market_id,
+                            "token_id": token_id,
+                            "status": e.code,
+                            "detail": detail[:200],
+                        }
                     )
                 continue
             except Exception as e:
                 errors += 1
                 if len(error_samples) < 3:
                     error_samples.append(
-                        {"market_id": market_id, "token_id": token_id, "status": "EXC", "detail": str(e)[:200]}
+                        {
+                            "market_id": market_id,
+                            "token_id": token_id,
+                            "status": "EXC",
+                            "detail": str(e)[:200],
+                        }
                     )
                 continue
         last = {mid: self.last_book_ts.get(mid) for mid in ids if mid in self.last_book_ts}
