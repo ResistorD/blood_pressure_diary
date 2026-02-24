@@ -140,6 +140,8 @@ class MainLoop:
         seen = set()
         out = []
         for mid in ids:
+            if mid and not mid.isdigit():
+                continue
             if mid in seen:
                 continue
             seen.add(mid)
