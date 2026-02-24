@@ -152,6 +152,7 @@ class MainLoop:
         dropped_unknown_market_id = 0
         dropped_no_tokens = 0
         source_counts: dict[str, int] = {"cases": 0, "positions": 0, "pinned": 0}
+        unknown_samples: list[str] = []
         if not unique:
             return targets, {
                 "sources": source_counts,
@@ -170,6 +171,8 @@ class MainLoop:
                 raw_json = raw_map.get(mid) or ""
                 if not raw_json:
                     dropped_unknown_market_id += 1
+                    if len(unknown_samples) < 5:
+                        unknown_samples.append(mid)
                     continue
                 try:
                     raw = json.loads(raw_json)
@@ -194,6 +197,14 @@ class MainLoop:
                     source_counts[src] = source_counts.get(src, 0) + 1
         except Exception:
             log.exception("orderbook targets build failed")
+        if dropped_unknown_market_id:
+            log.warning(
+                "orderbook targets: sources=%s total_ids=%s unknown_ids=%s sample=%s",
+                source_counts,
+                len(unique),
+                dropped_unknown_market_id,
+                unknown_samples,
+            )
         return targets, {
             "sources": source_counts,
             "dropped_unknown_market_id": dropped_unknown_market_id,
