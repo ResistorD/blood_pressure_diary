@@ -134,6 +134,7 @@ class OrderbookCollector:
         errors = 0
         error_samples: List[Dict[str, Any]] = []
         skipped_missing = 0
+        bad_task_no_token = 0
         api_key = (os.getenv("PS_CLOB_API_KEY") or os.getenv("CLOB_API_KEY") or "").strip()
         clob_headers = {
             "Origin": "https://polymarket.com",
@@ -141,57 +142,12 @@ class OrderbookCollector:
         }
         if api_key:
             clob_headers["X-API-KEY"] = api_key
-        for raw_id in ids:
-            market_id = None
-            token_id = None
-            row = rows_map.get(raw_id)
-            if row:
-                market_id = raw_id
-                tokens = _extract_tokens_from_row(row)
-                pick = None
-                for t in tokens:
-                    outcome = str(t.get("outcome") or t.get("name") or "").upper()
-                    if outcome == "YES":
-                        pick = t
-                        break
-                if pick is None and tokens:
-                    pick = tokens[0]
-                if pick:
-                    token_id = (
-                        pick.get("token_id")
-                        or pick.get("tokenId")
-                        or pick.get("clobTokenId")
-                        or pick.get("clob_token_id")
-                        or pick.get("id")
-                    )
-            elif raw_id in token_index:
-                token_id = raw_id
-                market_id = token_index[raw_id]["market_id"]
-            if not market_id:
-                skipped_missing += 1
-                if len(error_samples) < 3:
-                    error_samples.append(
-                        {
-                            "market_id": raw_id,
-                            "token_id": None,
-                            "reason": "NO_MARKET_ROW",
-                            "query": "SELECT market_id, raw_json FROM markets WHERE market_id IN (?)",
-                            "field": "market_id|token_id",
-                        }
-                    )
+        for token_id in ids:
+            info = token_index.get(token_id)
+            if not info:
+                bad_task_no_token += 1
                 continue
-            if not token_id:
-                errors += 1
-                if len(error_samples) < 3:
-                    error_samples.append(
-                        {
-                            "market_id": market_id or raw_id,
-                            "token_id": None,
-                            "reason": "NO_TOKEN_ID",
-                            "field": "tokens/clobTokenIds",
-                        }
-                    )
-                continue
+            market_id = info.get("market_id")
             try:
                 book = _http_json(
                     "GET",
@@ -261,6 +217,7 @@ class OrderbookCollector:
             "inserted": inserted,
             "errors": errors,
             "skipped_missing": skipped_missing,
+            "bad_task_no_token": bad_task_no_token,
             "last_book_ts": last,
             "error_samples": error_samples,
         }

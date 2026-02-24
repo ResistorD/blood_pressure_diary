@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import time
 import os
+import json
 from datetime import datetime, timezone
 
 from app.settings import Settings
@@ -11,7 +12,7 @@ from dispatcher.bus import EventBus
 from dispatcher.events import Alert, MarketTick, Timer
 from dispatcher.scheduler import Scheduler
 from ingest.ingestor import Ingestor
-from ingest.polymarket_client import PolymarketClient
+from ingest.polymarket_client import PolymarketClient, _extract_tokens_from_row
 from ingest.orderbook_collector import OrderbookCollector
 from db.agent_provider import RepoAgentDataProvider
 
@@ -109,14 +110,14 @@ class MainLoop:
         self._latest_snapshots_cache = {}
         self._auto_agent = get_auto_paper_agent()
 
-    def _active_market_ids(self, top_n: int = 30) -> list[str]:
-        ids: list[str] = []
+    def _active_orderbook_targets(self, top_n: int = 30) -> tuple[list[str], dict]:
+        ids: list[tuple[str, str]] = []
         try:
             cases = self.repo.list_cases(minutes_signals=30, minutes_snaps=10)
             for c in cases[:top_n]:
                 mid = c.get("market_id") if isinstance(c, dict) else None
                 if mid:
-                    ids.append(str(mid))
+                    ids.append((str(mid), "cases"))
         except Exception:
             pass
         try:
@@ -127,7 +128,7 @@ class MainLoop:
             for r in rows or []:
                 mid = r["market_id"] if isinstance(r, dict) else r[0]
                 if mid:
-                    ids.append(str(mid))
+                    ids.append((str(mid), "positions"))
         except Exception:
             pass
         pinned = (os.getenv("PS_PINNED_MARKETS") or "").strip()
@@ -135,18 +136,69 @@ class MainLoop:
             for mid in pinned.split(","):
                 mid = mid.strip()
                 if mid:
-                    ids.append(mid)
+                    ids.append((mid, "pinned"))
         # unique, preserve order
         seen = set()
-        out = []
-        for mid in ids:
+        unique: list[tuple[str, str]] = []
+        for mid, src in ids:
             if mid and not mid.isdigit():
                 continue
             if mid in seen:
                 continue
             seen.add(mid)
-            out.append(mid)
-        return out
+            unique.append((mid, src))
+
+        targets: list[str] = []
+        dropped_unknown_market_id = 0
+        dropped_no_tokens = 0
+        source_counts: dict[str, int] = {"cases": 0, "positions": 0, "pinned": 0}
+        if not unique:
+            return targets, {
+                "sources": source_counts,
+                "dropped_unknown_market_id": dropped_unknown_market_id,
+                "dropped_no_tokens": dropped_no_tokens,
+            }
+        try:
+            qmarks = ",".join(["?"] * len(unique))
+            with self.repo.conn() as con:
+                rows = con.execute(
+                    f"SELECT market_id, raw_json FROM markets WHERE market_id IN ({qmarks})",
+                    tuple([m for m, _ in unique]),
+                ).fetchall()
+            raw_map = {r["market_id"]: r["raw_json"] for r in rows or []}
+            for mid, src in unique:
+                raw_json = raw_map.get(mid) or ""
+                if not raw_json:
+                    dropped_unknown_market_id += 1
+                    continue
+                try:
+                    raw = json.loads(raw_json)
+                except Exception:
+                    dropped_no_tokens += 1
+                    continue
+                tokens = _extract_tokens_from_row(raw)
+                if not tokens:
+                    dropped_no_tokens += 1
+                    continue
+                for t in tokens:
+                    tid = (
+                        t.get("token_id")
+                        or t.get("tokenId")
+                        or t.get("clobTokenId")
+                        or t.get("clob_token_id")
+                        or t.get("id")
+                    )
+                    if tid is None:
+                        continue
+                    targets.append(str(tid))
+                    source_counts[src] = source_counts.get(src, 0) + 1
+        except Exception:
+            log.exception("orderbook targets build failed")
+        return targets, {
+            "sources": source_counts,
+            "dropped_unknown_market_id": dropped_unknown_market_id,
+            "dropped_no_tokens": dropped_no_tokens,
+        }
 
     def stop(self) -> None:
         self._stop = True
@@ -327,8 +379,9 @@ class MainLoop:
             # Orderbook collector (separate cadence)
             if mono >= self._next_book_ts:
                 try:
-                    active_ids = self._active_market_ids(top_n=30)
+                    active_ids, target_stats = self._active_orderbook_targets(top_n=30)
                     stats = self.book_collector.collect(active_ids)
+                    stats["targets"] = target_stats
                     self._book_failures = 0
                     self._next_book_ts = mono + 3.0
                     if stats.get("errors"):
