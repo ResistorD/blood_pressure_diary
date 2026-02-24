@@ -347,6 +347,23 @@ class PolymarketClient:
         self.gamma_limiter = RateLimiter(gamma_rps if gamma_rps is not None else env_gamma_rps)
         self.clob_limiter = RateLimiter(clob_rps if clob_rps is not None else env_clob_rps)
         self.last_snapshot_stats: Dict[str, Any] = {}
+        self._backfill_cache: Dict[str, float] = {}
+
+    def fetch_market_detail(self, market_id: str) -> Optional[Dict[str, Any]]:
+        try:
+            data = _http_json(
+                "GET",
+                f"{GAMMA_BASE}/markets/{market_id}",
+                policy=self.http_policy,
+                limiter=self.gamma_limiter,
+            )
+            if isinstance(data, dict):
+                if not data.get("tokens"):
+                    data["tokens"] = _extract_tokens_from_row(data)
+                return data
+        except Exception:
+            return None
+        return None
 
     def _fetch_market_rows(self) -> List[Dict[str, Any]]:
         url = f"{GAMMA_BASE}/markets"

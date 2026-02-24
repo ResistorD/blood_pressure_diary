@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import List, Tuple
 import logging
 import json
+import time
 
 from db.repo import Repo
 from domain.models import Market, Snapshot
@@ -16,6 +17,61 @@ class Ingestor:
         self.logger = logging.getLogger(__name__)
 
     def ingest(self) -> Tuple[int, int]:
+        BACKFILL_MAX = 10
+        BACKFILL_TTL_SEC = 600
+        backfill_ids: list[str] = []
+        try:
+            with self.repo.conn() as con:
+                rows = con.execute(
+                    """
+                    SELECT market_id
+                    FROM markets
+                    WHERE raw_json IS NULL OR length(raw_json)=0
+                    LIMIT ?
+                    """,
+                    (BACKFILL_MAX,),
+                ).fetchall()
+            backfill_ids = [r["market_id"] for r in rows or [] if r["market_id"]]
+        except Exception:
+            backfill_ids = []
+
+        attempted = 0
+        ok = 0
+        err = 0
+        sample = []
+        now_mono = time.monotonic()
+        for mid in backfill_ids:
+            last = self.client._backfill_cache.get(mid)
+            if last and now_mono - last < BACKFILL_TTL_SEC:
+                continue
+            self.client._backfill_cache[mid] = now_mono
+            attempted += 1
+            if len(sample) < 5:
+                sample.append(mid)
+            detail = self.client.fetch_market_detail(mid)
+            if not detail:
+                err += 1
+                continue
+            try:
+                raw_json = json.dumps(detail, ensure_ascii=False)
+                with self.repo.conn() as con:
+                    con.execute(
+                        "UPDATE markets SET raw_json=? WHERE market_id=?",
+                        (raw_json, mid),
+                    )
+                ok += 1
+            except Exception:
+                err += 1
+        if attempted:
+            self.logger.info(
+                "backfill raw_json: candidates=%s attempted=%s ok=%s err=%s sample=%s",
+                len(backfill_ids),
+                attempted,
+                ok,
+                err,
+                sample,
+            )
+
         markets, market_rows = self.client.fetch_universe_markets()
         for m in markets:
             self.repo.upsert_market(m)
