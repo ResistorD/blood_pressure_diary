@@ -353,16 +353,21 @@ body.is-paused .paused-banner { display: block; }
 .table-scroll {
   overflow-x: auto;
 }
-.table-scrollbar {
-  position: sticky;
+.global-hscroll {
+  position: fixed;
+  left: 0;
+  right: 0;
   bottom: 0;
   height: 12px;
   overflow-x: auto;
   overflow-y: hidden;
   background: var(--surface-md);
   border-top: 1px solid rgba(255,255,255,0.08);
+  display: none;
+  z-index: 900;
 }
-.table-scrollbar-inner { height: 1px; }
+.global-hscroll-inner { height: 1px; }
+body.has-global-hscroll .main { padding-bottom: 14px; }
 .micro-row {
   display: flex;
   justify-content: space-between;

@@ -2399,33 +2399,59 @@
     e.preventDefault();
     handlePreviewTrigger(btn);
   });
-  function setupStickyScrollbars() {
+  function setupGlobalHScroll() {
+    const bar = document.getElementById("global-hscroll");
+    const inner = document.getElementById("global-hscroll-inner");
+    if (!bar || !inner) return;
     const wraps = Array.from(document.querySelectorAll("[data-table-scroll]"));
+    if (!wraps.length) return;
+    let active = null;
+    let syncing = false;
+
+    function updateBar() {
+      if (!active) {
+        bar.style.display = "none";
+        body.classList.remove("has-global-hscroll");
+        return;
+      }
+      const needs = active.scrollWidth > active.clientWidth + 1;
+      if (!needs) {
+        bar.style.display = "none";
+        body.classList.remove("has-global-hscroll");
+        return;
+      }
+      inner.style.width = `${active.scrollWidth}px`;
+      bar.scrollLeft = active.scrollLeft;
+      bar.style.display = "block";
+      body.classList.add("has-global-hscroll");
+    }
+
     wraps.forEach((wrap) => {
-      const root = wrap.closest("[data-cases-table]") || wrap.parentElement;
-      if (!root) return;
-      const bar = root.querySelector("[data-table-scrollbar]");
-      const inner = root.querySelector("[data-table-scrollbar-inner]");
-      if (!bar || !inner) return;
-      const syncWidth = () => {
-        inner.style.width = `${wrap.scrollWidth}px`;
-      };
-      let syncing = false;
+      wrap.addEventListener("mouseenter", () => {
+        active = wrap;
+        updateBar();
+      });
       wrap.addEventListener("scroll", () => {
+        if (active !== wrap) active = wrap;
         if (syncing) return;
         syncing = true;
         bar.scrollLeft = wrap.scrollLeft;
         syncing = false;
+        updateBar();
       });
-      bar.addEventListener("scroll", () => {
-        if (syncing) return;
-        syncing = true;
-        wrap.scrollLeft = bar.scrollLeft;
-        syncing = false;
-      });
-      syncWidth();
-      window.addEventListener("resize", syncWidth);
     });
+
+    bar.addEventListener("scroll", () => {
+      if (!active) return;
+      if (syncing) return;
+      syncing = true;
+      active.scrollLeft = bar.scrollLeft;
+      syncing = false;
+    });
+
+    window.addEventListener("resize", updateBar);
+    active = wraps[0];
+    updateBar();
   }
   document.addEventListener("click", (e) => {
     const btn = e.target.closest("[data-edge-type]");
@@ -2434,7 +2460,7 @@
     const type = btn.getAttribute("data-edge-type") || "NONE";
     fetchEdgeTrades(type);
   });
-  setupStickyScrollbars();
+  setupGlobalHScroll();
   if (edgeTradesClose) {
     edgeTradesClose.addEventListener("click", (e) => {
       e.preventDefault();
