@@ -26,7 +26,7 @@ class Ingestor:
                     """
                     SELECT market_id
                     FROM markets
-                    WHERE raw_json IS NULL OR length(raw_json)=0
+                    WHERE raw_json IS NULL OR length(raw_json)=0 OR trim(raw_json)=''
                     LIMIT ?
                     """,
                     (BACKFILL_MAX,),
