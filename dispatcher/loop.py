@@ -421,6 +421,21 @@ class MainLoop:
                                     continue
                             if max_ts:
                                 max_age_s = (datetime.now(timezone.utc) - max_ts).total_seconds()
+                        else:
+                            try:
+                                with self.repo.conn() as con:
+                                    row = con.execute(
+                                        "SELECT COUNT(DISTINCT market_id) AS n, MAX(ts_utc) AS max_ts FROM orderbook_snapshots"
+                                    ).fetchone()
+                                last_count = int(row["n"] or 0) if row else 0
+                                max_ts_raw = row["max_ts"] if row else None
+                                if max_ts_raw:
+                                    dt = datetime.fromisoformat(str(max_ts_raw))
+                                    if dt.tzinfo is None:
+                                        dt = dt.replace(tzinfo=timezone.utc)
+                                    max_age_s = (datetime.now(timezone.utc) - dt).total_seconds()
+                            except Exception:
+                                pass
                         total = stats.get("total", 0)
                         inserted = stats.get("inserted", 0)
                         errors = stats.get("errors", 0)
