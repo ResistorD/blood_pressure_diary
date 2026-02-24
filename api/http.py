@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Optional
 
 import os
 import json
@@ -292,6 +292,34 @@ def create_app(*, settings, repo, bus) -> FastAPI:
             "last_signal_ts": last_signal_ts,
             "last_data_ts": last_data_ts,
         }
+
+    def _count_tokens(r) -> int:
+        try:
+            with r.conn() as con:
+                rows = con.execute("SELECT raw_json FROM markets").fetchall()
+        except Exception:
+            return 0
+        total = 0
+        for r0 in rows or []:
+            raw_json = r0["raw_json"] or ""
+            if not raw_json:
+                continue
+            try:
+                raw = json.loads(raw_json)
+            except Exception:
+                continue
+            tokens = raw.get("tokens") or []
+            if isinstance(tokens, list) and tokens:
+                total += len(tokens)
+                continue
+            outcomes = raw.get("outcomes") or []
+            clob_ids = raw.get("clobTokenIds") or raw.get("clob_token_ids") or []
+            if isinstance(outcomes, list) and isinstance(clob_ids, list) and len(outcomes) == len(clob_ids):
+                total += len(outcomes)
+                continue
+            if raw.get("yesTokenId") or raw.get("noTokenId"):
+                total += int(bool(raw.get("yesTokenId"))) + int(bool(raw.get("noTokenId")))
+        return total
 
     def _record_exec(request: Request, rtt_ms: float, ok: bool) -> None:
         stats = getattr(request.app.state, "exec_stats", {"samples": []})
@@ -1848,11 +1876,19 @@ def create_app(*, settings, repo, bus) -> FastAPI:
     def health_state(request: Request):
         r = _repo(request)
         state = _health_state(r)
+        markets_count = _safe(lambda: getattr(r, "count_markets")(), 0)
+        tokens_count = _count_tokens(r) if markets_count else 0
+        issues = []
+        if markets_count and tokens_count == 0:
+            issues.append("NO_TOKENS")
         stale_age = _stale_age_sec(r)
         state["stale_age_s"] = stale_age
         state["stale"] = bool(stale_age is None or stale_age > 60)
         state["paused"] = _safe(lambda: getattr(r, "is_paused")(), False) if hasattr(r, "is_paused") else False
         state["paused_at"] = _safe(lambda: getattr(r, "get_setting_updated_at")("paused"), "")
+        state["markets_count"] = markets_count
+        state["tokens_count"] = tokens_count
+        state["issues"] = issues
         state["server_ts"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
         return state
 

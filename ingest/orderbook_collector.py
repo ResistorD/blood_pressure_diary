@@ -7,7 +7,7 @@ from urllib.error import HTTPError
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from db.repo import Repo
-from ingest.polymarket_client import PolymarketClient, _http_json, CLOB_BASE
+from ingest.polymarket_client import PolymarketClient, _http_json, CLOB_BASE, _extract_tokens_from_row
 import logging
 
 
@@ -68,7 +68,7 @@ class OrderbookCollector:
         self.logger = logging.getLogger(__name__)
 
     def _token_id_for_market(self, market_row: Dict[str, Any]) -> Optional[str]:
-        tokens = market_row.get("tokens") or []
+        tokens = _extract_tokens_from_row(market_row)
         pick = None
         for t in tokens:
             outcome = str(t.get("outcome") or t.get("name") or "").upper()
@@ -96,7 +96,25 @@ class OrderbookCollector:
         ids = [str(x) for x in market_ids if x]
         if not ids:
             return {"total": 0, "inserted": 0, "errors": 0}
-        rows_map = self._fetch_market_rows_map()
+        rows_map = {}
+        try:
+            qmarks = ",".join(["?"] * len(ids))
+            with self.repo.conn() as con:
+                raw_rows = con.execute(
+                    f"SELECT market_id, raw_json FROM markets WHERE market_id IN ({qmarks})",
+                    tuple(ids),
+                ).fetchall()
+            for r in raw_rows or []:
+                try:
+                    raw = json.loads(r["raw_json"]) if r["raw_json"] else {}
+                except Exception:
+                    raw = {}
+                if isinstance(raw, dict):
+                    rows_map[str(r["market_id"])] = raw
+        except Exception:
+            self.logger.exception("orderbook: failed to load market raw_json")
+        if not rows_map:
+            rows_map = self._fetch_market_rows_map()
         inserted = 0
         errors = 0
         error_samples: List[Dict[str, Any]] = []

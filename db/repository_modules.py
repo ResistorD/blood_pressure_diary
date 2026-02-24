@@ -85,18 +85,20 @@ class MarketRepository:
             _dt_to_str(getattr(market, "close_time", None)),
             getattr(market, "rules_hash", None),
             getattr(market, "group_key", None),
+            getattr(market, "raw_json", None),
         )
 
         def _op(con):
             con.execute(
                 """
-                INSERT INTO markets(market_id, slug, title, close_time, rules_hash, group_key)
-                VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(market_id) DO
+                INSERT INTO markets(market_id, slug, title, close_time, rules_hash, group_key, raw_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(market_id) DO
                 UPDATE SET slug=excluded.slug,
                            title=excluded.title,
                            close_time=excluded.close_time,
                            rules_hash=excluded.rules_hash,
-                           group_key=excluded.group_key
+                           group_key=excluded.group_key,
+                           raw_json=excluded.raw_json
                 """,
                 row,
             )

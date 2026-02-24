@@ -152,6 +152,46 @@ def _num(raw: Dict[str, Any], *keys: str, default: float = 0.0) -> float:
     return default
 
 
+def _normalize_list(value: Any) -> List[Any]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, (tuple, set)):
+        return list(value)
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            if isinstance(parsed, list):
+                return parsed
+        except Exception:
+            return [value]
+    return [value]
+
+
+def _extract_tokens_from_row(raw: Dict[str, Any]) -> List[Dict[str, Any]]:
+    tokens = raw.get("tokens") or []
+    if isinstance(tokens, list) and tokens:
+        return tokens
+    outcomes = _normalize_list(raw.get("outcomes") or raw.get("outcome"))
+    clob_ids = _normalize_list(raw.get("clobTokenIds") or raw.get("clob_token_ids") or raw.get("clobTokenIDs"))
+    if outcomes and clob_ids and len(outcomes) == len(clob_ids):
+        built = []
+        for outcome, tid in zip(outcomes, clob_ids):
+            built.append({"outcome": outcome, "token_id": tid, "clobTokenId": tid})
+        return built
+    yes_id = raw.get("yesTokenId") or raw.get("yes_token_id")
+    no_id = raw.get("noTokenId") or raw.get("no_token_id")
+    if yes_id or no_id:
+        built = []
+        if yes_id:
+            built.append({"outcome": "YES", "token_id": yes_id, "clobTokenId": yes_id})
+        if no_id:
+            built.append({"outcome": "NO", "token_id": no_id, "clobTokenId": no_id})
+        return built
+    return []
+
+
 def _to_market(raw: Dict[str, Any]) -> Optional[Market]:
     market_id = str(raw.get("id") or raw.get("marketId") or "")
     if not market_id:
@@ -163,12 +203,17 @@ def _to_market(raw: Dict[str, Any]) -> Optional[Market]:
     condition_id = raw.get("conditionId") or raw.get("condition_id")
     question_id = raw.get("questionID") or raw.get("questionId") or raw.get("question_id")
     group_key = _make_group_key(market_group, condition_id, question_id, slug, title, close_time_raw)
+    try:
+        raw_json = json.dumps(raw, ensure_ascii=False)
+    except Exception:
+        raw_json = ""
     return Market(
         market_id=market_id,
         slug=slug or market_id,
         title=title,
         close_time=_parse_close_time(close_time_raw),
         group_key=group_key,
+        raw_json=raw_json,
     )
 
 
@@ -319,7 +364,21 @@ class PolymarketClient:
             limiter=self.gamma_limiter,
         )
         if isinstance(data, list):
-            return [x for x in data if isinstance(x, dict)]
+            rows = [x for x in data if isinstance(x, dict)]
+            for row in rows:
+                if not row.get("tokens"):
+                    row["tokens"] = _extract_tokens_from_row(row)
+            if rows:
+                sample = rows[0]
+                logger.info(
+                    "gamma sample: id=%s slug=%s outcomes=%s clobTokenIds=%s tokens=%s",
+                    sample.get("id") or sample.get("marketId"),
+                    sample.get("slug"),
+                    sample.get("outcomes"),
+                    sample.get("clobTokenIds") or sample.get("clob_token_ids"),
+                    len(sample.get("tokens") or []),
+                )
+            return rows
         return []
 
     def _fetch_universe_rows(self) -> List[Dict[str, Any]]:

@@ -24,6 +24,7 @@ class Market:
     close_time: Optional[datetime] = None
     rules_hash: str = ""
     group_key: Optional[str] = None
+    raw_json: str = ""
 
 
 @dataclass(frozen=True)

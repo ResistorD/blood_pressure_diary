@@ -445,6 +445,7 @@ class Repo:
             add_col("group_key", "group_key TEXT")
             add_col("rules_hash", "rules_hash TEXT")
             add_col("close_time", "close_time TEXT")
+            add_col("raw_json", "raw_json TEXT NOT NULL DEFAULT ''")
 
             # Backfill missing group_key for existing rows (best-effort).
             try:

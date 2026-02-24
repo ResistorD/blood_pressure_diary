@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from typing import List, Tuple
 import logging
+import json
 
 from db.repo import Repo
 from domain.models import Market, Snapshot
-from .polymarket_client import PolymarketClient
+from .polymarket_client import PolymarketClient, _extract_tokens_from_row
 
 
 class Ingestor:
@@ -19,7 +20,43 @@ class Ingestor:
         for m in markets:
             self.repo.upsert_market(m)
 
-        snaps = self.client.fetch_snapshots(market_rows=market_rows)
+        rows = market_rows or []
+        missing_ids = []
+        for row in rows:
+            tokens = _extract_tokens_from_row(row)
+            if tokens:
+                row["tokens"] = tokens
+            else:
+                mid = str(row.get("id") or row.get("marketId") or "")
+                if mid:
+                    missing_ids.append(mid)
+        if missing_ids:
+            try:
+                qmarks = ",".join(["?"] * len(missing_ids))
+                with self.repo.conn() as con:
+                    raw_rows = con.execute(
+                        f"SELECT market_id, raw_json FROM markets WHERE market_id IN ({qmarks})",
+                        tuple(missing_ids),
+                    ).fetchall()
+                raw_map = {r["market_id"]: r["raw_json"] for r in raw_rows or []}
+                for row in rows:
+                    mid = str(row.get("id") or row.get("marketId") or "")
+                    if not mid or row.get("tokens"):
+                        continue
+                    raw_json = raw_map.get(mid) or ""
+                    if not raw_json:
+                        continue
+                    try:
+                        raw = json.loads(raw_json)
+                    except Exception:
+                        continue
+                    tokens = _extract_tokens_from_row(raw)
+                    if tokens:
+                        row["tokens"] = tokens
+            except Exception:
+                self.logger.exception("failed to hydrate tokens from DB")
+
+        snaps = self.client.fetch_snapshots(market_rows=rows)
         inserted = 0
         db_errors = 0
         try:
