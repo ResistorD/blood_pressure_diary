@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
+from urllib.error import HTTPError
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from db.repo import Repo
 from ingest.polymarket_client import PolymarketClient, _http_json, CLOB_BASE
+import logging
 
 
 def _parse_level(x: Any) -> Optional[Tuple[float, float]]:
@@ -62,6 +65,7 @@ class OrderbookCollector:
         self.retention_minutes = int(retention_minutes)
         self.keep_per_market = int(keep_per_market)
         self.last_book_ts: Dict[str, str] = {}
+        self.logger = logging.getLogger(__name__)
 
     def _token_id_for_market(self, market_row: Dict[str, Any]) -> Optional[str]:
         tokens = market_row.get("tokens") or []
@@ -75,7 +79,13 @@ class OrderbookCollector:
             pick = tokens[0]
         if not pick:
             return None
-        tid = pick.get("token_id") or pick.get("tokenId") or pick.get("id")
+        tid = (
+            pick.get("token_id")
+            or pick.get("tokenId")
+            or pick.get("clobTokenId")
+            or pick.get("clob_token_id")
+            or pick.get("id")
+        )
         return str(tid) if tid is not None else None
 
     def _fetch_market_rows_map(self) -> Dict[str, Dict[str, Any]]:
@@ -89,14 +99,26 @@ class OrderbookCollector:
         rows_map = self._fetch_market_rows_map()
         inserted = 0
         errors = 0
+        error_samples: List[Dict[str, Any]] = []
+        api_key = (os.getenv("PS_CLOB_API_KEY") or os.getenv("CLOB_API_KEY") or "").strip()
+        clob_headers = {
+            "Origin": "https://polymarket.com",
+            "Referer": "https://polymarket.com/",
+        }
+        if api_key:
+            clob_headers["X-API-KEY"] = api_key
         for market_id in ids:
             row = rows_map.get(market_id)
             if not row:
                 errors += 1
+                if len(error_samples) < 3:
+                    error_samples.append({"market_id": market_id, "reason": "NO_MARKET_ROW"})
                 continue
             token_id = self._token_id_for_market(row)
             if not token_id:
                 errors += 1
+                if len(error_samples) < 3:
+                    error_samples.append({"market_id": market_id, "reason": "NO_TOKEN_ID"})
                 continue
             try:
                 book = _http_json(
@@ -105,6 +127,7 @@ class OrderbookCollector:
                     params={"token_id": str(token_id)},
                     policy=self.client.http_policy,
                     limiter=self.client.clob_limiter,
+                    headers=clob_headers,
                 )
                 bids_raw = (book or {}).get("bids") or []
                 asks_raw = (book or {}).get("asks") or []
@@ -129,8 +152,26 @@ class OrderbookCollector:
                 )
                 self.last_book_ts[market_id] = ts
                 inserted += 1
-            except Exception:
+            except HTTPError as e:
                 errors += 1
+                if len(error_samples) < 3:
+                    detail = ""
+                    try:
+                        detail = e.read().decode("utf-8", errors="replace")
+                    except Exception:
+                        detail = ""
+                    error_samples.append(
+                        {"market_id": market_id, "token_id": token_id, "status": e.code, "detail": detail[:200]}
+                    )
+                continue
+            except Exception as e:
+                errors += 1
+                if len(error_samples) < 3:
+                    error_samples.append(
+                        {"market_id": market_id, "token_id": token_id, "status": "EXC", "detail": str(e)[:200]}
+                    )
                 continue
         last = {mid: self.last_book_ts.get(mid) for mid in ids if mid in self.last_book_ts}
-        return {"total": len(ids), "inserted": inserted, "errors": errors, "last_book_ts": last}
+        if error_samples:
+            self.logger.warning("orderbook errors: %s", error_samples)
+        return {"total": len(ids), "inserted": inserted, "errors": errors, "last_book_ts": last, "error_samples": error_samples}

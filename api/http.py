@@ -353,19 +353,25 @@ def create_app(*, settings, repo, bus) -> FastAPI:
     BOOK_STALE_SEC = 15.0
     RISK_MAX_SLIP_BPS = 150.0  # sync with UI GUARD_MAX_SLIP_BPS
 
-    def _is_stale(r, max_age_sec: int = 60) -> bool:
+    def _stale_age_sec(r) -> Optional[float]:
         state = _health_state(r)
         ts = state.get("last_snapshot_ts") or state.get("last_data_ts") or ""
         if not ts:
-            return True
+            return None
         try:
             dt = datetime.fromisoformat(str(ts))
             if dt.tzinfo is None:
                 dt = dt.replace(tzinfo=timezone.utc)
             age = (datetime.now(timezone.utc) - dt).total_seconds()
-            return age > float(max_age_sec)
+            return age
         except Exception:
+            return None
+
+    def _is_stale(r, max_age_sec: int = 60) -> bool:
+        age = _stale_age_sec(r)
+        if age is None:
             return True
+        return age > float(max_age_sec)
 
     @app.get("/about", response_class=HTMLResponse)
     def about(request: Request):
@@ -1842,6 +1848,11 @@ def create_app(*, settings, repo, bus) -> FastAPI:
     def health_state(request: Request):
         r = _repo(request)
         state = _health_state(r)
+        stale_age = _stale_age_sec(r)
+        state["stale_age_s"] = stale_age
+        state["stale"] = bool(stale_age is None or stale_age > 60)
+        state["paused"] = _safe(lambda: getattr(r, "is_paused")(), False) if hasattr(r, "is_paused") else False
+        state["paused_at"] = _safe(lambda: getattr(r, "get_setting_updated_at")("paused"), "")
         state["server_ts"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
         return state
 

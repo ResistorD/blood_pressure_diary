@@ -6,6 +6,7 @@ import re
 import threading
 import time
 from dataclasses import dataclass
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.error import HTTPError
@@ -17,6 +18,8 @@ from domain.models import Market, Snapshot
 
 GAMMA_BASE = "https://gamma-api.polymarket.com"
 CLOB_BASE = "https://clob.polymarket.com"
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -63,6 +66,7 @@ def _http_json(
     params: Optional[Dict[str, Any]] = None,
     policy: Optional[HttpPolicy] = None,
     limiter: Optional[RateLimiter] = None,
+    headers: Optional[Dict[str, str]] = None,
 ) -> Any:
     p = policy or HttpPolicy()
     attempts = max(1, int(p.retries))
@@ -82,6 +86,7 @@ def _http_json(
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                                   "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
                     "Accept": "application/json,text/plain,*/*",
+                    **(headers or {}),
                 },
             )
             with urlopen(req, timeout=p.timeout_sec) as resp:
@@ -296,6 +301,7 @@ class PolymarketClient:
         self.http_policy = http_policy or HttpPolicy()
         self.gamma_limiter = RateLimiter(gamma_rps if gamma_rps is not None else env_gamma_rps)
         self.clob_limiter = RateLimiter(clob_rps if clob_rps is not None else env_clob_rps)
+        self.last_snapshot_stats: Dict[str, Any] = {}
 
     def _fetch_market_rows(self) -> List[Dict[str, Any]]:
         url = f"{GAMMA_BASE}/markets"
@@ -342,6 +348,27 @@ class PolymarketClient:
         now = datetime.now(timezone.utc)
         markets = market_rows if market_rows is not None else self._fetch_universe_rows()
         snaps: List[Snapshot] = []
+        stats = {
+            "markets": len(markets),
+            "tokens": 0,
+            "fetched_ok": 0,
+            "fetched_err": 0,
+            "parsed": 0,
+            "missing_token": 0,
+            "missing_outcome": 0,
+            "http_403": 0,
+            "http_429": 0,
+            "http_other": 0,
+            "exceptions": 0,
+            "error_samples": [],
+        }
+        api_key = (os.getenv("PS_CLOB_API_KEY") or os.getenv("CLOB_API_KEY") or "").strip()
+        clob_headers = {
+            "Origin": "https://polymarket.com",
+            "Referer": "https://polymarket.com/",
+        }
+        if api_key:
+            clob_headers["X-API-KEY"] = api_key
         for m in markets:
             market_id = str(m.get("id") or m.get("marketId") or "")
             if not market_id:
@@ -350,15 +377,27 @@ class PolymarketClient:
             for tok in tokens:
                 try:
                     outcome = str(tok.get("outcome") or tok.get("name") or "")
-                    token_id = tok.get("token_id") or tok.get("tokenId") or tok.get("id")
+                    token_id = (
+                        tok.get("token_id")
+                        or tok.get("tokenId")
+                        or tok.get("clobTokenId")
+                        or tok.get("clob_token_id")
+                        or tok.get("id")
+                    )
                     if not outcome or token_id is None:
+                        if not outcome:
+                            stats["missing_outcome"] += 1
+                        if token_id is None:
+                            stats["missing_token"] += 1
                         continue
+                    stats["tokens"] += 1
                     book = _http_json(
                         "GET",
                         f"{CLOB_BASE}/book",
                         params={"token_id": str(token_id)},
                         policy=self.http_policy,
                         limiter=self.clob_limiter,
+                        headers=clob_headers,
                     )
                     bid, ask, liq = _best_bid_ask(book or {})
                     mid = None
@@ -384,6 +423,57 @@ class PolymarketClient:
                             liquidity=liq,
                         )
                     )
-                except Exception:
+                    stats["fetched_ok"] += 1
+                    stats["parsed"] += 1
+                except HTTPError as e:
+                    stats["fetched_err"] += 1
+                    if e.code == 403:
+                        stats["http_403"] += 1
+                    elif e.code == 429:
+                        stats["http_429"] += 1
+                    else:
+                        stats["http_other"] += 1
+                    if len(stats["error_samples"]) < 3:
+                        detail = ""
+                        try:
+                            detail = e.read().decode("utf-8", errors="replace")
+                        except Exception:
+                            detail = ""
+                        stats["error_samples"].append(
+                            {"market_id": market_id, "token_id": str(token_id), "status": e.code, "detail": detail[:200]}
+                        )
                     continue
+                except Exception as e:
+                    stats["fetched_err"] += 1
+                    stats["exceptions"] += 1
+                    if len(stats["error_samples"]) < 3:
+                        stats["error_samples"].append(
+                            {"market_id": market_id, "token_id": str(token_id), "status": "EXC", "detail": str(e)[:200]}
+                        )
+                    continue
+        self.last_snapshot_stats = stats
+        if stats["fetched_err"] or stats["missing_token"] or stats["missing_outcome"]:
+            logger.warning(
+                "snapshots: markets=%s tokens=%s ok=%s err=%s missing_token=%s missing_outcome=%s http403=%s http429=%s other=%s exc=%s",
+                stats["markets"],
+                stats["tokens"],
+                stats["fetched_ok"],
+                stats["fetched_err"],
+                stats["missing_token"],
+                stats["missing_outcome"],
+                stats["http_403"],
+                stats["http_429"],
+                stats["http_other"],
+                stats["exceptions"],
+            )
+            if stats["error_samples"]:
+                logger.warning("snapshots errors: %s", stats["error_samples"])
+        else:
+            logger.info(
+                "snapshots: markets=%s tokens=%s ok=%s parsed=%s",
+                stats["markets"],
+                stats["tokens"],
+                stats["fetched_ok"],
+                stats["parsed"],
+            )
         return snaps
