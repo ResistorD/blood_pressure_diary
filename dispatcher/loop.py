@@ -106,6 +106,7 @@ class MainLoop:
         self._next_ingest_ts = 0.0
         self._next_book_ts = 0.0
         self._book_failures = 0
+        self._last_orderbook_log = 0.0
         self._event_buffer = []
         self._latest_snapshots_cache = {}
         self._auto_agent = get_auto_paper_agent()
@@ -403,6 +404,54 @@ class MainLoop:
                     stats["targets"] = target_stats
                     self._book_failures = 0
                     self._next_book_ts = mono + 3.0
+                    try:
+                        last_map = stats.get("last_book_ts") or {}
+                        last_count = len(last_map)
+                        max_age_s = None
+                        if last_map:
+                            max_ts = None
+                            for v in last_map.values():
+                                try:
+                                    dt = datetime.fromisoformat(str(v))
+                                    if dt.tzinfo is None:
+                                        dt = dt.replace(tzinfo=timezone.utc)
+                                    if max_ts is None or dt > max_ts:
+                                        max_ts = dt
+                                except Exception:
+                                    continue
+                            if max_ts:
+                                max_age_s = (datetime.now(timezone.utc) - max_ts).total_seconds()
+                        total = stats.get("total", 0)
+                        inserted = stats.get("inserted", 0)
+                        errors = stats.get("errors", 0)
+                        dropped_no_clob = (stats.get("targets") or {}).get("dropped_no_clob_tokens", 0)
+                        skipped_missing = stats.get("skipped_missing", 0)
+                        should_info = bool(errors or inserted == 0 or (mono - self._last_orderbook_log) >= 60.0)
+                        if should_info:
+                            log.info(
+                                "orderbook: total=%s inserted=%s errors=%s dropped_no_clob=%s skipped_missing=%s last_book_count=%s max_age_s=%s",
+                                total,
+                                inserted,
+                                errors,
+                                dropped_no_clob,
+                                skipped_missing,
+                                last_count,
+                                None if max_age_s is None else round(max_age_s, 1),
+                            )
+                            self._last_orderbook_log = mono
+                        else:
+                            log.debug(
+                                "orderbook: total=%s inserted=%s errors=%s dropped_no_clob=%s skipped_missing=%s last_book_count=%s max_age_s=%s",
+                                total,
+                                inserted,
+                                errors,
+                                dropped_no_clob,
+                                skipped_missing,
+                                last_count,
+                                None if max_age_s is None else round(max_age_s, 1),
+                            )
+                    except Exception:
+                        log.debug("orderbook: summary failed", exc_info=True)
                     if stats.get("errors"):
                         log.warning(f"orderbook: {stats}")
                         self._queue_event(
