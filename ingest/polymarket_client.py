@@ -192,6 +192,18 @@ def _extract_tokens_from_row(raw: Dict[str, Any]) -> List[Dict[str, Any]]:
     return []
 
 
+def _has_clob_tokens(raw: Dict[str, Any]) -> bool:
+    tokens = raw.get("tokens") or []
+    if isinstance(tokens, list) and tokens:
+        return True
+    clob_ids = raw.get("clobTokenIds") or raw.get("clob_token_ids") or []
+    if isinstance(clob_ids, list) and len(clob_ids) > 0:
+        return True
+    if raw.get("yesTokenId") or raw.get("noTokenId"):
+        return True
+    return False
+
+
 def _to_market(raw: Dict[str, Any]) -> Optional[Market]:
     market_id = str(raw.get("id") or raw.get("marketId") or "")
     if not market_id:

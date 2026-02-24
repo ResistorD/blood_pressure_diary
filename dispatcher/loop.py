@@ -151,6 +151,7 @@ class MainLoop:
         targets: list[str] = []
         dropped_unknown_market_id = 0
         dropped_no_tokens = 0
+        dropped_no_clob_tokens = 0
         source_counts: dict[str, int] = {"cases": 0, "positions": 0, "pinned": 0}
         unknown_samples: list[str] = []
         if not unique:
@@ -169,7 +170,7 @@ class MainLoop:
             raw_map = {r["market_id"]: r["raw_json"] for r in rows or []}
             for mid, src in unique:
                 raw_json = raw_map.get(mid) or ""
-                if not raw_json:
+                if not raw_json or raw_json.strip() == "":
                     dropped_unknown_market_id += 1
                     if len(unknown_samples) < 5:
                         unknown_samples.append(mid)
@@ -181,7 +182,7 @@ class MainLoop:
                     continue
                 tokens = _extract_tokens_from_row(raw)
                 if not tokens:
-                    dropped_no_tokens += 1
+                    dropped_no_clob_tokens += 1
                     continue
                 for t in tokens:
                     tid = (
@@ -209,6 +210,7 @@ class MainLoop:
             "sources": source_counts,
             "dropped_unknown_market_id": dropped_unknown_market_id,
             "dropped_no_tokens": dropped_no_tokens,
+            "dropped_no_clob_tokens": dropped_no_clob_tokens,
         }
 
     def stop(self) -> None:

@@ -41,18 +41,6 @@ def _fetch_gamma_detail(market_id: str) -> Tuple[int | None, str, bool]:
         return None, "", False
 
 
-def _has_clob_tokens(raw_obj: dict) -> bool:
-    tokens = raw_obj.get("tokens") or []
-    if isinstance(tokens, list) and tokens:
-        return True
-    clob_ids = raw_obj.get("clobTokenIds") or raw_obj.get("clob_token_ids") or []
-    if isinstance(clob_ids, list) and len(clob_ids) > 0:
-        return True
-    if raw_obj.get("yesTokenId") or raw_obj.get("noTokenId"):
-        return True
-    return False
-
-
 def backfill_raw_json_for_ids(repo: Repo, ids: Iterable[str]) -> None:
     for market_id in ids:
         status, raw, ok = _fetch_gamma_detail(str(market_id))
@@ -65,7 +53,15 @@ def backfill_raw_json_for_ids(repo: Repo, ids: Iterable[str]) -> None:
                 data = json.loads(raw)
                 parse_ok = isinstance(data, dict)
                 if parse_ok:
-                    has_tokens = _has_clob_tokens(data)
+                    has_tokens = False
+                    tokens = data.get("tokens") or []
+                    if isinstance(tokens, list) and tokens:
+                        has_tokens = True
+                    clob_ids = data.get("clobTokenIds") or data.get("clob_token_ids") or []
+                    if isinstance(clob_ids, list) and len(clob_ids) > 0:
+                        has_tokens = True
+                    if data.get("yesTokenId") or data.get("noTokenId"):
+                        has_tokens = True
             except Exception:
                 parse_ok = False
         logger.info(

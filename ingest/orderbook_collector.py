@@ -135,6 +135,7 @@ class OrderbookCollector:
         error_samples: List[Dict[str, Any]] = []
         skipped_missing = 0
         bad_task_no_token = 0
+        dropped_no_clob_tokens = 0
         api_key = (os.getenv("PS_CLOB_API_KEY") or os.getenv("CLOB_API_KEY") or "").strip()
         clob_headers = {
             "Origin": "https://polymarket.com",
@@ -218,6 +219,7 @@ class OrderbookCollector:
             "errors": errors,
             "skipped_missing": skipped_missing,
             "bad_task_no_token": bad_task_no_token,
+            "dropped_no_clob_tokens": dropped_no_clob_tokens,
             "last_book_ts": last,
             "error_samples": error_samples,
         }
