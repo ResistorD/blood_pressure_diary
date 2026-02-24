@@ -350,6 +350,19 @@ body.is-paused .paused-banner { display: block; }
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 8px 12px;
 }
+.table-scroll {
+  overflow-x: auto;
+}
+.table-scrollbar {
+  position: sticky;
+  bottom: 0;
+  height: 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: var(--surface-md);
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+.table-scrollbar-inner { height: 1px; }
 .micro-row {
   display: flex;
   justify-content: space-between;

@@ -2399,6 +2399,34 @@
     e.preventDefault();
     handlePreviewTrigger(btn);
   });
+  function setupStickyScrollbars() {
+    const wraps = Array.from(document.querySelectorAll("[data-table-scroll]"));
+    wraps.forEach((wrap) => {
+      const root = wrap.closest("[data-cases-table]") || wrap.parentElement;
+      if (!root) return;
+      const bar = root.querySelector("[data-table-scrollbar]");
+      const inner = root.querySelector("[data-table-scrollbar-inner]");
+      if (!bar || !inner) return;
+      const syncWidth = () => {
+        inner.style.width = `${wrap.scrollWidth}px`;
+      };
+      let syncing = false;
+      wrap.addEventListener("scroll", () => {
+        if (syncing) return;
+        syncing = true;
+        bar.scrollLeft = wrap.scrollLeft;
+        syncing = false;
+      });
+      bar.addEventListener("scroll", () => {
+        if (syncing) return;
+        syncing = true;
+        wrap.scrollLeft = bar.scrollLeft;
+        syncing = false;
+      });
+      syncWidth();
+      window.addEventListener("resize", syncWidth);
+    });
+  }
   document.addEventListener("click", (e) => {
     const btn = e.target.closest("[data-edge-type]");
     if (!btn) return;
@@ -2406,6 +2434,7 @@
     const type = btn.getAttribute("data-edge-type") || "NONE";
     fetchEdgeTrades(type);
   });
+  setupStickyScrollbars();
   if (edgeTradesClose) {
     edgeTradesClose.addEventListener("click", (e) => {
       e.preventDefault();
