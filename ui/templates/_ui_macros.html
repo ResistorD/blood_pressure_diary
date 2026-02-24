@@ -1,0 +1,135 @@
+{# Shared UI macros for PolySyndicate UI (single source of truth) #}
+
+{% macro _pct(x) -%}
+  {%- if x is not none -%}{{ "%.1f"|format(x*100.0) }}%{%- else -%}—{%- endif -%}
+{%- endmacro %}
+
+{% macro humanize_reason(raw) -%}
+  {%- if not raw -%}—{%- endif -%}
+  {%- set s = (raw or '')|string -%}
+
+  {# Pattern A: detailed not-tradeable (preferred) #}
+  {%- if s.startswith("Not tradeable:") -%}
+    {%- set lo = s|lower -%}
+    {%- set has_sp = ("spread too wide" in lo) -%}
+    {%- set has_lq = ("liquidity too low" in lo) -%}
+
+    <div class="callout">
+      <div><b>Условия сейчас не подходят для торговли</b></div>
+      <ul class="mini-list">
+        {%- if has_sp -%}
+          <li>спред слишком широкий (нужно уже)</li>
+        {%- endif -%}
+        {%- if has_lq -%}
+          <li>ликвидность слишком низкая (нужно выше)</li>
+        {%- endif -%}
+        {%- if (not has_sp) and (not has_lq) -%}
+          <li>нарушены торговые условия (спред/ликвидность)</li>
+        {%- endif -%}
+      </ul>
+
+      <details class="details">
+        <summary class="muted">сырьё</summary>
+        <div class="details-body"><code>{{ s }}</code></div>
+      </details>
+    </div>
+
+  {# Pattern B: older not-tradeable with numbers + optional thresholds #}
+  {%- elif s.startswith("Not tradeable") and ("spread=" in s) and ("liq=" in s) -%}
+    {%- set spread_val = (s.split("spread=")[1].split(",")[0] | float) -%}
+    {%- set liq_val = (s.split("liq=")[1].split(",")[0] | float) -%}
+    {%- set has_thr = ("max_spread=" in s) and ("min_liq=" in s) -%}
+    {%- if has_thr -%}
+      {%- set max_spread_val = (s.split("max_spread=")[1].split(",")[0] | float) -%}
+      {%- set min_liq_val = (s.split("min_liq=")[1].split(",")[0] | float) -%}
+    {%- endif -%}
+
+    <div class="callout">
+      <div><b>Условия сейчас не подходят для торговли</b></div>
+      <ul class="mini-list">
+        <li>
+          спред <b>{{ "%.1f"|format(spread_val*100.0) }}%</b>
+          {%- if has_thr -%} (нужно ≤ <b>{{ "%.1f"|format(max_spread_val*100.0) }}%</b>)
+          {%- else -%} (нужно ниже порога системы)
+          {%- endif -%}
+        </li>
+        <li>
+          ликвидность <b>{{ liq_val|int }}</b>
+          {%- if has_thr -%} (нужно ≥ <b>{{ min_liq_val|int }}</b>)
+          {%- else -%} (нужно выше порога системы)
+          {%- endif -%}
+        </li>
+      </ul>
+      <div class="muted">
+        <b>Как должно быть:</b>
+        {%- if has_thr -%}
+          спред ≤ {{ "%.1f"|format(max_spread_val*100.0) }}% и ликвидность ≥ {{ min_liq_val|int }}.
+        {%- else -%}
+          спред ниже порога системы и ликвидность выше порога системы.
+        {%- endif -%}
+      </div>
+      <details class="details">
+        <summary class="muted">сырьё</summary>
+        <div class="details-body"><code>{{ s }}</code></div>
+      </details>
+    </div>
+
+  {%- else -%}
+    {{ s }}
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro hint_from_reason(raw) -%}
+  {%- set s = (raw or '')|string|lower -%}
+  {%- if not s -%}—{%- endif -%}
+
+  {%- if "not tradeable" in s and "spread too wide" in s -%}
+    ждать сужения спреда · проверить другие рынки группы
+  {%- elif "not tradeable" in s and "liquidity too low" in s -%}
+    ждать ликвидность · или исключить из торговли
+  {%- elif "not tradeable" in s -%}
+    условия не торговые · подождать 1–2 цикла
+  {%- elif "paper_buy" in s or "arb buy" in s or "buy" in s -%}
+    открыть paper · проверить позиции через 1–2 цикла
+  {%- elif "paper_close" in s or "arb close" in s or "close" in s -%}
+    закрыть paper · оценить результат в positions
+  {%- elif "investigate" in s or "near-arb" in s -%}
+    наблюдать · открыть paper, если нужно “пощупать”
+  {%- else -%}
+    открыть кейс · посмотреть сигналы и снимки
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro paper_buttons(market_id, compact=false) -%}
+  {%- if not market_id -%}<span class="muted">—</span>
+  {%- else -%}
+    <div class="paper-row">
+      <button class="btn {{ 'btn-sm' if compact else '' }} trade-action" type="button" data-trade-button="1" data-action="trade"
+              data-paper-action="buy" data-case-id="{{ market_id }}">{{ 'Откр.' if compact else 'Открыть' }}</button>
+      <button class="btn {{ 'btn-sm' if compact else '' }} trade-action" type="button" data-trade-button="1" data-action="trade"
+              data-paper-action="close" data-case-id="{{ market_id }}">{{ 'Закр.' if compact else 'Закрыть' }}</button>
+    </div>
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro ts_2line(ts) -%}
+  {%- if ts and 'T' in ts -%}
+    {%- set p = ts.split('T', 1) -%}
+    <div class="nowrap">{{ p[0] }}T</div>
+    <div class="nowrap">{{ p[1] }}</div>
+  {%- else -%}
+    <span class="nowrap">{{ ts or '—' }}</span>
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro ts_1line(ts) -%}
+  {%- if ts -%}
+    {%- set t = (ts | string) -%}
+    {%- if 'T' in t -%}
+      {%- set t = t.replace('T', ' ') -%}
+    {%- endif -%}
+    <span class="mono nowrap" title="{{ ts }}">{{ t }}</span>
+  {%- else -%}
+    <span class="muted">—</span>
+  {%- endif -%}
+{%- endmacro %}

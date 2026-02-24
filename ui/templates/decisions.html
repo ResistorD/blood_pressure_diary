@@ -1,0 +1,182 @@
+{% extends "_base.html" %}
+{% import "_ui_macros.html" as ui %}
+{% import "components/_page_header.html" as page %}
+{% import "components/_panel.html" as panel %}
+{% import "components/_kpi_grid.html" as kpi %}
+{% import "components/_table.html" as tbl %}
+{% import "components/_paper_buttons.html" as paper %}
+{% set page_title = "Решения" %}
+{% block title %}Решения — PolySyndicate{% endblock %}
+
+{% macro getv(x, idx, key, default='') -%}
+  {%- if x is mapping -%}
+    {{ x.get(key, default) }}
+  {%- elif x is sequence -%}
+    {{ x[idx] if x|length > idx else default }}
+  {%- else -%}
+    {{ default }}
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro ru_action_short(a) -%}
+  {%- set s = (a or '')|string|lower -%}
+  {%- if s in ['enter','open','buy','long','paper_buy','paper_buy_both'] -%}вход
+  {%- elif s in ['exit','close','sell','paper_close','paper_close_both'] -%}выход
+  {%- elif s in ['hold','wait','observe','no_trade','no-trade','skip'] -%}наблюдать
+  {%- else -%}{{ a or '—' }}
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro why_text(r) -%}
+  {%- set reason = getv(r, 4, 'reason', '') -%}
+  {%- set why = getv(r, 4, 'why', '') -%}
+  {{ reason or why or '—' }}
+{%- endmacro %}
+
+{% block content %}
+  {% set f = filters if filters is defined else {} %}
+  {% set p = pager if pager is defined else {} %}
+  {% set ns = namespace(ok=0, inv=0, bl=0) %}
+  {% for r in rows|default([]) %}
+    {% set s = (getv(r,3,'status','') or '')|upper %}
+    {% if s == 'OK' %}{% set ns.ok = ns.ok + 1 %}{% endif %}
+    {% if s == 'INVESTIGATE' %}{% set ns.inv = ns.inv + 1 %}{% endif %}
+    {% if s == 'BLOCKED' %}{% set ns.bl = ns.bl + 1 %}{% endif %}
+  {% endfor %}
+
+  {{ page.page_header("Решения", "Слой принятия решения: почему система выбрала вход, выход или наблюдение.") }}
+
+  {% set kpi_items = [
+    {"label":"На странице","value":(rows|default([]))|length,"subvalue":"&nbsp;","kpi_color":"var(--blue)"},
+    {"label":"ОК","value":ns.ok,"subvalue":"&nbsp;","kpi_color":"var(--green)"},
+    {"label":"INVESTIGATE","value":ns.inv,"subvalue":"&nbsp;","kpi_color":"var(--yellow)"},
+    {"label":"BLOCKED","value":ns.bl,"subvalue":"&nbsp;","kpi_color":"var(--red)"}
+  ] %}
+  {{ kpi.kpi_grid(kpi_items, "kpi-4") }}
+
+  {% call panel.panel("Фильтры") %}
+    <form method="get" class="filter-row">
+      <input class="input" type="text" name="q" placeholder="поиск по причине/рынку" value="{{ f.get('q','') }}" />
+      <input class="input" type="text" name="market_id" placeholder="market_id" value="{{ f.get('market_id','') }}" />
+      <input class="input" type="text" name="action" placeholder="action" value="{{ f.get('action','') }}" />
+      <select class="select" name="status">
+        <option value="" {% if not f.get('status') %}selected{% endif %}>Все статусы</option>
+        <option value="OK" {% if f.get('status') == 'OK' %}selected{% endif %}>ОК</option>
+        <option value="INVESTIGATE" {% if f.get('status') == 'INVESTIGATE' %}selected{% endif %}>INVESTIGATE</option>
+        <option value="BLOCKED" {% if f.get('status') == 'BLOCKED' %}selected{% endif %}>BLOCKED</option>
+      </select>
+      <input type="hidden" name="sort" value="{{ f.get('sort','ts') }}" />
+      <input type="hidden" name="dir" value="{{ f.get('dir','desc') }}" />
+      <select class="select" name="size">
+        {% for s in [20,50,100,200] %}
+          <option value="{{ s }}" {% if p.get('size',50) == s %}selected{% endif %}>{{ s }} / стр</option>
+        {% endfor %}
+      </select>
+      <button class="btn btn-default" type="submit">Применить</button>
+    </form>
+  {% endcall %}
+
+  {% call panel.panel("Актуальные решения по рынкам", "Показывается последнее решение по каждому market_id из выборки.") %}
+    {% set head %}
+      <tr>
+        <th class="nowrap"><a href="?q={{ f.get('q','') }}&market_id={{ f.get('market_id','') }}&action={{ f.get('action','') }}&status={{ f.get('status','') }}&size={{ p.get('size',50) }}&sort=ts&dir={{ 'asc' if f.get('sort') == 'ts' and f.get('dir','desc') == 'desc' else 'desc' }}&page=1">Время</a></th>
+        <th class="nowrap"><a href="?q={{ f.get('q','') }}&market_id={{ f.get('market_id','') }}&action={{ f.get('action','') }}&status={{ f.get('status','') }}&size={{ p.get('size',50) }}&sort=market&dir={{ 'asc' if f.get('sort') == 'market' and f.get('dir','desc') == 'desc' else 'desc' }}&page=1">Рынок</a></th>
+        <th class="nowrap"><a href="?q={{ f.get('q','') }}&market_id={{ f.get('market_id','') }}&action={{ f.get('action','') }}&status={{ f.get('status','') }}&size={{ p.get('size',50) }}&sort=action&dir={{ 'asc' if f.get('sort') == 'action' and f.get('dir','desc') == 'desc' else 'desc' }}&page=1">Действие</a></th>
+        <th class="nowrap"><a href="?q={{ f.get('q','') }}&market_id={{ f.get('market_id','') }}&action={{ f.get('action','') }}&status={{ f.get('status','') }}&size={{ p.get('size',50) }}&sort=status&dir={{ 'asc' if f.get('sort') == 'status' and f.get('dir','desc') == 'desc' else 'desc' }}&page=1">Статус</a></th>
+        <th>Почему</th>
+        <th>Подсказка</th>
+        <th>Paper</th>
+        <th>Действия</th>
+      </tr>
+    {% endset %}
+    {% set body %}
+      {% set uniq = namespace(seen={}) %}
+      {% for r in rows %}
+        {% set mid = getv(r, 1, 'market_id', '') %}
+        {% if mid and (mid not in uniq.seen) %}
+          {% set _ = uniq.seen.update({mid: True}) %}
+          {% set why = why_text(r) %}
+          {% set hint = ui.hint_from_reason(why) %}
+          <tr>
+            <td class="nowrap">{{ ui.ts_1line(getv(r, 0, 'ts', getv(r, 0, 'created_at', ''))) }}</td>
+            <td class="nowrap"><a href="/cases/{{ mid | urlencode }}"><code class="ellipsis" title="{{ mid }}">{{ mid }}</code></a></td>
+            <td class="nowrap"><b class="ellipsis" title="{{ ru_action_short(getv(r, 2, 'action', '')) }}">{{ ru_action_short(getv(r, 2, 'action', '')) }}</b></td>
+            <td class="nowrap"><code>{{ getv(r, 3, 'status', '—') }}</code></td>
+            <td class="muted ellipsis" title="{{ why }}">{{ why }}</td>
+            <td class="muted ellipsis" title="{{ hint }}">{{ hint }}</td>
+            <td class="nowrap">
+              {% if mid %}
+                {{ paper.paper_buttons(mid) }}
+              {% else %}
+                <span class="muted">—</span>
+              {% endif %}
+            </td>
+            <td class="nowrap">
+              <a class="pill" href="/cases/{{ mid | urlencode }}">Кейс</a>
+            </td>
+          </tr>
+        {% endif %}
+      {% endfor %}
+      {% if rows|length == 0 %}
+        <tr><td colspan="8" class="muted" style="padding:12px 12px;font-style:italic">Нет данных</td></tr>
+      {% endif %}
+    {% endset %}
+    {{ tbl.table(head, body, dense=true) }}
+  {% endcall %}
+
+  {% call panel.panel("История решений") %}
+    {% set head %}
+      <tr>
+        <th class="nowrap"><a href="?q={{ f.get('q','') }}&market_id={{ f.get('market_id','') }}&action={{ f.get('action','') }}&status={{ f.get('status','') }}&size={{ p.get('size',50) }}&sort=ts&dir={{ 'asc' if f.get('sort') == 'ts' and f.get('dir','desc') == 'desc' else 'desc' }}&page=1">Время</a></th>
+        <th class="nowrap"><a href="?q={{ f.get('q','') }}&market_id={{ f.get('market_id','') }}&action={{ f.get('action','') }}&status={{ f.get('status','') }}&size={{ p.get('size',50) }}&sort=market&dir={{ 'asc' if f.get('sort') == 'market' and f.get('dir','desc') == 'desc' else 'desc' }}&page=1">Рынок</a></th>
+        <th class="nowrap"><a href="?q={{ f.get('q','') }}&market_id={{ f.get('market_id','') }}&action={{ f.get('action','') }}&status={{ f.get('status','') }}&size={{ p.get('size',50) }}&sort=action&dir={{ 'asc' if f.get('sort') == 'action' and f.get('dir','desc') == 'desc' else 'desc' }}&page=1">Действие</a></th>
+        <th class="nowrap"><a href="?q={{ f.get('q','') }}&market_id={{ f.get('market_id','') }}&action={{ f.get('action','') }}&status={{ f.get('status','') }}&size={{ p.get('size',50) }}&sort=status&dir={{ 'asc' if f.get('sort') == 'status' and f.get('dir','desc') == 'desc' else 'desc' }}&page=1">Статус</a></th>
+        <th>Почему</th>
+        <th>Подсказка</th>
+        <th>Paper</th>
+        <th>Действия</th>
+      </tr>
+    {% endset %}
+    {% set body %}
+      {% for r in rows %}
+        {% set mid = getv(r, 1, 'market_id', '') %}
+        {% set why = why_text(r) %}
+        {% set hint = ui.hint_from_reason(why) %}
+        <tr>
+          <td class="nowrap">{{ ui.ts_1line(getv(r, 0, 'ts', getv(r, 0, 'created_at', ''))) }}</td>
+          <td class="nowrap">{% if mid %}<a href="/cases/{{ mid | urlencode }}"><code class="ellipsis" title="{{ mid }}">{{ mid }}</code></a>{% else %}—{% endif %}</td>
+          <td class="nowrap"><b class="ellipsis" title="{{ ru_action_short(getv(r, 2, 'action', '')) }}">{{ ru_action_short(getv(r, 2, 'action', '')) }}</b></td>
+          <td class="nowrap"><code>{{ getv(r, 3, 'status', '—') }}</code></td>
+          <td class="muted ellipsis" title="{{ why }}">{{ why }}</td>
+          <td class="muted ellipsis" title="{{ hint }}">{{ hint }}</td>
+          <td class="nowrap">
+            {% if mid %}
+              {{ paper.paper_buttons(mid) }}
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
+          </td>
+          <td class="nowrap">
+            {% if mid %}
+              <a class="pill" href="/cases/{{ mid | urlencode }}">Кейс</a>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      {% if rows|length == 0 %}
+        <tr><td colspan="8" class="muted" style="padding:12px 12px;font-style:italic">Нет данных</td></tr>
+      {% endif %}
+    {% endset %}
+    {{ tbl.table(head, body, dense=true) }}
+  {% endcall %}
+
+  <div class="card">
+    <div class="card-body" style="padding:10px 14px;">
+      <div class="page-actions">
+        <span class="muted">Страница {{ p.get('page',1) }} / {{ p.get('pages',1) }} · всего {{ p.get('total',0) }}</span>
+        {% if p.get('prev_url') %}<a class="btn btn-default" href="{{ p.get('prev_url') }}">← Назад</a>{% endif %}
+        {% if p.get('next_url') %}<a class="btn btn-default" href="{{ p.get('next_url') }}">Вперёд →</a>{% endif %}
+      </div>
+    </div>
+  </div>
+{% endblock %}

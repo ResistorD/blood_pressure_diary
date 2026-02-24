@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="ru" data-theme="dark">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>{% block title %}PolySyndicate{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@300;400;500;600;700&family=Geist+Mono:wght@300;400;500&family=Geist:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="/static/ps_dashboard_organic.css"/>
+  <link rel="stylesheet" href="/static/ps_terminal.css"/>
+  {% block head_extra %}{% endblock %}
+</head>
+
+{% set _settings = settings if settings is defined and settings else (request.app.state.settings if request is defined and request.app is defined and request.app.state is defined else None) %}
+{% set _repo = request.app.state.repo if request is defined and request.app is defined and request.app.state is defined else None %}
+{% set _mode = (_settings.mode|string).lower() if _settings and _settings.mode is defined else '' %}
+{% set _paused = paused if paused is defined else (_repo.is_paused() if _repo is not none else false) %}
+{% set _last_update = last_update if last_update is defined else '' %}
+{% set flash = flash if flash is defined else (request.query_params.get('flash') if request is defined and request.query_params is defined else '') %}
+<body data-mode="{{ _mode }}" data-paused="{{ 1 if _paused else 0 }}" data-last-update="{{ _last_update }}" data-api-base="/api">
+  {% import "components/_nav_badge.html" as nav %}
+  {% set _path = request.url.path if request is defined and request.url is defined else '' %}
+  {% set _nav = nav_active if nav_active is defined and nav_active else '' %}
+  {% set counts = nav_counts if nav_counts is defined and nav_counts else {} %}
+  {% set mode = (_settings.mode|string) if _settings and _settings.mode is defined else '' %}
+
+  <div class="app">
+    <div class="titlebar">
+      <div class="traffic-lights">
+        <div class="dot dot-red"></div>
+        <div class="dot dot-yellow"></div>
+        <div class="dot dot-green"></div>
+      </div>
+      <div class="titlebar-title">PolySyndicate · {{ page_title|default('Dashboard') }}</div>
+      <div class="titlebar-right">
+        <div class="terminal-metrics">
+          <div class="terminal-metric" data-metric="latency">API —</div>
+          <div class="terminal-metric" data-metric="exec">ИСП —</div>
+          <div class="terminal-metric" data-metric="freshness">Свежесть —</div>
+        </div>
+        <button id="force-refresh-btn" class="pill pill-muted refresh-btn" title="Обновить сейчас">↻</button>
+        <span id="book-pill" class="pill pill-muted">КНИГА —</span>
+        <div class="terminal-exposure" data-exposure-summary>ЭКСПО —</div>
+        <div class="kill-switch">
+          <button class="kill-switch-btn" type="button" data-kill-action>
+            <span data-kill-label>⛔ ПАУЗА</span>
+            <span class="kill-switch-progress"></span>
+          </button>
+          <span class="kill-switch-status" data-kill-status>ПАУЗА</span>
+          <span class="kill-switch-time" data-kill-time>Пауза с —</span>
+        </div>
+        {% if mode %}
+          {% set m = mode|upper %}
+          {% set badge_mode = 'paper' if 'LIVE' not in m else 'live' %}
+          <div class="mode-badge {{ badge_mode }}">
+            <div class="pulse"></div>{{ 'PAPER' if 'LIVE' not in m else 'LIVE' }}
+          </div>
+        {% endif %}
+        {% if _settings and _settings.run_id is defined and _settings.run_id %}
+          <div class="run-id">Run: {{ _settings.run_id }}</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <nav class="sidebar">
+      <div class="nav-section-label">Монитор</div>
+      {% set _overview = _nav == 'overview' or (_nav == '' and (_path.startswith('/dashboard-v2') or _path.startswith('/dashboard_v2') or _path.startswith('/overview'))) %}
+      <a class="nav-item {% if _overview %}active{% endif %}" href="/dashboard-v2"><span class="icon">⊞</span> Обзор</a>
+
+      {% set _markets = _nav == 'markets' or (_nav == '' and _path.startswith('/markets')) %}
+      <a class="nav-item {% if _markets %}active{% endif %}" href="/markets"><span class="icon">◈</span> Рынки
+        {{ nav.nav_badge(counts.get('markets'), "", "markets") }}
+      </a>
+
+      {% set _signals = _nav == 'signals' or (_nav == '' and _path.startswith('/signals')) %}
+      <a class="nav-item {% if _signals %}active{% endif %}" href="/signals"><span class="icon">⚡</span> Сигналы
+        {{ nav.nav_badge(counts.get('signals'), 'alert' if counts.get('signals_alert') else '', "signals") }}
+      </a>
+
+      <div class="nav-section-label" style="margin-top:8px">Торговля</div>
+      {% set _cases = _nav == 'cases' or (_nav == '' and (_path.startswith('/cases') or _path.startswith('/opportunities'))) %}
+      <a class="nav-item {% if _cases %}active{% endif %}" href="/cases"><span class="icon">◎</span> Возможности
+        {{ nav.nav_badge(counts.get('cases'), "", "cases") }}
+      </a>
+      {% set _decisions = _nav == 'decisions' or (_nav == '' and _path.startswith('/decisions')) %}
+      <a class="nav-item {% if _decisions %}active{% endif %}" href="/decisions"><span class="icon">▦</span> Решения
+        {{ nav.nav_badge(counts.get('decisions'), "", "decisions") }}
+      </a>
+      {% set _positions = _nav == 'positions' or (_nav == '' and _path.startswith('/positions')) %}
+      <a class="nav-item {% if _positions %}active{% endif %}" href="/positions"><span class="icon">◷</span> Позиции
+        {{ nav.nav_badge(counts.get('positions'), "", "positions") }}
+      </a>
+
+      <div class="nav-section-label" style="margin-top:8px">Система</div>
+      {% set _deprior = _nav == 'deprioritize' or (_nav == '' and _path.startswith('/deprioritize')) %}
+      <a class="nav-item {% if _deprior %}active{% endif %}" href="/deprioritize"><span class="icon">≡</span> Deprioritize</a>
+      <a class="nav-item" href="/about"><span class="icon">ℹ</span> О системе</a>
+      <div class="sidebar-footer">
+        <div class="system-health">
+          <div class="system-health-title">Статус системы</div>
+          <div class="health-row">
+            <div class="flex items-center gap-8">
+              <div class="health-dot ok"></div>
+              <span>Ingestor</span>
+            </div>
+            <span style="font-size:10px;font-family:var(--font-mono);color:var(--text-3)">live</span>
+          </div>
+          <div class="health-row">
+            <div class="flex items-center gap-8">
+              <div class="health-dot ok"></div>
+              <span>Dispatcher</span>
+            </div>
+            <span style="font-size:10px;font-family:var(--font-mono);color:var(--text-3)">live</span>
+          </div>
+          <div class="health-row">
+            <div class="flex items-center gap-8">
+              <div class="health-dot warn"></div>
+              <span>RiskGate</span>
+            </div>
+            <span style="font-size:10px;font-family:var(--font-mono);color:var(--yellow)">warn</span>
+          </div>
+          <div class="health-row">
+            <div class="flex items-center gap-8">
+              <div class="health-dot ok"></div>
+              <span>DB (WAL)</span>
+            </div>
+            <span style="font-size:10px;font-family:var(--font-mono);color:var(--text-3)">3.1 MB</span>
+          </div>
+        </div>
+      </div>
+    </nav>
+
+    <main class="main">
+      {% if flash is defined and flash %}
+        <div class="flash-banner paused">
+          <span class="flash-icon">⛔</span>
+          <span class="flash-text">{{ flash }}</span>
+        </div>
+      {% endif %}
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+
+  <script>
+    window.addEventListener("load", () => {
+      const flash = document.querySelector(".flash-banner");
+      if (!flash) return;
+      setTimeout(() => {
+        flash.style.opacity = "0";
+        flash.style.transform = "translateY(-4px)";
+        setTimeout(() => flash.remove(), 300);
+      }, 3500);
+    });
+
+    async function psPaper(marketId, action) {
+      if (window.PS_PAPER_ACTION) {
+        return window.PS_PAPER_ACTION(marketId, action);
+      }
+    }
+
+  </script>
+  <script src="/static/ps_terminal.js"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

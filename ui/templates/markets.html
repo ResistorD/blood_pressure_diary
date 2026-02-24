@@ -1,0 +1,42 @@
+{% extends "_base.html" %}
+{% import "components/_page_header.html" as page %}
+{% import "components/_panel.html" as panel %}
+{% import "components/_kpi_grid.html" as kpi %}
+{% import "components/_table.html" as tbl %}
+{% set page_title = "Рынки" %}
+{% block title %}Рынки — PolySyndicate{% endblock %}
+
+{% block content %}
+  {% set total = (rows|default([]))|length %}
+  {% set ns = namespace(grouped=0) %}
+  {% for r in rows|default([]) %}{% if r[3] %}{% set ns.grouped = ns.grouped + 1 %}{% endif %}{% endfor %}
+
+  {{ page.page_header("Рынки", "Справочник рынков, по которым ingest собрал метаданные.") }}
+
+  {% set kpi_items = [
+    {"label":"Всего рынков","value":total,"subvalue":"&nbsp;","kpi_color":"var(--blue)"},
+    {"label":"С group_key","value":ns.grouped,"subvalue":"&nbsp;","kpi_color":"var(--green)"},
+    {"label":"Без group_key","value":(total - ns.grouped),"subvalue":"&nbsp;","kpi_color":"var(--yellow)"},
+    {"label":"Coverage","value":((100.0 * ns.grouped / total)|round(1) if total else 0) ~ "%","subvalue":"&nbsp;","kpi_color":"var(--purple)"}
+  ] %}
+  {{ kpi.kpi_grid(kpi_items, "kpi-4") }}
+
+  {% call panel.panel("Список рынков", "Если таблица пустая, ingest ещё не наполнил справочник.") %}
+    {% if error %}<div class="notice" style="margin:10px 14px 0">{{ error }}</div>{% endif %}
+    {% set head = "<tr><th class='nowrap'>market_id</th><th>Название</th><th class='nowrap'>slug</th><th class='nowrap'>group</th></tr>" %}
+    {% set body %}
+      {% for r in rows %}
+        <tr>
+          <td class="nowrap"><a href="/cases/{{ r[0] | urlencode }}"><code>{{ r[0] }}</code></a></td>
+          <td><a href="/cases/{{ r[0] | urlencode }}">{{ r[2] }}</a></td>
+          <td class="mono"><span class="ellipsis" title="{{ r[1] }}">{{ r[1] }}</span></td>
+          <td class="nowrap">{% if r[3] %}<a href="/cluster/{{ r[3] }}"><code>{{ r[3] }}</code></a>{% else %}—{% endif %}</td>
+        </tr>
+      {% endfor %}
+      {% if total == 0 %}
+        <tr><td colspan="4" class="muted" style="padding:12px 12px;font-style:italic">Нет рынков для отображения.</td></tr>
+      {% endif %}
+    {% endset %}
+    {{ tbl.table(head, body, dense=true) }}
+  {% endcall %}
+{% endblock %}

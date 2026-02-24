@@ -1,0 +1,14 @@
+{% macro table(head_html, body_html, dense=false, fixed=false, mono=false, table_class="") -%}
+  {% set classes = ["data-table"] %}
+  {% if table_class %}{% set _ = classes.append(table_class) %}{% endif %}
+  <div class="table-wrap">
+    <table class="{{ classes | join(' ') }}">
+      <thead>
+        {{ head_html | safe }}
+      </thead>
+      <tbody>
+        {{ body_html | safe }}
+      </tbody>
+    </table>
+  </div>
+{%- endmacro %}

@@ -1,0 +1,368 @@
+{% extends "_base.html" %}
+{% import "components/_page_header.html" as page %}
+{% import "components/_panel.html" as panel %}
+{% import "components/_kpi_grid.html" as kpi %}
+{% import "components/_table.html" as tbl %}
+{% import "components/_badge.html" as badge %}
+{% set page_title = "Операционный обзор" %}
+{% block title %}Обзор — PolySyndicate{% endblock %}
+
+{% block content %}
+  {% set boot = boot if boot is defined and boot else {} %}
+  {% set k = boot.kpis if boot.kpis is defined else {} %}
+  {% set dq = boot.decision_quality if boot.decision_quality is defined else {} %}
+  {% set q_action = boot.quality_by_action if boot.quality_by_action is defined else (quality_by_action if quality_by_action is defined else []) %}
+  {% set q_agent = boot.quality_by_agent if boot.quality_by_agent is defined else (quality_by_agent if quality_by_agent is defined else []) %}
+  {% set market_best = boot.market_best if boot.market_best is defined else (market_best if market_best is defined else []) %}
+  {% set market_worst = boot.market_worst if boot.market_worst is defined else (market_worst if market_worst is defined else []) %}
+  {% set signals_recent = boot.signals_recent if boot.signals_recent is defined else [] %}
+  {% set recent_activity = recent_activity if recent_activity is defined else (boot.recent_activity if boot.recent_activity is defined else []) %}
+  {% set positions_recent = boot.positions_recent if boot.positions_recent is defined else [] %}
+  {% set coverage = boot.quality_coverage if boot.quality_coverage is defined else (quality_coverage if quality_coverage is defined else {}) %}
+
+  {% set header_actions = "<div class='search-box'><span style='font-size:12px'>⌕</span><input type='text' placeholder='Поиск рынка...'/><span style='font-size:10px;font-family:var(--font-mono);background:var(--surface-lg);padding:1px 5px;border-radius:4px;color:var(--text-3)'>⌘K</span></div>" ~
+    "<a class='btn btn-default btn-sm' href='/dashboard-v2'>⟳ Обновить</a>" ~
+    "<a class='btn btn-primary btn-sm' href='/markets'>+ Рынок</a>" %}
+  {{ page.page_header("Операционный обзор", "Обновлено: " ~ (updated_ts if updated_ts is defined and updated_ts else "—") ~ " UTC", header_actions) }}
+
+  <div class="kill-switch-panel">
+    <div class="kill-switch-info">
+      <div class="title">🔒 Kill Switch — управление исполнением</div>
+      <div class="desc">Когда выключен — все новые paper‑позиции заблокированы. Текущие позиции продолжают работать.</div>
+    </div>
+    <div class="flex items-center gap-16">
+      <span style="font-size:12px;color:var(--text-2)">Исполнение</span>
+      <label class="toggle-switch">
+        <input type="checkbox" checked disabled>
+        <span class="toggle-slider"></span>
+      </label>
+      <span style="font-size:12px;font-weight:600;color:var(--green)">Активно</span>
+    </div>
+  </div>
+
+  {% set kpi_items = [
+    {"label":"P&L (paper)","value":"<span id='kpi-pnl-net'>" ~ (k.get('pnl_net_display', k.get('pnl_display', '$0.00'))) ~ "</span>","subvalue":"<span class='kpi-delta up'>↑</span><span>за 7 дней</span>","icon":"💹","featured":true,"extra_html":"<div class='sparkline-container' style='height:28px; margin-top:2px;'><canvas id='spark-pnl'></canvas></div>"},
+    {"label":"Рынков","value":"<span id='kpi-markets'>" ~ (k.get('markets', 0)) ~ "</span>","subvalue":"<span class='kpi-delta up'>↑</span><span>за 24ч</span>","icon":"◈"},
+    {"label":"Снимков / мин","value":"<span id='kpi-snaps'>—</span>","subvalue":"<span class='kpi-delta flat'>→ стабильно</span>","icon":"📡"},
+    {"label":"Открытых поз.","value":"<span id='kpi-positions'>" ~ (k.get('positions', 0)) ~ "</span>","subvalue":"<span>из — макс</span><span class='kpi-delta' style='color:var(--yellow)'>—</span>","icon":"▦"},
+    {"label":"Сигналов 24ч","value":"<span id='kpi-signals'>" ~ (k.get('signals_24h', 0)) ~ "</span>","subvalue":"<span class='kpi-delta down'>↓</span><span>vs вчера</span>","icon":"⚡"}
+  ] %}
+  {{ kpi.kpi_grid(kpi_items) }}
+
+  <div class="grid-3-2">
+    {% set pnl_tabs = "<div class='tab-row'><div class='tab active'>7d</div><div class='tab'>30d</div><div class='tab'>All</div></div>" %}
+    {% call panel.panel("P&L — бумажный результат", "Накопленный итог по закрытым и открытым позициям", pnl_tabs) %}
+      <div style="display:flex;gap:16px;margin-bottom:8px">
+        <div>
+          <div style="font-size:9.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--text-3)">Реализованный</div>
+          <div style="font-family:var(--font-mono);font-size:15px;font-weight:700;color:var(--green)">—</div>
+        </div>
+        <div>
+          <div style="font-size:9.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--text-3)">Открытый</div>
+          <div style="font-family:var(--font-mono);font-size:15px;font-weight:700;color:var(--green)">—</div>
+        </div>
+        <div>
+          <div style="font-size:9.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--text-3)">Win Rate</div>
+          <div style="font-family:var(--font-mono);font-size:15px;font-weight:700;color:var(--text)">—</div>
+        </div>
+      </div>
+      <div class="chart-area">
+        <canvas id="pnl-chart"></canvas>
+      </div>
+    {% endcall %}
+
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Открытые позиции</div>
+          <div class="card-subtitle">{{ k.get('positions', 0) }} / — максимум</div>
+        </div>
+        <span class="badge badge-blue">paper</span>
+      </div>
+      <div class="card-body">
+        {% for p in positions_recent %}
+          {% set out = (p.outcome or '')|upper %}
+          {% set badge_cls = "badge-gray" %}
+          {% if out == "YES" %}{% set badge_cls = "badge-blue" %}{% endif %}
+          {% if out == "NO" %}{% set badge_cls = "badge-green" %}{% endif %}
+          {% set px = p.price if p.price is not none else 0.0 %}
+          {% if px < 0 %}{% set px = 0.0 %}{% endif %}
+          {% if px > 1 %}{% set px = 1.0 %}{% endif %}
+          {% set width = (px * 100) %}
+          <div class="position-item">
+            <div class="position-top">
+              <div class="position-market">{{ p.market_id }}</div>
+              <div class="position-pnl {% if p.pnl > 0 %}pos{% elif p.pnl < 0 %}neg{% endif %}">{{ "%+.2f"|format(p.pnl or 0) }}</div>
+            </div>
+            <div class="position-bottom">
+              <span class="badge {{ badge_cls }}" style="font-size:9px">{{ out or '—' }}</span>
+              <div class="position-bar-wrap">
+                <div class="position-bar-fill" style="width:{{ width }}%;background:var(--blue)"></div>
+              </div>
+              <span style="font-size:10px;font-family:var(--font-mono);color:var(--text-3)">{{ "%.2f"|format(px) }}</span>
+            </div>
+          </div>
+        {% endfor %}
+        {% if positions_recent|length == 0 %}
+          <div class="muted">нет данных</div>
+        {% endif %}
+        <a href="/positions" class="btn btn-default btn-sm" style="width:100%;justify-content:center;margin-top:6px;text-align:center">Все позиции →</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-3">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Агенты</div>
+          <div class="card-subtitle">Состояние и активность</div>
+        </div>
+        <span class="badge badge-green">{{ q_agent|length }} / {{ q_agent|length }} online</span>
+      </div>
+      <div class="card-body">
+        {% set icons = ["🔭","🧮","🧠","🛡️","🔍","📡"] %}
+        <div class="agent-grid">
+          {% for a in q_agent %}
+            {% set win = (a.win_rate or 0) %}
+            {% set color = "var(--green)" %}
+            {% if win < 0.3 %}{% set color = "var(--red)" %}{% elif win < 0.5 %}{% set color = "var(--yellow)" %}{% endif %}
+            <div class="agent-card">
+              <div class="agent-icon" style="background:rgba(122,174,200,0.15)">{{ icons[loop.index0 % icons|length] }}</div>
+              <div class="agent-info">
+                <div class="agent-name">{{ a.bucket or "Agent" }}</div>
+                <div class="agent-stat">{{ a.decisions_total or 0 }} решений · {{ "%.0f"|format(win * 100) }}%</div>
+              </div>
+              <div class="agent-status-dot" style="background:{{ color }}"></div>
+            </div>
+          {% endfor %}
+          {% if q_agent|length == 0 %}
+            <div class="muted">нет данных по агентам (нет закрытых решений для расчёта качества)</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Риск-лимиты</div>
+          <div class="card-subtitle">Использование капитала</div>
+        </div>
+        <span class="badge badge-yellow">⚠ Внимание</span>
+      </div>
+      <div class="card-body">
+        <div class="risk-gauge-row">
+          <div class="risk-gauge-label">Всего notional</div>
+          <div class="risk-gauge-track"><div class="risk-gauge-fill" style="width:0%;background:linear-gradient(90deg,var(--blue),var(--purple))"></div></div>
+          <div class="risk-gauge-val">—</div>
+        </div>
+        <div class="risk-gauge-row">
+          <div class="risk-gauge-label">Гр. «Election»</div>
+          <div class="risk-gauge-track"><div class="risk-gauge-fill" style="width:0%;background:var(--yellow)"></div></div>
+          <div class="risk-gauge-val">—</div>
+        </div>
+        <div class="risk-gauge-row">
+          <div class="risk-gauge-label">Гр. «Crypto»</div>
+          <div class="risk-gauge-track"><div class="risk-gauge-fill" style="width:0%;background:var(--green)"></div></div>
+          <div class="risk-gauge-val">—</div>
+        </div>
+      </div>
+    </div>
+
+    {% set sig_sub = (signals_recent|length) ~ " требуют внимания" if signals_recent|length > 0 else "нет данных" %}
+    {% call panel.panel("Последние сигналы", sig_sub, "<a href='/signals' style='font-size:12px;color:var(--green);text-decoration:none'>Все →</a>") %}
+      {% for s in signals_recent %}
+        {% set kind = (s.kind or s.get('kind','—')) %}
+        {% set kind_u = kind|string %}
+        {% set badge_cls = "badge-gray" %}
+        {% set dot_color = "var(--blue)" %}
+        {% if "QUALITY" in kind_u or "ALERT" in kind_u %}{% set badge_cls = "badge-yellow" %}{% set dot_color = "var(--yellow)" %}{% endif %}
+        {% if "ANOM" in kind_u %}{% set badge_cls = "badge-blue" %}{% set dot_color = "var(--blue)" %}{% endif %}
+        {% if "IMPL" in kind_u %}{% set badge_cls = "badge-purple" %}{% set dot_color = "var(--purple)" %}{% endif %}
+        {% if "ARB" in kind_u or "BUY" in kind_u %}{% set badge_cls = "badge-green" %}{% set dot_color = "var(--green)" %}{% endif %}
+        <div class="signal-item">
+          <div class="signal-dot" style="background:{{ dot_color }}"></div>
+          <div class="signal-content">
+            <div class="signal-title">{{ kind }} · {{ s.market_id or s.get('market_id','—') }}</div>
+            <div class="signal-meta">
+              <span class="badge {{ badge_cls }}" style="font-size:9px">{{ s.agent_id or s.get('agent_id','—') }}</span>
+              <span class="signal-time">{{ s.ts or s.get('ts','—') }}</span>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+      {% if signals_recent|length == 0 %}
+        <div class="muted">нет данных</div>
+      {% endif %}
+    {% endcall %}
+  </div>
+
+  {% set markets_tabs = "<div class='tab-row'><div class='tab active'>Все</div><div class='tab'>ARB</div><div class='tab'>Hedge</div></div>" %}
+  {% call panel.panel("Рынки — топ возможностей", "Сортировка по качеству", markets_tabs, "card-body--flush") %}
+    {% set head = "<tr><th>Рынок</th><th>Группа</th><th>YES mid</th><th>NO mid</th><th>Σ mid</th><th>Спред</th><th>Ликв.</th><th>Решение</th><th>Действие</th></tr>" %}
+    {% set body %}
+      {% for m in market_best %}
+        <tr>
+          <td>
+            <div style="font-weight:500">{{ m.market_id or m.get('market_id','—') }}</div>
+            <div class="text-dim" style="font-size:10.5px">{{ m.market_id or m.get('market_id','—') }}</div>
+          </td>
+          <td><span class="badge badge-gray">—</span></td>
+          <td class="mono">—</td>
+          <td class="mono">—</td>
+          <td class="mono">—</td>
+          <td class="mono">—</td>
+          <td class="mono">—</td>
+          <td><span class="badge badge-gray">—</span></td>
+          <td><a class="btn btn-default btn-sm" href="/cases/{{ m.market_id | urlencode }}">Детали</a></td>
+        </tr>
+      {% endfor %}
+      {% if market_best|length == 0 %}
+        <tr><td colspan="9" class="muted">нет данных</td></tr>
+      {% endif %}
+    {% endset %}
+    {{ tbl.table(head, body) }}
+  {% endcall %}
+
+  <div class="grid-2">
+    {% call panel.panel("Последние решения", "Decision Engine V0", "", "card-body--flush") %}
+      {% set head = "<tr><th>Рынок</th><th>Действие</th><th>Статус</th><th>Время</th></tr>" %}
+      {% set body %}
+        {% for r in recent_activity %}
+          {% set kind = (r.kind or r.type or "—") %}
+          <tr>
+            <td><a href='/cases/{{ r.market_id | urlencode }}'>{{ r.market_id }}</a></td>
+            <td><span class="badge badge-gray" style="font-size:9px">{{ kind }}</span></td>
+            <td><span class="badge badge-green" style="font-size:9px">ОК</span></td>
+            <td class="mono muted" style="font-size:10.5px">{{ r.ts or "—" }}</td>
+          </tr>
+        {% endfor %}
+        {% if recent_activity|length == 0 %}
+          <tr><td colspan="4" class="muted">нет данных</td></tr>
+        {% endif %}
+      {% endset %}
+      {{ tbl.table(head, body) }}
+    {% endcall %}
+
+    {% call panel.panel("Проверки торгуемости", "Последний рынок: —") %}
+      <div class="progress-row">
+        <div class="progress-meta"><span class="progress-label">✓ Спред</span><span class="progress-value text-green">—</span></div>
+        <div class="progress-track"><div class="progress-fill" style="width:0%;background:var(--green)"></div></div>
+      </div>
+      <div class="progress-row">
+        <div class="progress-meta"><span class="progress-label">✓ Ликвидность</span><span class="progress-value text-green">—</span></div>
+        <div class="progress-track"><div class="progress-fill" style="width:0%;background:var(--green)"></div></div>
+      </div>
+      <div class="progress-row">
+        <div class="progress-meta"><span class="progress-label">✓ Свежесть данных</span><span class="progress-value text-green">—</span></div>
+        <div class="progress-track"><div class="progress-fill" style="width:0%;background:var(--green)"></div></div>
+      </div>
+      <div class="progress-row">
+        <div class="progress-meta"><span class="progress-label">✓ Kill switch</span><span class="progress-value text-green">active</span></div>
+        <div class="progress-track"><div class="progress-fill" style="width:100%;background:var(--green)"></div></div>
+      </div>
+    {% endcall %}
+  </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function dpr() { return window.devicePixelRatio || 1; }
+function setupCanvas(canvas) {
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width * dpr();
+  canvas.height = rect.height * dpr();
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr(), dpr());
+  canvas.style.width = rect.width + 'px';
+  canvas.style.height = rect.height + 'px';
+  return { ctx, w: rect.width, h: rect.height };
+}
+
+function drawSparkline(canvasId, data, color) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas || !data || data.length < 2) return;
+  const { ctx, w, h } = setupCanvas(canvas);
+  const mn = Math.min(...data), mx = Math.max(...data);
+  const range = mx - mn || 1;
+  const pts = data.map((v, i) => ({
+    x: (i / (data.length - 1)) * w,
+    y: h - ((v - mn) / range) * (h - 4) - 2
+  }));
+  const grad = ctx.createLinearGradient(0, 0, 0, h);
+  grad.addColorStop(0, 'rgba(94,168,110,0.3)');
+  grad.addColorStop(1, 'rgba(94,168,110,0)');
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, h);
+  pts.forEach(p => ctx.lineTo(p.x, p.y));
+  ctx.lineTo(pts[pts.length - 1].x, h);
+  ctx.closePath();
+  ctx.fillStyle = grad;
+  ctx.fill();
+  ctx.beginPath();
+  pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+  ctx.strokeStyle = color || '#5EA86E';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+}
+
+function drawPnlChart(data) {
+  const canvas = document.getElementById('pnl-chart');
+  if (!canvas) return;
+  const { ctx, w, h } = setupCanvas(canvas);
+  const series = (data || []).map(v => Number(v || 0));
+  if (series.length < 2) {
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = 'rgba(240,237,232,0.4)';
+    ctx.font = `11px 'Geist Mono', monospace`;
+    ctx.fillText('Нет данных', w / 2 - 30, h / 2);
+    return;
+  }
+  const mn = Math.min(...series), mx = Math.max(...series);
+  const range = mx - mn || 1;
+  const pad = { l: 0, r: 0, t: 8, b: 20 };
+  const cw = w - pad.l - pad.r;
+  const ch = h - pad.t - pad.b;
+  const px = (i) => pad.l + (i / (series.length - 1)) * cw;
+  const py = (v) => pad.t + ch - ((v - mn) / range) * ch;
+  const pts = series.map((v, i) => ({ x: px(i), y: py(v) }));
+
+  const grad = ctx.createLinearGradient(0, pad.t, 0, h - pad.b);
+  grad.addColorStop(0, 'rgba(94,168,110,0.25)');
+  grad.addColorStop(0.6, 'rgba(94,168,110,0.05)');
+  grad.addColorStop(1, 'rgba(94,168,110,0)');
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, h - pad.b);
+  pts.forEach(p => ctx.lineTo(p.x, p.y));
+  ctx.lineTo(pts[pts.length-1].x, h - pad.b);
+  ctx.closePath();
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  ctx.beginPath();
+  pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+  ctx.strokeStyle = '#5EA86E';
+  ctx.lineWidth = 2;
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+}
+
+async function refreshPnlChart() {
+  try {
+    const resp = await fetch('/api/v2/pnl_timeseries?limit=120', { headers: { 'Accept': 'application/json' } });
+    if (!resp.ok) return;
+    const rows = await resp.json();
+    const data = (rows || []).map(r => Number(r.pnl ?? 0));
+    drawPnlChart(data);
+    drawSparkline('spark-pnl', data.slice(-24), 'rgb(94,168,110)');
+  } catch (e) {}
+}
+
+window.addEventListener('load', () => {
+  refreshPnlChart();
+  setInterval(refreshPnlChart, 30000);
+  window.addEventListener('resize', refreshPnlChart);
+});
+</script>
+{% endblock %}

@@ -1,0 +1,149 @@
+{% extends "_base.html" %}
+{% import "_ui_macros.html" as ui %}
+{% set page_title = "Кластер" %}
+{% block title %}Кластер — PolySyndicate{% endblock %}
+
+{% block content %}
+  {% set gk = d.group_key if d and d.group_key is defined else group_key %}
+  {% set markets = d.markets if d and d.markets is defined else [] %}
+  {% set mm = d.market_metrics if d and d.market_metrics is defined else {} %}
+  {% set stats = d.cluster_stats if d and d.cluster_stats is defined else {} %}
+  {% set edges = d.edges if d and d.edges is defined else [] %}
+  {% set neighbors = d.neighbors if d and d.neighbors is defined else [] %}
+  {% set selected = d.selected_market_id if d and d.selected_market_id is defined else selected_market_id %}
+  {% set mode = d.neighbor_sort if d and d.neighbor_sort is defined else (neighbor_sort or 'closest') %}
+
+  <div class="page-head">
+    <div>
+      <h1>Кластер: {{ gk }}</h1>
+      <div class="page-lead">Структура связей внутри группы рынков: агрегаты, соседи и рёбра графа (PAIR/IMPLICATION/ANOMALY).</div>
+    </div>
+  </div>
+
+  <div class="summary-strip">
+    <div class="summary-item"><div class="summary-label">Рынков</div><div class="summary-value">{{ stats.markets_count or 0 }}</div></div>
+    <div class="summary-item"><div class="summary-label">Min spread</div><div class="summary-value mono">{{ fnum(stats.min_spread, 3) if stats.min_spread is not none else '—' }}</div></div>
+    <div class="summary-item"><div class="summary-label">Median liq</div><div class="summary-value mono">{{ fnum(stats.median_liquidity, 0) if stats.median_liquidity is not none else '—' }}</div></div>
+    <div class="summary-item"><div class="summary-label">Рёбер</div><div class="summary-value">{{ stats.edges_count or 0 }}</div></div>
+  </div>
+
+  <section class="card">
+    <div class="card-head">
+      <div>
+        <div class="card-title">Рынки в кластере</div>
+        <div class="muted">Открой кейс рынка или переключи соседей в режим “близкие/конфликтные”.</div>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th class="col-fill">Рынок</th>
+            <th class="col-xs center nowrap">YES+NO</th>
+            <th class="col-xs center nowrap">Spread</th>
+            <th class="col-xs center nowrap">Liq</th>
+            <th class="col-time nowrap">ts</th>
+            <th class="col-xs center nowrap">Соседи</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in markets %}
+            {% set x = mm.get(m.market_id, {}) %}
+            <tr>
+              <td>
+                <div><a href="/cases/{{ m.market_id | urlencode }}"><b>{{ m.title or m.slug or m.market_id }}</b></a></div>
+                <div class="muted mono nowrap">{{ m.slug }}</div>
+              </td>
+              <td class="center mono nowrap">{{ fnum(x.sum_mid, 3) if x.sum_mid is not none else '—' }}</td>
+              <td class="center mono nowrap">{{ fnum(x.spread, 3) if x.spread is not none else '—' }}</td>
+              <td class="center mono nowrap">{{ fnum(x.liquidity, 0) if x.liquidity is not none else '—' }}</td>
+              <td class="mono">{{ ui.ts_1line(x.last_ts or '') }}</td>
+                <td class="center nowrap"><a href="/cluster/{{ gk }}?m={{ m.market_id | urlencode }}&sort={{ mode }}">соседи</a></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if markets|length == 0 %}<div class="muted mt-10">В этом кластере пока нет рынков.</div>{% endif %}
+  </section>
+
+  {% if selected %}
+    <section class="card mt-14">
+      <div class="card-head">
+        <div>
+          <div class="card-title">Соседи для <code>{{ selected }}</code></div>
+          <div class="muted">
+            Режим:
+            {% if mode == 'conflict' %}<b>самые конфликтные</b>{% else %}<b>самые близкие</b>{% endif %}
+            · <a href="/cluster/{{ gk }}?m={{ selected }}&sort=closest">близкие</a>
+            · <a href="/cluster/{{ gk }}?m={{ selected }}&sort=conflict">конфликтные</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th class="col-fill">Рынок</th>
+              <th class="col-xs center nowrap">Close</th>
+              <th class="col-xs center nowrap">Conflict</th>
+              <th class="col-xs center nowrap">Signals</th>
+              <th class="col-time nowrap">Last</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for n in neighbors %}
+              <tr>
+                <td><a href="/cases/{{ n.market_id | urlencode }}"><b>{{ n.title or n.slug or n.market_id }}</b></a><div class="muted mono nowrap">{{ n.market_id }}</div></td>
+                <td class="center mono nowrap">{{ fnum(n.closest_score, 3) }}</td>
+                <td class="center mono nowrap">{{ fnum(n.conflict_score, 3) }}</td>
+                <td class="center mono nowrap">{{ n.signal_count }}</td>
+                <td class="mono">{{ ui.ts_1line(n.last_ts or '') }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if neighbors|length == 0 %}<div class="muted mt-10">Явных соседей по сигналам пока нет.</div>{% endif %}
+    </section>
+  {% endif %}
+
+  <section class="card mt-14">
+    <div class="card-head">
+      <div>
+        <div class="card-title">Рёбра кластера</div>
+        <div class="muted">Чем выше `conflict`, тем сильнее противоречие; `close` показывает близость.</div>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th class="col-fill">A</th>
+            <th class="col-fill">B</th>
+            <th class="col-xs center nowrap">Close</th>
+            <th class="col-xs center nowrap">Conflict</th>
+            <th class="col-xs center nowrap">Signals</th>
+            <th class="col-time nowrap">Last</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for e in edges %}
+            <tr>
+              <td><a href="/cases/{{ e.market_a | urlencode }}"><code>{{ e.market_a }}</code></a></td>
+              <td><a href="/cases/{{ e.market_b | urlencode }}"><code>{{ e.market_b }}</code></a></td>
+              <td class="center mono nowrap">{{ fnum(e.closest_score, 3) }}</td>
+              <td class="center mono nowrap">{{ fnum(e.conflict_score, 3) }}</td>
+              <td class="center mono nowrap">{{ e.signal_count }}</td>
+              <td class="mono">{{ ui.ts_1line(e.last_ts) }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if edges|length == 0 %}<div class="muted mt-10">Рёбра пока не сформированы.</div>{% endif %}
+  </section>
+{% endblock %}

@@ -1,0 +1,159 @@
+{% extends "_base.html" %}
+{% import "_ui_macros.html" as ui %}
+{% import "components/_page_header.html" as page %}
+{% import "components/_panel.html" as panel %}
+{% import "components/_kpi_grid.html" as kpi %}
+{% import "components/_table.html" as tbl %}
+{% import "components/_badge.html" as badge %}
+{% set page_title = "Обзор" %}
+{% block title %}Обзор — PolySyndicate{% endblock %}
+
+{% block content %}
+  {% set pm = paper_metrics if paper_metrics is defined and paper_metrics else {} %}
+  {% set tm = tradeability_metrics if tradeability_metrics is defined and tradeability_metrics else {} %}
+  {% set pnl_ts = paper_pnl_timeseries if paper_pnl_timeseries is defined and paper_pnl_timeseries else [] %}
+  {% set mode_s = (settings.mode|string) if settings and settings.mode else '' %}
+  {% set mode_kind = "danger" %}
+  {% if "DEMO" in mode_s %}{% set mode_kind = "success" %}{% endif %}
+  {% if "DRY_RUN" in mode_s %}{% set mode_kind = "warning" %}{% endif %}
+
+  {% set right = badge.badge("Режим: " ~ (settings.mode if settings and settings.mode else "—"), mode_kind) %}
+  {{ page.page_header("Операционный обзор", "Сводка системы: данные, решения, paper-результат и контекст для следующего шага.", right) }}
+
+  {% set kpi_items = [
+    {"label":"Рынков","value":markets_count|default(0),"subvalue":"&nbsp;","kpi_color":"var(--blue)"},
+    {"label":"Снимков","value":snapshots_count|default(0),"subvalue":"&nbsp;","kpi_color":"var(--purple)"},
+    {"label":"Сигналов","value":signals_count|default(0),"subvalue":"&nbsp;","kpi_color":"var(--yellow)"},
+    {"label":"Решений","value":decisions_v0_count|default(0),"subvalue":"&nbsp;","kpi_color":"var(--green)"}
+  ] %}
+  {{ kpi.kpi_grid(kpi_items, "kpi-4") }}
+
+  <div class="grid-2">
+  {% call panel.panel("Управление режимом", "Смена режима влияет на поведение исполнения и допустимость действий.", "", "pad") %}
+    <form method="post" action="/control/mode" class="paper-row">
+      <select name="mode" class="select">
+        <option value="DEMO" {% if 'DEMO' in mode_s %}selected{% endif %}>DEMO</option>
+        <option value="DRY_RUN" {% if 'DRY_RUN' in mode_s %}selected{% endif %}>DRY_RUN</option>
+        <option value="LIVE" {% if 'LIVE' in mode_s %}selected{% endif %}>LIVE (заглушка)</option>
+      </select>
+      <button class="btn btn-default" type="submit">Применить</button>
+    </form>
+    <div class="hint" style="margin-top:8px;">
+      Решений может быть больше, чем рынков: решение логируется по времени, на один рынок может быть много итераций.
+    </div>
+  {% endcall %}
+
+    {% call panel.panel("Как читать поток", "", "", "pad") %}
+      <div class="note">Scout → Logic → Paper + Risk</div>
+    {% endcall %}
+  </div>
+
+  <div class="grid-2">
+    {% call panel.panel("Risk Summary", "Экспозиция по open paper-позициям (v1).", "", "pad") %}
+      <div class="risk-summary">
+        <div class="risk-summary-row"><span>Gross</span><strong data-exposure-gross>—</strong></div>
+        <div class="risk-summary-row"><span>Net</span><strong data-exposure-net>—</strong></div>
+        <div class="risk-summary-row"><span>Budget</span><strong data-exposure-budget>—</strong></div>
+        <div class="risk-summary-row"><span>Used</span><strong data-exposure-used>—</strong></div>
+        <div class="risk-summary-row"><span>As of</span><strong data-exposure-asof>—</strong></div>
+        <div class="risk-summary-row"><span>Status</span><strong data-exposure-badge>—</strong></div>
+        <div class="risk-group-list" data-exposure-groups></div>
+      </div>
+    {% endcall %}
+
+    <section class="card agent-card" id="agent-card">
+      <div class="card-head">
+        <div class="card-title">Agent</div>
+        <div class="pill-row">
+          <span class="pill" id="agent-status-pill">● OFF</span>
+          <span class="pill pill-muted" id="agent-mode-pill">paper</span>
+          <span class="pill pill-muted" id="agent-cadence-pill">—</span>
+          <span class="pill pill-muted" id="agent-guard-pill" style="display:none;">—</span>
+        </div>
+        <div class="agent-controls">
+          <button type="button" class="btn btn-default" id="agent-start-btn">Start</button>
+          <button type="button" class="btn btn-danger" id="agent-stop-btn" data-hold="800">
+            Stop
+            <span class="agent-hold-progress"></span>
+          </button>
+        </div>
+      </div>
+
+      <div class="agent-body">
+        <div class="agent-row">
+          <span class="muted">Current</span>
+          <span class="mono" id="agent-current-line">—</span>
+        </div>
+        <div class="agent-row">
+          <span class="muted">Last</span>
+          <span class="mono" id="agent-last-line">—</span>
+        </div>
+
+        <div class="agent-log mono" id="agent-log"></div>
+      </div>
+    </section>
+  </div>
+
+  {% call panel.panel("Edge → Result (paper, last 7d)", "Explain type → фактический результат по закрытым позициям.") %}
+    <div class="edge-report" data-edge-report>—</div>
+    <div id="edge-trades-panel" class="edge-trades-panel hidden">
+      <div class="edge-trades-head">
+        <span class="mono" id="edge-trades-title">—</span>
+        <button type="button" class="btn btn-ghost" id="edge-trades-close">✕</button>
+      </div>
+      <div class="edge-trades-table-wrap" id="edge-trades-table-wrap"></div>
+    </div>
+  {% endcall %}
+
+  {% call panel.panel("Paper-метрики", "Объективная обратная связь по качеству решений и исполнения.", "<a class='panel-action' href='/positions'>Открыть позиции →</a>", "pad") %}
+      {% set kpi_items_2 = [
+        {"label":"PnL (gross)","value":fnum(pm.get('pnl_total', 0), 2),"subvalue":"&nbsp;","kpi_color":"var(--green)","value_class":"mono"},
+        {"label":"Fees","value":fnum(pm.get('fees_paid', 0), 2),"subvalue":"&nbsp;","kpi_color":"var(--red)","value_class":"mono"},
+        {"label":"PnL (net)","value":fnum(pm.get('net_pnl', 0), 2),"subvalue":"&nbsp;","kpi_color":"var(--green)","value_class":"mono"}
+      ] %}
+      {{ kpi.kpi_grid(kpi_items_2, "kpi-3") }}
+
+      <div class="grid-2" style="margin-top:12px;">
+        <div>
+          <div class="panel-title" style="margin-bottom:6px;">Funnel (24ч)</div>
+          {% set head = "<tr><th></th><th class='tr'></th></tr>" %}
+          {% set body %}
+            <tr><td>Tradeable cases</td><td class="tr"><b>{{ tm.get('tradeable_cases', 0) }}</b></td></tr>
+            <tr><td>Blocked cases</td><td class="tr"><b>{{ tm.get('blocked_cases', 0) }}</b></td></tr>
+            <tr><td>Opened cases</td><td class="tr"><b>{{ tm.get('opened_cases', 0) }}</b></td></tr>
+            <tr><td>Opened from tradeable</td><td class="tr"><b>{{ tm.get('opened_from_tradeable', 0) }}</b></td></tr>
+            <tr><td>Conversion</td><td class="tr mono"><b>{{ fnum(tm.get('conversion_rate', 0) * 100, 1) }}%</b></td></tr>
+          {% endset %}
+          {{ tbl.table(head, body, dense=true) }}
+        </div>
+        <div>
+          <div class="panel-title" style="margin-bottom:6px;">Cumulative PnL (последние точки)</div>
+          {% set head2 = "<tr><th>Время</th><th class='tr'>Event</th><th class='tr'>Cum</th></tr>" %}
+          {% set body2 %}
+            {% for p in (pnl_ts[-5:] if pnl_ts|length > 5 else pnl_ts) %}
+              <tr>
+                <td>{{ ui.ts_1line(p.ts) }}</td>
+                <td class="tr mono">{{ fnum(p.event_pnl, 3) }}</td>
+                <td class="tr mono"><b>{{ fnum(p.cumulative_pnl, 3) }}</b></td>
+              </tr>
+            {% endfor %}
+            {% if pnl_ts|length == 0 %}
+              <tr><td colspan="3" class="muted" style="padding:10px 12px;font-style:italic">Нет данных</td></tr>
+            {% endif %}
+          {% endset %}
+          {{ tbl.table(head2, body2, dense=true) }}
+        </div>
+      </div>
+  {% endcall %}
+
+  <div class="grid-2">
+    <a class="card" href="/signals">
+      <div class="card-header"><div class="card-title">Сигналы</div></div>
+      <div class="card-body"><div class="note">Что заметили агенты и почему это важно.</div></div>
+    </a>
+    <a class="card" href="/cases">
+      <div class="card-header"><div class="card-title">Возможности</div></div>
+      <div class="card-body"><div class="note">Где можно перейти от наблюдения к действию.</div></div>
+    </a>
+  </div>
+{% endblock %}

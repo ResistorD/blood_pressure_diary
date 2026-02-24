@@ -1,0 +1,147 @@
+{% extends "_base.html" %}
+{% import "_ui_macros.html" as ui %}
+{% import "components/_page_header.html" as page %}
+{% import "components/_panel.html" as panel %}
+{% import "components/_table.html" as tbl %}
+{% import "components/_badge.html" as badge %}
+{% import "components/_paper_buttons.html" as paper %}
+{% set page_title = "Кейс" %}
+{% block title %}Кейс — PolySyndicate{% endblock %}
+
+{% block content %}
+  {% set m = d.market if d and d.market is defined else None %}
+  {% set market_id = (m.market_id if m and m.market_id is defined else d.market_id) %}
+  {% set market_title = (m.title if m and m.title else (m.slug if m and m.slug else market_id)) %}
+  {% set latest_decision = d.latest_decision if d and d.latest_decision is defined else None %}
+  {% set decision_outcome = d.decision_outcome if d and d.decision_outcome is defined else None %}
+  {% set status = (latest_decision.status if latest_decision and latest_decision.status is defined else (d.status if d and d.status is defined else "—")) %}
+  {% set sigs = d.sigs if d and d.sigs is defined else [] %}
+  {% set max_sigs = 20 %}
+  {% set sigs_view = (sigs[:max_sigs] if sigs|length > max_sigs else sigs) %}
+  {% set narrative = d.narrative if d and d.narrative is defined else {} %}
+  {% set paper_p = (narrative.paper if narrative and narrative.paper is defined else None) %}
+  {% set pnl = (paper_p.pnl if paper_p and paper_p.pnl is defined else {}) %}
+  {% set back_url = (request.query_params.get("back") if request is defined else None) %}
+  {% set status_up = (status or "")|upper %}
+  {% set badge_kind = "muted" %}
+  {% if status_up == "OK" %}{% set badge_kind = "success" %}{% endif %}
+  {% if status_up == "INVESTIGATE" %}{% set badge_kind = "warning" %}{% endif %}
+  {% if status_up == "BLOCKED" %}{% set badge_kind = "danger" %}{% endif %}
+  {% set right %}
+    {{ badge.badge(status, badge_kind) | safe }}
+    <a class="pill" href="{{ back_url or '/dashboard-v2' }}">← Назад</a>
+    <a class="pill" href="/signals?market_id={{ market_id|urlencode }}">Сигналы</a>
+    <a class="pill" href="/decisions?market_id={{ market_id|urlencode }}">Решения</a>
+    <a class="pill" href="/positions?market_id={{ market_id|urlencode }}">Позиции</a>
+  {% endset %}
+
+  {{ page.page_header(market_title, "<span class='mono'>" ~ market_id ~ "</span>", right) }}
+
+  {% call panel.panel("Microstructure", "Bid / Ask / Spread / Depth") %}
+    <div class="micro-panel" data-micro-panel data-market-id="{{ market_id }}">
+      <div class="micro-row">
+        <div class="micro-label">Mid</div>
+        <div class="micro-value" data-micro="mid">—</div>
+      </div>
+      <div class="micro-row">
+        <div class="micro-label">Best Bid</div>
+        <div class="micro-value" data-micro="bid">—</div>
+      </div>
+      <div class="micro-row">
+        <div class="micro-label">Best Ask</div>
+        <div class="micro-value" data-micro="ask">—</div>
+      </div>
+      <div class="micro-row">
+        <div class="micro-label">Spread</div>
+        <div class="micro-value" data-micro="spread">—</div>
+      </div>
+      <div class="micro-row">
+        <div class="micro-label">Depth@1%</div>
+        <div class="micro-value" data-micro="depth1">—</div>
+      </div>
+      <div class="micro-row">
+        <div class="micro-label">Depth@2%</div>
+        <div class="micro-value" data-micro="depth2">—</div>
+      </div>
+      <div class="micro-row">
+        <div class="micro-label">Book age</div>
+        <div class="micro-value" data-micro="age">—</div>
+      </div>
+    </div>
+  {% endcall %}
+
+  {% call panel.panel("Текущее решение") %}
+    {% set head = "<tr><th>Время</th><th>Действие</th><th>Статус</th><th>Почему</th><th>Paper</th></tr>" %}
+    {% set body %}
+      <tr>
+        <td class="nowrap">{{ ui.ts_1line(latest_decision.ts if latest_decision else None) }}</td>
+        <td class="nowrap">{{ latest_decision.action if latest_decision else "—" }}</td>
+        <td class="nowrap">{{ latest_decision.status if latest_decision else "—" }}</td>
+        <td class="ellipsis" title="{{ (latest_decision.reason if latest_decision and latest_decision.reason is defined else (latest_decision.explain if latest_decision and latest_decision.explain is defined else '—')) }}">
+          {{ (latest_decision.reason if latest_decision and latest_decision.reason is defined else (latest_decision.explain if latest_decision and latest_decision.explain is defined else '—')) }}
+        </td>
+        <td class="nowrap">
+          {{ paper.paper_buttons(market_id) }}
+        </td>
+      </tr>
+    {% endset %}
+    {{ tbl.table(head, body, dense=true) }}
+  {% endcall %}
+
+  {% call panel.panel("Outcome") %}
+    {% set head = "<tr><th>Gross</th><th>Fees</th><th>Net</th><th>Status</th><th>Outcome</th><th>Duration</th></tr>" %}
+    {% set body %}
+      {% if decision_outcome %}
+        <tr>
+          <td class="nowrap">{{ fnum(decision_outcome.gross_pnl, 4) if decision_outcome.gross_pnl is not none else "—" }}</td>
+          <td class="nowrap">{{ fnum(decision_outcome.fees_paid, 4) if decision_outcome.fees_paid is not none else "—" }}</td>
+          <td class="nowrap">{{ fnum(decision_outcome.net_pnl, 4) if decision_outcome.net_pnl is not none else "—" }}</td>
+          <td class="nowrap">{{ decision_outcome.status or "OPEN" }}</td>
+          <td class="nowrap">{% if decision_outcome.status == "OPEN" %}—{% else %}{{ decision_outcome.outcome or "—" }}{% endif %}</td>
+          <td class="nowrap">
+            {% if decision_outcome.status != "OPEN" and decision_outcome.duration_sec is not none %}
+              {{ decision_outcome.duration_sec|int }}s
+            {% else %}
+              —
+            {% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td class="muted" colspan="6">Нет данных</td></tr>
+      {% endif %}
+    {% endset %}
+    {{ tbl.table(head, body, dense=true) }}
+  {% endcall %}
+
+  {% call panel.panel("Последние сигналы") %}
+    {% set head = "<tr><th>Время</th><th>Агент</th><th>Тип</th><th>Почему</th></tr>" %}
+    {% set body %}
+      {% for s in sigs_view %}
+        <tr>
+          <td class="nowrap">{{ ui.ts_1line(s.ts) }}</td>
+          <td class="nowrap">{{ s.agent_id or s.agent or "—" }}</td>
+          <td class="nowrap">{{ ru_kind(s.kind) }}</td>
+          <td class="ellipsis" title="{{ s.explain_short or s.explain or '—' }}">
+            {{ s.explain_short or s.explain or "—" }}
+          </td>
+        </tr>
+      {% endfor %}
+      {% if sigs_view|length == 0 %}
+        <tr><td class="muted" colspan="4">Сигналов по этому рынку пока нет.</td></tr>
+      {% endif %}
+    {% endset %}
+    {{ tbl.table(head, body, dense=true) }}
+  {% endcall %}
+
+  {% call panel.panel("Paper позиция") %}
+    {% set head = "<tr><th>Gross</th><th>Fees</th><th>Net</th></tr>" %}
+    {% set body %}
+      <tr>
+        <td>{{ pnl.gross if pnl and pnl.gross is defined else "—" }}</td>
+        <td>{{ pnl.fees if pnl and pnl.fees is defined else "—" }}</td>
+        <td>{{ pnl.net if pnl and pnl.net is defined else "—" }}</td>
+      </tr>
+    {% endset %}
+    {{ tbl.table(head, body, dense=true) }}
+  {% endcall %}
+{% endblock %}

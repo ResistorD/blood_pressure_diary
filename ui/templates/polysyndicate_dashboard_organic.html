@@ -1,0 +1,1845 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>PolySyndicate — Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@300;400;500;600;700&family=Geist+Mono:wght@300;400;500&family=Geist:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<style>
+/* ════════════════════════════════════════════════════════
+   DESIGN TOKENS — Natural Organic palette
+   ════════════════════════════════════════════════════════ */
+:root {
+  /* Slate / Stone surfaces — darker base for more contrast */
+  --bg:           #252A2E;
+  --bg-elevated:  #1f2327;
+  --surface:      #2E3338;
+  --surface-md:   #333940;
+  --surface-lg:   #383D42;
+  --surface-hover:#3e444a;
+  --border:       rgba(255,255,255,0.11);
+  --border-md:    rgba(255,255,255,0.20);
+
+  /* Typography — crisper, higher contrast */
+  --text:         #F0EDE8;
+  --text-2:       rgba(240,237,232,0.72);
+  --text-3:       rgba(240,237,232,0.42);
+  --text-accent:  #FFFFFF;
+
+  /* Semantic — Natural Organic, boosted saturation */
+  --green:        #5EA86E;
+  --green-dim:    rgba(94,168,110,0.18);
+  --green-glow:   rgba(94,168,110,0.35);
+  --red:          #C96666;
+  --red-dim:      rgba(201,102,102,0.18);
+  --yellow:       #D4A843;
+  --yellow-dim:   rgba(212,168,67,0.18);
+  --blue:         #7AAEC8;
+  --blue-dim:     rgba(122,174,200,0.18);
+  --purple:       #9E8FC0;
+  --purple-dim:   rgba(158,143,192,0.18);
+  --orange:       #C88A55;
+  --orange-dim:   rgba(200,138,85,0.18);
+
+  /* System accent — Forest Green */
+  --accent:       #5EA86E;
+  --accent-dim:   rgba(94,168,110,0.20);
+
+  /* Spacing */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 20px;
+
+  /* Shadows — sharper depth */
+  --shadow-sm: 0 1px 4px rgba(0,0,0,0.40), 0 1px 2px rgba(0,0,0,0.30);
+  --shadow-md: 0 4px 20px rgba(0,0,0,0.50), 0 2px 6px rgba(0,0,0,0.35);
+  --shadow-lg: 0 8px 36px rgba(0,0,0,0.60), 0 3px 10px rgba(0,0,0,0.40);
+  --shadow-glow-green: 0 0 22px rgba(94,168,110,0.35);
+  --shadow-glow-red:   0 0 22px rgba(201,102,102,0.30);
+  --shadow-glow-blue:  0 0 18px rgba(122,174,200,0.25);
+
+  /* Fonts */
+  --font-ui:   'Geist', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'Geist Mono', 'SF Mono', monospace;
+  --font-display: 'Geist', -apple-system, sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { background: var(--bg); color: var(--text); font-family: var(--font-ui); }
+
+body {
+  min-height: 100vh;
+  background:
+    radial-gradient(ellipse 70% 45% at 15% -5%, rgba(94,168,110,0.07) 0%, transparent 60%),
+    radial-gradient(ellipse 55% 40% at 85% 105%, rgba(94,168,110,0.05) 0%, transparent 60%),
+    var(--bg);
+  overflow-x: hidden;
+}
+
+/* ════════════════════════ LAYOUT ════════════════════════ */
+.app {
+  display: grid;
+  grid-template-columns: 210px 1fr;
+  grid-template-rows: 44px 1fr;
+  min-height: 100vh;
+}
+
+/* ════════════════════════ TITLEBAR ════════════════════════ */
+.titlebar {
+  grid-column: 1 / -1;
+  height: 44px;
+  background: rgba(30,34,38,0.96);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 12px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.traffic-lights {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.dot {
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: filter 0.15s;
+  position: relative;
+}
+.dot:hover { filter: brightness(1.3); }
+.dot-red    { background: #ff5f57; box-shadow: inset 0 0 0 0.5px rgba(0,0,0,0.3); }
+.dot-yellow { background: #febc2e; box-shadow: inset 0 0 0 0.5px rgba(0,0,0,0.3); }
+.dot-green  { background: #28c840; box-shadow: inset 0 0 0 0.5px rgba(0,0,0,0.3); }
+
+.titlebar-title {
+  flex: 1;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-2);
+  letter-spacing: 0.01em;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.titlebar-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mode-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.mode-badge.paper {
+  background: var(--accent-dim);
+  color: var(--green);
+  border: 1px solid rgba(94,168,110,0.30);
+}
+.mode-badge.live {
+  background: var(--green-dim);
+  color: var(--green);
+  border: 1px solid rgba(94,168,110,0.30);
+}
+.mode-badge .pulse {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: pulse-dot 2s ease infinite;
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.7); }
+}
+
+/* ════════════════════════ SIDEBAR ════════════════════════ */
+.sidebar {
+  background: #272C30;
+  border-right: 1px solid rgba(255,255,255,0.12);
+  padding: 12px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+
+.nav-section-label {
+  padding: 8px 12px 4px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-3);
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-2);
+  text-decoration: none;
+  user-select: none;
+}
+.nav-item:hover {
+  background: var(--surface-md);
+  color: var(--text);
+}
+.nav-item.active {
+  background: var(--accent-dim);
+  color: #82c492;
+  font-weight: 500;
+}
+.nav-item .icon {
+  width: 18px; height: 18px;
+  opacity: 0.7;
+  font-size: 14px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.nav-item.active .icon { opacity: 1; }
+
+.nav-badge {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 600;
+  background: var(--surface-lg);
+  color: var(--text-2);
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-family: var(--font-mono);
+}
+.nav-badge.alert {
+  background: var(--red-dim);
+  color: var(--red);
+}
+
+.sidebar-footer {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.system-health {
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  background: rgba(0,0,0,0.25);
+  border: 1px solid rgba(255,255,255,0.14);
+}
+.system-health-title {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-3);
+  margin-bottom: 8px;
+}
+.health-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-2);
+  padding: 2px 0;
+}
+.health-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.health-dot.ok { background: var(--green); box-shadow: 0 0 6px rgba(94,168,110,0.5); }
+.health-dot.warn { background: var(--yellow); }
+.health-dot.err { background: var(--red); box-shadow: 0 0 6px rgba(201,102,102,0.5); }
+
+/* ════════════════════════ MAIN ════════════════════════ */
+.main {
+  overflow-y: auto;
+  padding: 16px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ════════════════════════ PAGE HEADER ════════════════════════ */
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.page-title {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text-accent);
+  line-height: 1.2;
+}
+.page-subtitle {
+  font-size: 13px;
+  color: var(--text-2);
+  margin-top: 3px;
+}
+.page-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* ════════════════════════ BUTTONS ════════════════════════ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: var(--r-md);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--font-ui);
+  cursor: pointer;
+  transition: all 0.12s;
+  border: 1px solid transparent;
+  text-decoration: none;
+  user-select: none;
+}
+.btn-default {
+  background: var(--surface-md);
+  color: var(--text);
+  border-color: var(--border-md);
+}
+.btn-default:hover {
+  background: var(--surface-lg);
+  border-color: rgba(255,255,255,0.18);
+}
+.btn-primary {
+  background: var(--green);
+  color: #fff;
+  border-color: rgba(255,255,255,0.12);
+}
+.btn-primary:hover { background: #5e9e6e; }
+.btn-danger {
+  background: var(--red-dim);
+  color: var(--red);
+  border-color: rgba(201,102,102,0.25);
+}
+.btn-danger:hover { background: rgba(201,102,102,0.25); }
+.btn-success {
+  background: var(--green-dim);
+  color: var(--green);
+  border-color: rgba(94,168,110,0.25);
+}
+.btn-success:hover { background: rgba(94,168,110,0.25); }
+.btn-sm {
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
+/* ════════════════════════ CARDS ════════════════════════ */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border-md);
+  border-radius: var(--r-xl);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  transition: border-color 0.2s, box-shadow 0.2s;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.30);
+}
+.card:hover {
+  border-color: rgba(255,255,255,0.26);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.40);
+}
+
+.card-header {
+  padding: 10px 14px 8px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.card-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-accent);
+  letter-spacing: 0.01em;
+}
+.card-subtitle {
+  font-size: 10px;
+  color: var(--text-2);
+  margin-top: 1px;
+}
+.card-body { padding: 10px 14px 12px; }
+
+/* ════════════════════════ KPI STRIP ════════════════════════ */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+}
+
+.kpi-card {
+  background: var(--surface);
+  border: 1px solid var(--border-md);
+  border-radius: var(--r-lg);
+  padding: 10px 13px 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  transition: all 0.2s;
+  cursor: default;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.28);
+}
+.kpi-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.20), transparent);
+}
+.kpi-card:hover {
+  background: var(--surface-md);
+  border-color: rgba(255,255,255,0.26);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.kpi-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2px;
+}
+.kpi-label {
+  font-size: 9.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-2);
+}
+.kpi-icon {
+  font-size: 11px;
+  opacity: 0.55;
+}
+.kpi-value {
+  font-size: 22px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  letter-spacing: -0.03em;
+  color: var(--text-accent);
+  line-height: 1;
+}
+.kpi-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--text-3);
+  margin-top: 1px;
+}
+.kpi-delta {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 10px;
+}
+.kpi-delta.up   { color: var(--green); }
+.kpi-delta.down { color: var(--red); }
+.kpi-delta.flat { color: var(--text-3); }
+
+.kpi-card.featured {
+  background: linear-gradient(135deg, rgba(94,168,110,0.14), rgba(94,168,110,0.05));
+  border-color: rgba(94,168,110,0.28);
+}
+.kpi-card.featured .kpi-value { color: #82c492; }
+
+/* ════════════════════════ GRID LAYOUTS ════════════════════════ */
+.grid-3-2 {
+  display: grid;
+  grid-template-columns: 2fr 1.2fr;
+  gap: 12px;
+}
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+/* ════════════════════════ MINI CHART ════════════════════════ */
+.sparkline-container {
+  height: 28px;
+  position: relative;
+}
+canvas.sparkline { width: 100%; height: 100%; }
+
+/* ════════════════════════ PNL CHART AREA ════════════════════════ */
+.chart-area {
+  height: 148px;
+  position: relative;
+  margin: 0 -4px;
+}
+.chart-area canvas { width: 100%; height: 100%; }
+
+/* ════════════════════════ TABLE ════════════════════════ */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.data-table thead th {
+  padding: 5px 10px;
+  text-align: left;
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-2);
+  border-bottom: 1px solid var(--border-md);
+  white-space: nowrap;
+}
+.data-table tbody tr {
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  transition: background 0.1s;
+}
+.data-table tbody tr:last-child { border-bottom: none; }
+.data-table tbody tr:hover { background: var(--surface-md); }
+.data-table td {
+  padding: 6px 10px;
+  color: var(--text);
+  vertical-align: middle;
+}
+.data-table td.mono {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+.data-table td.muted { color: var(--text-2); }
+
+/* ════════════════════════ BADGES / PILLS ════════════════════════ */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+.badge-green  { background: var(--green-dim);  color: var(--green);  border: 1px solid rgba(94,168,110,0.2);  }
+.badge-red    { background: var(--red-dim);    color: var(--red);    border: 1px solid rgba(201,102,102,0.2);  }
+.badge-yellow { background: var(--yellow-dim); color: var(--yellow); border: 1px solid rgba(212,168,67,0.2); }
+.badge-blue   { background: var(--blue-dim);   color: var(--blue);   border: 1px solid rgba(122,174,200,0.2); }
+.badge-purple { background: var(--purple-dim); color: var(--purple); border: 1px solid rgba(158,143,192,0.2); }
+.badge-gray   { background: var(--surface-md); color: var(--text-2); border: 1px solid var(--border-md); }
+
+/* ════════════════════════ SPARKLINE BARS ════════════════════════ */
+.bar-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 40px;
+}
+.bar {
+  flex: 1;
+  border-radius: 3px 3px 0 0;
+  min-height: 3px;
+  transition: opacity 0.2s;
+}
+.bar:hover { opacity: 0.8; }
+
+/* ════════════════════════ PROGRESS ════════════════════════ */
+.progress-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 6px;
+}
+.progress-row:last-child { margin-bottom: 0; }
+.progress-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+}
+.progress-label { color: var(--text-2); }
+.progress-value { font-family: var(--font-mono); color: var(--text); font-size: 10.5px; }
+.progress-track {
+  height: 4px;
+  background: rgba(0,0,0,0.30);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.6s cubic-bezier(0.4,0,0.2,1);
+}
+
+/* ════════════════════════ SIGNAL FEED ════════════════════════ */
+.signal-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.signal-item:last-child { border-bottom: none; }
+.signal-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+.signal-content { flex: 1; min-width: 0; }
+.signal-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.signal-meta {
+  display: flex;
+  gap: 6px;
+  margin-top: 2px;
+  align-items: center;
+}
+.signal-time {
+  font-size: 10px;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+}
+.signal-score {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-2);
+}
+
+/* ════════════════════════ KILL SWITCH ════════════════════════ */
+.kill-switch-panel {
+  background: linear-gradient(135deg, rgba(201,102,102,0.08), rgba(201,102,102,0.03));
+  border: 1px solid rgba(201,102,102,0.20);
+  border-radius: var(--r-xl);
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.kill-switch-info .title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.kill-switch-info .desc {
+  font-size: 11.5px;
+  color: var(--text-2);
+  margin-top: 2px;
+}
+
+.toggle-switch {
+  position: relative;
+  width: 48px;
+  height: 28px;
+  flex-shrink: 0;
+}
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+  position: absolute;
+  inset: 0;
+  background: rgba(255,255,255,0.12);
+  border-radius: 14px;
+  cursor: pointer;
+  transition: background 0.2s;
+  border: 1px solid var(--border-md);
+}
+.toggle-slider::after {
+  content: '';
+  position: absolute;
+  width: 22px; height: 22px;
+  left: 2px; top: 2px;
+  background: white;
+  border-radius: 50%;
+  transition: transform 0.2s cubic-bezier(0.34,1.56,0.64,1);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+}
+.toggle-switch input:checked + .toggle-slider {
+  background: var(--green);
+  border-color: rgba(94,168,110,0.45);
+}
+.toggle-switch input:checked + .toggle-slider::after {
+  transform: translateX(20px);
+}
+
+/* ════════════════════════ POSITION CARD ════════════════════════ */
+.position-item {
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.position-item:last-child { border-bottom: none; }
+.position-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.position-market {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.position-pnl {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+}
+.position-pnl.pos { color: var(--green); }
+.position-pnl.neg { color: var(--red); }
+.position-bottom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.position-bar-wrap {
+  flex: 1;
+  height: 3px;
+  background: rgba(0,0,0,0.25);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.position-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+}
+
+/* ════════════════════════ AGENT STATUS ════════════════════════ */
+.agent-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+}
+.agent-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 7px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.15s;
+}
+.agent-card:hover {
+  background: var(--surface-md);
+  border-color: var(--border-md);
+}
+.agent-icon {
+  width: 26px; height: 26px;
+  border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.agent-info { flex: 1; min-width: 0; }
+.agent-name {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+.agent-stat {
+  font-size: 10px;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+}
+.agent-status-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ════════════════════════ RISK METERS ════════════════════════ */
+.risk-gauge-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.risk-gauge-row:last-child { border-bottom: none; }
+.risk-gauge-label {
+  font-size: 11px;
+  color: var(--text-2);
+  min-width: 90px;
+}
+.risk-gauge-track {
+  flex: 1;
+  height: 4px;
+  background: rgba(0,0,0,0.30);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.risk-gauge-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.5s ease;
+}
+.risk-gauge-val {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-2);
+  min-width: 52px;
+  text-align: right;
+}
+
+/* ════════════════════════ EMPTY STATE ════════════════════════ */
+.empty-state {
+  text-align: center;
+  padding: 32px 16px;
+  color: var(--text-3);
+}
+.empty-state-icon { font-size: 28px; margin-bottom: 8px; opacity: 0.5; }
+.empty-state-text { font-size: 12.5px; }
+
+/* ════════════════════════ SCROLLBARS ════════════════════════ */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.20); }
+
+/* ════════════════════════ ANIMATIONS ════════════════════════ */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.main > * {
+  animation: fadeIn 0.35s ease both;
+}
+.main > *:nth-child(1) { animation-delay: 0.00s; }
+.main > *:nth-child(2) { animation-delay: 0.05s; }
+.main > *:nth-child(3) { animation-delay: 0.10s; }
+.main > *:nth-child(4) { animation-delay: 0.15s; }
+.main > *:nth-child(5) { animation-delay: 0.20s; }
+.main > *:nth-child(6) { animation-delay: 0.25s; }
+
+/* ════════════════════════ MISC ════════════════════════ */
+.divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+.text-mono { font-family: var(--font-mono); }
+.text-green { color: var(--green); }
+.text-red   { color: var(--red); }
+.text-blue  { color: var(--blue); }
+.text-muted { color: var(--text-2); }
+.text-dim   { color: var(--text-3); }
+.flex { display: flex; }
+.items-center { align-items: center; }
+.gap-8 { gap: 8px; }
+.ml-auto { margin-left: auto; }
+
+/* ════════════════════════ NOTIFICATION DOT ════════════════════════ */
+.notif-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--red);
+  box-shadow: 0 0 6px rgba(201,102,102,0.5);
+  flex-shrink: 0;
+}
+
+/* ════════════════════════ HEADER CONTROLS ════════════════════════ */
+.search-box {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface-md);
+  border: 1px solid var(--border-md);
+  border-radius: var(--r-md);
+  padding: 5px 10px;
+  font-size: 12.5px;
+  color: var(--text-3);
+  cursor: text;
+  min-width: 180px;
+}
+.search-box input {
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  flex: 1;
+}
+.search-box input::placeholder { color: var(--text-3); }
+
+/* ════════════════════════ TABS ════════════════════════ */
+.tab-row {
+  display: flex;
+  gap: 2px;
+  background: rgba(0,0,0,0.25);
+  border: 1px solid var(--border-md);
+  border-radius: var(--r-md);
+  padding: 3px;
+  width: fit-content;
+}
+.tab {
+  padding: 5px 14px;
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  color: var(--text-2);
+  user-select: none;
+}
+.tab.active {
+  background: var(--surface-lg);
+  color: var(--text-accent);
+  box-shadow: var(--shadow-sm);
+}
+.tab:hover:not(.active) { color: var(--text); }
+
+/* Responsive */
+@media (max-width: 1200px) {
+  .kpi-grid { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 900px) {
+  .app { grid-template-columns: 1fr; }
+  .sidebar { display: none; }
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+  .grid-3-2, .grid-3, .grid-2 { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ───────────── TITLEBAR ───────────── -->
+  <div class="titlebar">
+    <div class="traffic-lights">
+      <div class="dot dot-red"></div>
+      <div class="dot dot-yellow"></div>
+      <div class="dot dot-green"></div>
+    </div>
+    <div class="titlebar-title">PolySyndicate · Dashboard</div>
+    <div class="titlebar-right">
+      <div class="mode-badge paper">
+        <div class="pulse"></div>
+        PAPER
+      </div>
+      <div style="font-size:11px;color:var(--text-3);font-family:var(--font-mono)">Run: a3f9c8b1</div>
+    </div>
+  </div>
+
+  <!-- ───────────── SIDEBAR ───────────── -->
+  <nav class="sidebar">
+    <div class="nav-section-label">Монитор</div>
+    <a class="nav-item active" href="#">
+      <span class="icon">⊞</span> Обзор
+    </a>
+    <a class="nav-item" href="#">
+      <span class="icon">◈</span> Рынки
+      <span class="nav-badge">342</span>
+    </a>
+    <a class="nav-item" href="#">
+      <span class="icon">⚡</span> Сигналы
+      <span class="nav-badge alert">3</span>
+    </a>
+
+    <div class="nav-section-label" style="margin-top:8px">Торговля</div>
+    <a class="nav-item" href="#">
+      <span class="icon">◎</span> Возможности
+    </a>
+    <a class="nav-item" href="#">
+      <span class="icon">▦</span> Решения
+    </a>
+    <a class="nav-item" href="#">
+      <span class="icon">◷</span> Позиции
+      <span class="nav-badge">7</span>
+    </a>
+
+    <div class="nav-section-label" style="margin-top:8px">Система</div>
+    <a class="nav-item" href="#">
+      <span class="icon">⚙</span> Настройки
+    </a>
+    <a class="nav-item" href="#">
+      <span class="icon">≡</span> Логи
+    </a>
+
+    <div class="sidebar-footer">
+      <div class="system-health">
+        <div class="system-health-title">Статус системы</div>
+        <div class="health-row">
+          <div class="flex items-center gap-8">
+            <div class="health-dot ok"></div>
+            <span>Ingestor</span>
+          </div>
+          <span style="font-size:10px;font-family:var(--font-mono);color:var(--text-3)">12s ago</span>
+        </div>
+        <div class="health-row">
+          <div class="flex items-center gap-8">
+            <div class="health-dot ok"></div>
+            <span>Dispatcher</span>
+          </div>
+          <span style="font-size:10px;font-family:var(--font-mono);color:var(--text-3)">live</span>
+        </div>
+        <div class="health-row">
+          <div class="flex items-center gap-8">
+            <div class="health-dot warn"></div>
+            <span>RiskGate</span>
+          </div>
+          <span style="font-size:10px;font-family:var(--font-mono);color:var(--yellow)">warn</span>
+        </div>
+        <div class="health-row">
+          <div class="flex items-center gap-8">
+            <div class="health-dot ok"></div>
+            <span>DB (WAL)</span>
+          </div>
+          <span style="font-size:10px;font-family:var(--font-mono);color:var(--text-3)">3.1 MB</span>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ───────────── MAIN ───────────── -->
+  <main class="main">
+
+    <!-- Page header -->
+    <div class="page-header">
+      <div>
+        <div class="page-title">Операционный обзор</div>
+        <div class="page-subtitle">Обновлено: 21 фев 2026 · 14:37:22 UTC</div>
+      </div>
+      <div class="page-actions">
+        <div class="search-box">
+          <span style="font-size:12px">⌕</span>
+          <input type="text" placeholder="Поиск рынка..."/>
+          <span style="font-size:10px;font-family:var(--font-mono);background:var(--surface-lg);padding:1px 5px;border-radius:4px;color:var(--text-3)">⌘K</span>
+        </div>
+        <button class="btn btn-default btn-sm">⟳ Обновить</button>
+        <button class="btn btn-primary btn-sm">+ Рынок</button>
+      </div>
+    </div>
+
+    <!-- Kill Switch -->
+    <div class="kill-switch-panel">
+      <div class="kill-switch-info">
+        <div class="title">🔒 Kill Switch — управление исполнением</div>
+        <div class="desc">Когда выключен — все новые paper-позиции заблокированы. Текущие позиции продолжают работать.</div>
+      </div>
+      <div class="flex items-center gap-8" style="gap:16px">
+        <span style="font-size:12px;color:var(--text-2)">Исполнение</span>
+        <label class="toggle-switch">
+          <input type="checkbox" checked id="killswitch"/>
+          <span class="toggle-slider"></span>
+        </label>
+        <span id="ks-label" style="font-size:12px;font-weight:600;color:var(--green)">Активно</span>
+      </div>
+    </div>
+
+    <!-- KPI Grid -->
+    <div class="kpi-grid">
+      <div class="kpi-card featured">
+        <div class="kpi-header">
+          <div class="kpi-label">P&amp;L (paper)</div>
+          <div class="kpi-icon">💹</div>
+        </div>
+        <div class="kpi-value">+$42.18</div>
+        <div class="kpi-meta">
+          <span class="kpi-delta up">↑ +8.4%</span>
+          <span>за 7 дней</span>
+        </div>
+        <div class="sparkline-container" style="height:28px; margin-top:2px;">
+          <canvas id="spark-pnl"></canvas>
+        </div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-header">
+          <div class="kpi-label">Рынков</div>
+          <div class="kpi-icon">◈</div>
+        </div>
+        <div class="kpi-value">342</div>
+        <div class="kpi-meta">
+          <span class="kpi-delta up">↑ 18</span>
+          <span>за 24ч</span>
+        </div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-header">
+          <div class="kpi-label">Снимков / мин</div>
+          <div class="kpi-icon">📡</div>
+        </div>
+        <div class="kpi-value">2.3k</div>
+        <div class="kpi-meta">
+          <span class="kpi-delta flat">→ стабильно</span>
+        </div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-header">
+          <div class="kpi-label">Открытых поз.</div>
+          <div class="kpi-icon">▦</div>
+        </div>
+        <div class="kpi-value">7</div>
+        <div class="kpi-meta">
+          <span>из 12 макс</span>
+          <span class="kpi-delta" style="color:var(--yellow)">58%</span>
+        </div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-header">
+          <div class="kpi-label">Сигналов 24ч</div>
+          <div class="kpi-icon">⚡</div>
+        </div>
+        <div class="kpi-value">128</div>
+        <div class="kpi-meta">
+          <span class="kpi-delta down">↓ 14</span>
+          <span>vs вчера</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- P&L Chart + Positions -->
+    <div class="grid-3-2">
+      <!-- P&L Chart -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">P&L — бумажный результат</div>
+            <div class="card-subtitle">Накопленный итог по закрытым и открытым позициям</div>
+          </div>
+          <div class="tab-row">
+            <div class="tab active">7d</div>
+            <div class="tab">30d</div>
+            <div class="tab">All</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div style="display:flex;gap:16px;margin-bottom:8px">
+            <div>
+              <div style="font-size:9.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--text-3)">Реализованный</div>
+              <div style="font-family:var(--font-mono);font-size:15px;font-weight:700;color:var(--green)">+$28.50</div>
+            </div>
+            <div>
+              <div style="font-size:9.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--text-3)">Открытый</div>
+              <div style="font-family:var(--font-mono);font-size:15px;font-weight:700;color:var(--green)">+$13.68</div>
+            </div>
+            <div>
+              <div style="font-size:9.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--text-3)">Win Rate</div>
+              <div style="font-family:var(--font-mono);font-size:15px;font-weight:700;color:var(--text)">73%</div>
+            </div>
+          </div>
+          <div class="chart-area">
+            <canvas id="pnl-chart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Active Positions -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Открытые позиции</div>
+            <div class="card-subtitle">7 / 12 максимум</div>
+          </div>
+          <span class="badge badge-blue">paper</span>
+        </div>
+        <div class="card-body">
+          <div class="position-item">
+            <div class="position-top">
+              <div class="position-market">Biden wins 2024 election</div>
+              <div class="position-pnl neg">−$2.10</div>
+            </div>
+            <div class="position-bottom">
+              <span class="badge badge-blue" style="font-size:9px">YES</span>
+              <div class="position-bar-wrap">
+                <div class="position-bar-fill" style="width:72%;background:var(--blue)"></div>
+              </div>
+              <span style="font-size:10px;font-family:var(--font-mono);color:var(--text-3)">0.72</span>
+            </div>
+          </div>
+          <div class="position-item">
+            <div class="position-top">
+              <div class="position-market">Fed rate cut Mar 2025</div>
+              <div class="position-pnl pos">+$5.40</div>
+            </div>
+            <div class="position-bottom">
+              <span class="badge badge-green" style="font-size:9px">NO</span>
+              <div class="position-bar-wrap">
+                <div class="position-bar-fill" style="width:34%;background:var(--green)"></div>
+              </div>
+              <span style="font-size:10px;font-family:var(--font-mono);color:var(--text-3)">0.34</span>
+            </div>
+          </div>
+          <div class="position-item">
+            <div class="position-top">
+              <div class="position-market">BTC above $100k EOY</div>
+              <div class="position-pnl pos">+$8.20</div>
+            </div>
+            <div class="position-bottom">
+              <span class="badge badge-blue" style="font-size:9px">YES</span>
+              <div class="position-bar-wrap">
+                <div class="position-bar-fill" style="width:55%;background:var(--purple)"></div>
+              </div>
+              <span style="font-size:10px;font-family:var(--font-mono);color:var(--text-3)">0.55</span>
+            </div>
+          </div>
+          <div class="position-item">
+            <div class="position-top">
+              <div class="position-market">Ukraine ceasefire Q1</div>
+              <div class="position-pnl pos">+$3.80</div>
+            </div>
+            <div class="position-bottom">
+              <span class="badge badge-red" style="font-size:9px">NO</span>
+              <div class="position-bar-wrap">
+                <div class="position-bar-fill" style="width:28%;background:var(--red)"></div>
+              </div>
+              <span style="font-size:10px;font-family:var(--font-mono);color:var(--text-3)">0.28</span>
+            </div>
+          </div>
+          <a href="#" class="btn btn-default btn-sm" style="width:100%;justify-content:center;margin-top:6px;text-align:center">
+            Все позиции →
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Agents + Risk + Signals -->
+    <div class="grid-3">
+
+      <!-- Agents Status -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Агенты</div>
+            <div class="card-subtitle">Состояние и активность</div>
+          </div>
+          <span class="badge badge-green">5 / 5 online</span>
+        </div>
+        <div class="card-body">
+          <div class="agent-grid">
+            <div class="agent-card">
+              <div class="agent-icon" style="background:rgba(122,174,200,0.15)">🔭</div>
+              <div class="agent-info">
+                <div class="agent-name">Scout</div>
+                <div class="agent-stat">42 groups · 0.8s</div>
+              </div>
+              <div class="agent-status-dot" style="background:var(--green);box-shadow:0 0 6px rgba(94,168,110,0.5)"></div>
+            </div>
+            <div class="agent-card">
+              <div class="agent-icon" style="background:rgba(122,174,200,0.15)">🧮</div>
+              <div class="agent-info">
+                <div class="agent-name">Quant</div>
+                <div class="agent-stat">fast · 0.1s</div>
+              </div>
+              <div class="agent-status-dot" style="background:var(--green);box-shadow:0 0 6px rgba(94,168,110,0.5)"></div>
+            </div>
+            <div class="agent-card">
+              <div class="agent-icon" style="background:rgba(158,143,192,0.15)">🧠</div>
+              <div class="agent-info">
+                <div class="agent-name">Logic</div>
+                <div class="agent-stat">18 pairs · 1.2s</div>
+              </div>
+              <div class="agent-status-dot" style="background:var(--green);box-shadow:0 0 6px rgba(94,168,110,0.5)"></div>
+            </div>
+            <div class="agent-card">
+              <div class="agent-icon" style="background:rgba(201,102,102,0.15)">🛡️</div>
+              <div class="agent-info">
+                <div class="agent-name">Risk</div>
+                <div class="agent-stat">7 limits · 0.3s</div>
+              </div>
+              <div class="agent-status-dot" style="background:var(--yellow)"></div>
+            </div>
+            <div class="agent-card" style="grid-column:1/-1">
+              <div class="agent-icon" style="background:rgba(94,168,110,0.15)">🔍</div>
+              <div class="agent-info">
+                <div class="agent-name">Auditor</div>
+                <div class="agent-stat">3 QUALITY_ALERT · 0.4s avg</div>
+              </div>
+              <div class="agent-status-dot" style="background:var(--green);box-shadow:0 0 6px rgba(94,168,110,0.5)"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Risk Gauges -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Риск-лимиты</div>
+            <div class="card-subtitle">Использование капитала</div>
+          </div>
+          <span class="badge badge-yellow">⚠ Внимание</span>
+        </div>
+        <div class="card-body">
+          <div class="risk-gauge-row">
+            <div class="risk-gauge-label">Всего notional</div>
+            <div class="risk-gauge-track">
+              <div class="risk-gauge-fill" style="width:68%;background:linear-gradient(90deg,var(--blue),var(--purple))"></div>
+            </div>
+            <div class="risk-gauge-val">$340 / 500</div>
+          </div>
+          <div class="risk-gauge-row">
+            <div class="risk-gauge-label">Гр. «Election»</div>
+            <div class="risk-gauge-track">
+              <div class="risk-gauge-fill" style="width:82%;background:var(--yellow)"></div>
+            </div>
+            <div class="risk-gauge-val">$205 / 250</div>
+          </div>
+          <div class="risk-gauge-row">
+            <div class="risk-gauge-label">Гр. «Crypto»</div>
+            <div class="risk-gauge-track">
+              <div class="risk-gauge-fill" style="width:44%;background:var(--green)"></div>
+            </div>
+            <div class="risk-gauge-val">$110 / 250</div>
+          </div>
+          <div class="risk-gauge-row">
+            <div class="risk-gauge-label">Позиций открыто</div>
+            <div class="risk-gauge-track">
+              <div class="risk-gauge-fill" style="width:58%;background:var(--blue)"></div>
+            </div>
+            <div class="risk-gauge-val">7 / 12</div>
+          </div>
+          <div class="risk-gauge-row">
+            <div class="risk-gauge-label">Использ. капитала</div>
+            <div class="risk-gauge-track">
+              <div class="risk-gauge-fill" style="width:80%;background:linear-gradient(90deg,var(--orange),var(--red))"></div>
+            </div>
+            <div class="risk-gauge-val" style="color:var(--yellow)">80%</div>
+          </div>
+
+          <div style="margin-top:8px;padding:6px 10px;background:var(--yellow-dim);border:1px solid rgba(212,168,67,0.2);border-radius:var(--r-md)">
+            <div style="font-size:11.5px;font-weight:600;color:var(--yellow)">⚠ Группа «Election»</div>
+            <div style="font-size:11px;color:var(--text-2);margin-top:3px">82% группового лимита. Новые входы заблокированы.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Signal Feed -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Последние сигналы</div>
+            <div class="card-subtitle">3 требуют внимания</div>
+          </div>
+          <a href="#" style="font-size:12px;color:var(--green);text-decoration:none">Все →</a>
+        </div>
+        <div class="card-body">
+          <div class="signal-item">
+            <div class="signal-dot" style="background:var(--red);box-shadow:0 0 6px rgba(201,102,102,0.5)"></div>
+            <div class="signal-content">
+              <div class="signal-title">PAIR_ARB: Election Group #14</div>
+              <div class="signal-meta">
+                <span class="badge badge-red" style="font-size:9px">ARB</span>
+                <span class="signal-time">14:36:58</span>
+                <span class="signal-score">score 0.94</span>
+              </div>
+            </div>
+          </div>
+          <div class="signal-item">
+            <div class="signal-dot" style="background:var(--yellow)"></div>
+            <div class="signal-content">
+              <div class="signal-title">QUALITY_ALERT: Stale snapshot</div>
+              <div class="signal-meta">
+                <span class="badge badge-yellow" style="font-size:9px">QA</span>
+                <span class="signal-time">14:35:12</span>
+                <span class="signal-score">score 0.71</span>
+              </div>
+            </div>
+          </div>
+          <div class="signal-item">
+            <div class="signal-dot" style="background:var(--purple)"></div>
+            <div class="signal-content">
+              <div class="signal-title">IMPLICATION: BTC ↔ ETH group</div>
+              <div class="signal-meta">
+                <span class="badge badge-purple" style="font-size:9px">IMPL</span>
+                <span class="signal-time">14:34:40</span>
+                <span class="signal-score">score 0.83</span>
+              </div>
+            </div>
+          </div>
+          <div class="signal-item">
+            <div class="signal-dot" style="background:var(--green);box-shadow:0 0 6px rgba(94,168,110,0.4)"></div>
+            <div class="signal-content">
+              <div class="signal-title">PAIR_ARB: Fed group — NEAR_ARB</div>
+              <div class="signal-meta">
+                <span class="badge badge-green" style="font-size:9px">ARB</span>
+                <span class="signal-time">14:33:05</span>
+                <span class="signal-score">score 0.88</span>
+              </div>
+            </div>
+          </div>
+          <div class="signal-item">
+            <div class="signal-dot" style="background:var(--blue)"></div>
+            <div class="signal-content">
+              <div class="signal-title">ANOMALY: spread spike BTC EOY</div>
+              <div class="signal-meta">
+                <span class="badge badge-blue" style="font-size:9px">ANOM</span>
+                <span class="signal-time">14:31:50</span>
+                <span class="signal-score">score 0.62</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Markets table -->
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Рынки — топ возможностей</div>
+          <div class="card-subtitle">Сортировка по оценке торгуемости</div>
+        </div>
+        <div class="flex items-center gap-8" style="gap:8px">
+          <div class="tab-row">
+            <div class="tab active">Все</div>
+            <div class="tab">ARB</div>
+            <div class="tab">Hedge</div>
+          </div>
+        </div>
+      </div>
+      <div class="card-body" style="padding:0 0 4px">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Рынок</th>
+              <th>Группа</th>
+              <th>YES mid</th>
+              <th>NO mid</th>
+              <th>Σ mid</th>
+              <th>Спред</th>
+              <th>Ликв.</th>
+              <th>Решение</th>
+              <th>Действие</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>
+                <div style="font-weight:500">Fed rate cut March 2025</div>
+                <div class="text-dim" style="font-size:10.5px">polymarket/fed-rate-mar</div>
+              </td>
+              <td><span class="badge badge-blue">Federal Reserve</span></td>
+              <td class="mono text-green">0.342</td>
+              <td class="mono text-green">0.641</td>
+              <td class="mono" style="color:var(--red);font-weight:600">0.983</td>
+              <td class="mono">0.9%</td>
+              <td class="mono">$2,840</td>
+              <td><span class="badge badge-green">BUY BOTH</span></td>
+              <td>
+                <button class="btn btn-success btn-sm">Войти</button>
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <div style="font-weight:500">Biden approval above 40%</div>
+                <div class="text-dim" style="font-size:10.5px">polymarket/biden-appr</div>
+              </td>
+              <td><span class="badge badge-purple">US Politics</span></td>
+              <td class="mono text-green">0.412</td>
+              <td class="mono text-green">0.573</td>
+              <td class="mono" style="color:var(--yellow);font-weight:600">0.985</td>
+              <td class="mono">1.4%</td>
+              <td class="mono">$1,220</td>
+              <td><span class="badge badge-yellow">INVESTIGATE</span></td>
+              <td>
+                <button class="btn btn-default btn-sm">Детали</button>
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <div style="font-weight:500">BTC above $100k EOY 2025</div>
+                <div class="text-dim" style="font-size:10.5px">polymarket/btc-100k</div>
+              </td>
+              <td><span class="badge badge-orange">Crypto</span></td>
+              <td class="mono">0.552</td>
+              <td class="mono">0.461</td>
+              <td class="mono text-muted" style="font-weight:500">1.013</td>
+              <td class="mono">2.1%</td>
+              <td class="mono">$8,450</td>
+              <td><span class="badge badge-gray">HOLD</span></td>
+              <td>
+                <button class="btn btn-default btn-sm" disabled style="opacity:.4;cursor:default">Hold</button>
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <div style="font-weight:500">Ukraine ceasefire Q1 2026</div>
+                <div class="text-dim" style="font-size:10.5px">polymarket/ukraine-cease</div>
+              </td>
+              <td><span class="badge badge-red">Geopolitics</span></td>
+              <td class="mono">0.278</td>
+              <td class="mono">0.698</td>
+              <td class="mono text-muted">0.976</td>
+              <td class="mono">3.8%</td>
+              <td class="mono">$540</td>
+              <td><span class="badge badge-gray">HOLD</span></td>
+              <td>
+                <button class="btn btn-default btn-sm" disabled style="opacity:.4;cursor:default">Hold</button>
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <div style="font-weight:500">AI regulation bill passes 2025</div>
+                <div class="text-dim" style="font-size:10.5px">polymarket/ai-reg-bill</div>
+              </td>
+              <td><span class="badge badge-blue">Technology</span></td>
+              <td class="mono text-green">0.388</td>
+              <td class="mono text-green">0.599</td>
+              <td class="mono" style="color:var(--red);font-weight:600">0.987</td>
+              <td class="mono">0.7%</td>
+              <td class="mono">$1,890</td>
+              <td><span class="badge badge-green">BUY BOTH</span></td>
+              <td>
+                <button class="btn btn-success btn-sm">Войти</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Decision history -->
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Последние решения</div>
+            <div class="card-subtitle">Decision Engine V0</div>
+          </div>
+        </div>
+        <div class="card-body" style="padding:0 0 4px">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Рынок</th>
+                <th>Действие</th>
+                <th>Статус</th>
+                <th>Время</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="font-size:11.5px">Fed rate cut Mar 25</td>
+                <td><span class="badge badge-green" style="font-size:9px">BUY BOTH</span></td>
+                <td><span class="badge badge-green" style="font-size:9px">ОК</span></td>
+                <td class="mono muted" style="font-size:10.5px">14:36</td>
+              </tr>
+              <tr>
+                <td style="font-size:11.5px">AI regulation bill</td>
+                <td><span class="badge badge-green" style="font-size:9px">BUY BOTH</span></td>
+                <td><span class="badge badge-green" style="font-size:9px">ОК</span></td>
+                <td class="mono muted" style="font-size:10.5px">14:34</td>
+              </tr>
+              <tr>
+                <td style="font-size:11.5px">Biden approval</td>
+                <td><span class="badge badge-gray" style="font-size:9px">HOLD</span></td>
+                <td><span class="badge badge-yellow" style="font-size:9px">INVESTIGATE</span></td>
+                <td class="mono muted" style="font-size:10.5px">14:33</td>
+              </tr>
+              <tr>
+                <td style="font-size:11.5px">BTC $100k EOY</td>
+                <td><span class="badge badge-gray" style="font-size:9px">HOLD</span></td>
+                <td><span class="badge badge-gray" style="font-size:9px">ОК</span></td>
+                <td class="mono muted" style="font-size:10.5px">14:30</td>
+              </tr>
+              <tr>
+                <td style="font-size:11.5px">Ukraine ceasefire</td>
+                <td><span class="badge badge-red" style="font-size:9px">CLOSE</span></td>
+                <td><span class="badge badge-green" style="font-size:9px">ОК</span></td>
+                <td class="mono muted" style="font-size:10.5px">14:28</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Tradeability checks -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Проверки торгуемости</div>
+            <div class="card-subtitle">Последний рынок: Fed rate Mar 2025</div>
+          </div>
+          <span class="badge badge-green">7/8 пройдено</span>
+        </div>
+        <div class="card-body">
+          <div class="progress-row">
+            <div class="progress-meta">
+              <span class="progress-label">✓ Спред</span>
+              <span class="progress-value text-green">0.9% ≤ 4%</span>
+            </div>
+            <div class="progress-track">
+              <div class="progress-fill" style="width:22%;background:var(--green)"></div>
+            </div>
+          </div>
+          <div class="progress-row">
+            <div class="progress-meta">
+              <span class="progress-label">✓ Ликвидность</span>
+              <span class="progress-value text-green">$2840 ≥ $50</span>
+            </div>
+            <div class="progress-track">
+              <div class="progress-fill" style="width:90%;background:var(--green)"></div>
+            </div>
+          </div>
+          <div class="progress-row">
+            <div class="progress-meta">
+              <span class="progress-label">✓ Возраст снимков</span>
+              <span class="progress-value text-green">18 ≥ 5</span>
+            </div>
+            <div class="progress-track">
+              <div class="progress-fill" style="width:75%;background:var(--green)"></div>
+            </div>
+          </div>
+          <div class="progress-row">
+            <div class="progress-meta">
+              <span class="progress-label">✓ Волатильность</span>
+              <span class="progress-value text-green">3.1% ≤ 8%</span>
+            </div>
+            <div class="progress-track">
+              <div class="progress-fill" style="width:38%;background:var(--green)"></div>
+            </div>
+          </div>
+          <div class="progress-row">
+            <div class="progress-meta">
+              <span class="progress-label">✓ Книга котировок</span>
+              <span class="progress-value text-green">bid + ask</span>
+            </div>
+            <div class="progress-track">
+              <div class="progress-fill" style="width:100%;background:var(--green)"></div>
+            </div>
+          </div>
+          <div class="progress-row">
+            <div class="progress-meta">
+              <span class="progress-label">✗ Тренд ликвидности</span>
+              <span class="progress-value" style="color:var(--red)">−0.3 &lt; 0</span>
+            </div>
+            <div class="progress-track">
+              <div class="progress-fill" style="width:15%;background:var(--red)"></div>
+            </div>
+          </div>
+          <div class="progress-row">
+            <div class="progress-meta">
+              <span class="progress-label">✓ Свежесть данных</span>
+              <span class="progress-value text-green">12s ≤ 180s</span>
+            </div>
+            <div class="progress-track">
+              <div class="progress-fill" style="width:6%;background:var(--green)"></div>
+            </div>
+          </div>
+          <div class="progress-row">
+            <div class="progress-meta">
+              <span class="progress-label">✓ Kill switch</span>
+              <span class="progress-value text-green">active</span>
+            </div>
+            <div class="progress-track">
+              <div class="progress-fill" style="width:100%;background:var(--green)"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+// ── Theme toggle (kill switch interactive) ──
+const ks = document.getElementById('killswitch');
+const ksLabel = document.getElementById('ks-label');
+ks.addEventListener('change', () => {
+  ksLabel.textContent = ks.checked ? 'Активно' : 'Остановлено';
+  ksLabel.style.color = ks.checked ? 'var(--green)' : 'var(--red)';
+});
+
+// ── Tab switching ──
+document.querySelectorAll('.tab-row').forEach(row => {
+  row.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      row.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+    });
+  });
+});
+
+// ── Canvas drawing helpers ──
+function dpr() { return window.devicePixelRatio || 1; }
+
+function setupCanvas(canvas) {
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width  = rect.width  * dpr();
+  canvas.height = rect.height * dpr();
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr(), dpr());
+  canvas.style.width  = rect.width  + 'px';
+  canvas.style.height = rect.height + 'px';
+  return { ctx, w: rect.width, h: rect.height };
+}
+
+// ── Sparkline for PNL KPI ──
+function drawSparkline(canvasId, data, color) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const { ctx, w, h } = setupCanvas(canvas);
+  const mn = Math.min(...data), mx = Math.max(...data);
+  const range = mx - mn || 1;
+  const pts = data.map((v, i) => ({
+    x: (i / (data.length - 1)) * w,
+    y: h - ((v - mn) / range) * (h - 4) - 2
+  }));
+
+  // Fill
+  const grad = ctx.createLinearGradient(0, 0, 0, h);
+  grad.addColorStop(0, color.replace(')', ', 0.3)').replace('rgb', 'rgba'));
+  grad.addColorStop(1, color.replace(')', ', 0)').replace('rgb', 'rgba'));
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, h);
+  pts.forEach(p => ctx.lineTo(p.x, p.y));
+  ctx.lineTo(pts[pts.length-1].x, h);
+  ctx.closePath();
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+}
+
+// ── P&L Chart ──
+function drawPnlChart() {
+  const canvas = document.getElementById('pnl-chart');
+  if (!canvas) return;
+  const { ctx, w, h } = setupCanvas(canvas);
+
+  const data = [-2, 1, 3, 0, 5, 4, 8, 6, 10, 9, 14, 12, 16, 18, 15, 20, 19, 24, 22, 28, 26, 30, 28, 33, 31, 35, 38, 42];
+  const mn = Math.min(...data), mx = Math.max(...data);
+  const range = mx - mn;
+  const pad = { l: 0, r: 0, t: 8, b: 24 };
+  const cw = w - pad.l - pad.r;
+  const ch = h - pad.t - pad.b;
+
+  const px = (i) => pad.l + (i / (data.length - 1)) * cw;
+  const py = (v) => pad.t + ch - ((v - mn) / range) * ch;
+  const pts = data.map((v, i) => ({ x: px(i), y: py(v) }));
+
+  // Zero line
+  const zy = py(0);
+  ctx.beginPath();
+  ctx.moveTo(pad.l, zy);
+  ctx.lineTo(w - pad.r, zy);
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Gradient fill
+  const grad = ctx.createLinearGradient(0, pad.t, 0, h - pad.b);
+  grad.addColorStop(0,   'rgba(94,168,110,0.25)');
+  grad.addColorStop(0.6, 'rgba(94,168,110,0.05)');
+  grad.addColorStop(1,   'rgba(94,168,110,0)');
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, h - pad.b);
+  pts.forEach(p => ctx.lineTo(p.x, p.y));
+  ctx.lineTo(pts[pts.length-1].x, h - pad.b);
+  ctx.closePath();
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+  ctx.strokeStyle = '#5EA86E';
+  ctx.lineWidth = 2;
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+
+  // Endpoint dot
+  const last = pts[pts.length - 1];
+  ctx.beginPath();
+  ctx.arc(last.x, last.y, 4, 0, Math.PI * 2);
+  ctx.fillStyle = '#5EA86E';
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(last.x, last.y, 7, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(94,168,110,0.25)';
+  ctx.fill();
+
+  // X-axis labels
+  const labels = ['15 Feb', '17 Feb', '19 Feb', '21 Feb'];
+  ctx.fillStyle = 'rgba(240,240,245,0.30)';
+  ctx.font = `10px 'Geist Mono', monospace`;
+  ctx.textAlign = 'center';
+  labels.forEach((lb, i) => {
+    const x = pad.l + (i / (labels.length - 1)) * cw;
+    ctx.fillText(lb, x, h - 4);
+  });
+}
+
+// ── Init ──
+window.addEventListener('load', () => {
+  const pnlData = [0, 2, 1, 5, 4, 8, 7, 12, 10, 15, 14, 18, 20, 24, 22, 28, 26, 30, 28, 34, 32, 38, 36, 42];
+  drawSparkline('spark-pnl', pnlData, 'rgb(94,168,110)');
+  drawPnlChart();
+});
+
+window.addEventListener('resize', () => {
+  const pnlData = [0, 2, 1, 5, 4, 8, 7, 12, 10, 15, 14, 18, 20, 24, 22, 28, 26, 30, 28, 34, 32, 38, 36, 42];
+  drawSparkline('spark-pnl', pnlData, 'rgb(94,168,110)');
+  drawPnlChart();
+});
+
+// Nav active state
+document.querySelectorAll('.nav-item').forEach(item => {
+  item.addEventListener('click', e => {
+    e.preventDefault();
+    document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+    item.classList.add('active');
+  });
+});
+</script>
+</body>
+</html>

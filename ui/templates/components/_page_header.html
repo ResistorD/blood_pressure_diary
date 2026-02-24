@@ -1,0 +1,11 @@
+{% macro page_header(title, subtitle="", right_html="") -%}
+  <div class="page-header">
+    <div>
+      <div class="page-title">{{ title }}</div>
+      {% if subtitle %}<div class="page-subtitle">{{ subtitle | safe }}</div>{% endif %}
+    </div>
+    {% if right_html %}
+      <div class="page-actions">{{ right_html | safe }}</div>
+    {% endif %}
+  </div>
+{%- endmacro %}

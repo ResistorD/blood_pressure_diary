@@ -1,0 +1,9 @@
+{% macro badge(text, kind="muted", title="") -%}
+  {% set cls = "badge-gray" %}
+  {% if kind == "success" %}{% set cls = "badge-green" %}{% endif %}
+  {% if kind == "danger" %}{% set cls = "badge-red" %}{% endif %}
+  {% if kind == "warning" %}{% set cls = "badge-yellow" %}{% endif %}
+  {% if kind == "muted" %}{% set cls = "badge-gray" %}{% endif %}
+  {% if kind == "outline" %}{% set cls = "badge-gray" %}{% endif %}
+  <span class="badge {{ cls }}"{% if title %} title="{{ title }}"{% endif %}>{{ text }}</span>
+{%- endmacro %}

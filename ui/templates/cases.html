@@ -1,0 +1,163 @@
+{% extends "_base.html" %}
+{% import "_ui_macros.html" as ui %}
+{% import "components/_page_header.html" as page %}
+{% import "components/_panel.html" as panel %}
+{% import "components/_kpi_grid.html" as kpi %}
+{% import "components/_table.html" as tbl %}
+{% import "components/_badge.html" as badge %}
+{% import "components/_paper_buttons.html" as paper %}
+{% set page_title = "Возможности" %}
+{% block title %}Возможности — PolySyndicate{% endblock %}
+
+{% block content %}
+  {% set f = filters if filters is defined else {} %}
+  {% set p = pager if pager is defined else {} %}
+  {% set ns = namespace(ok=0, inv=0, bl=0) %}
+  {% for c in rows|default([]) %}
+    {% set st = (c.get("status") or "")|upper %}
+    {% if st == "OK" %}{% set ns.ok = ns.ok + 1 %}{% endif %}
+    {% if st == "INVESTIGATE" %}{% set ns.inv = ns.inv + 1 %}{% endif %}
+    {% if st == "BLOCKED" %}{% set ns.bl = ns.bl + 1 %}{% endif %}
+  {% endfor %}
+
+  {% set right = badge.badge("deprioritize: " ~ (deprioritize_active or 0), "muted") %}
+  {{ page.page_header("Возможности", "Рынки с актуальными сигналами и причиной, почему кейс может быть tradeable.", right) }}
+
+  {% set kpi_items = [
+    {"label":"На странице","value":(rows|default([]))|length,"subvalue":"&nbsp;","kpi_color":"var(--blue)"},
+    {"label":"ОК","value":ns.ok,"subvalue":"&nbsp;","kpi_color":"var(--green)"},
+    {"label":"INVESTIGATE","value":ns.inv,"subvalue":"&nbsp;","kpi_color":"var(--yellow)"},
+    {"label":"BLOCKED","value":ns.bl,"subvalue":"&nbsp;","kpi_color":"var(--red)"}
+  ] %}
+  {{ kpi.kpi_grid(kpi_items, "kpi-4") }}
+
+  {% call panel.panel("Фильтры") %}
+    <form method="get" class="filter-row">
+      <input class="input" type="text" name="q" placeholder="поиск (рынок/причина)" value="{{ f.get('q','') }}" />
+      <select class="select" name="status">
+        <option value="" {% if not f.get('status') %}selected{% endif %}>Все статусы</option>
+        <option value="OK" {% if f.get('status') == 'OK' %}selected{% endif %}>ОК</option>
+        <option value="INVESTIGATE" {% if f.get('status') == 'INVESTIGATE' %}selected{% endif %}>INVESTIGATE</option>
+        <option value="BLOCKED" {% if f.get('status') == 'BLOCKED' %}selected{% endif %}>BLOCKED</option>
+      </select>
+      <select class="select" name="sort">
+        <option value="activity" {% if f.get('sort','activity') == 'activity' %}selected{% endif %}>Сортировка: активность</option>
+        <option value="status" {% if f.get('sort') == 'status' %}selected{% endif %}>Сортировка: статус</option>
+        <option value="market" {% if f.get('sort') == 'market' %}selected{% endif %}>Сортировка: рынок</option>
+        <option value="sum_mid" {% if f.get('sort') == 'sum_mid' %}selected{% endif %}>Сортировка: Σ mid</option>
+        <option value="spread" {% if f.get('sort') == 'spread' %}selected{% endif %}>Сортировка: spread</option>
+        <option value="liq" {% if f.get('sort') == 'liq' %}selected{% endif %}>Сортировка: liq</option>
+      </select>
+      <select class="select" name="dir">
+        <option value="desc" {% if f.get('dir','desc') == 'desc' %}selected{% endif %}>По убыванию</option>
+        <option value="asc" {% if f.get('dir') == 'asc' %}selected{% endif %}>По возрастанию</option>
+      </select>
+      <select class="select" name="size">
+        {% for s in [20,50,100,200] %}
+          <option value="{{ s }}" {% if p.get('size',50) == s %}selected{% endif %}>{{ s }} / стр</option>
+        {% endfor %}
+      </select>
+      <button class="btn btn-default" type="submit">Применить</button>
+    </form>
+  {% endcall %}
+
+  {% call panel.panel("Список возможностей", "Открой кейс, чтобы увидеть сигналы, решение и состояние paper-позиции.") %}
+    {% set head %}
+      <tr>
+        <th class="nowrap">Группа</th>
+        <th class="nowrap"><a href="?q={{ f.get('q','') }}&status={{ f.get('status','') }}&size={{ p.get('size',50) }}&sort=market&dir={{ 'asc' if f.get('sort') == 'market' and f.get('dir','desc') == 'desc' else 'desc' }}&page=1">Рынок</a></th>
+        <th class="nowrap"><a href="?q={{ f.get('q','') }}&status={{ f.get('status','') }}&size={{ p.get('size',50) }}&sort=activity&dir={{ 'asc' if f.get('sort') == 'activity' and f.get('dir','desc') == 'desc' else 'desc' }}&page=1">Последняя активность</a></th>
+        <th class="nowrap"><a href="?q={{ f.get('q','') }}&status={{ f.get('status','') }}&size={{ p.get('size',50) }}&sort=status&dir={{ 'asc' if f.get('sort') == 'status' and f.get('dir','desc') == 'desc' else 'desc' }}&page=1">Статус</a></th>
+        <th class="nowrap">Prio</th>
+        <th class="nowrap"><a href="?q={{ f.get('q','') }}&status={{ f.get('status','') }}&size={{ p.get('size',50) }}&sort=sum_mid&dir={{ 'asc' if f.get('sort') == 'sum_mid' and f.get('dir','desc') == 'desc' else 'desc' }}&page=1">Σ mid</a></th>
+        <th class="nowrap"><a href="?q={{ f.get('q','') }}&status={{ f.get('status','') }}&size={{ p.get('size',50) }}&sort=spread&dir={{ 'asc' if f.get('sort') == 'spread' and f.get('dir','desc') == 'desc' else 'desc' }}&page=1">spread</a></th>
+        <th class="nowrap"><a href="?q={{ f.get('q','') }}&status={{ f.get('status','') }}&size={{ p.get('size',50) }}&sort=liq&dir={{ 'asc' if f.get('sort') == 'liq' and f.get('dir','desc') == 'desc' else 'desc' }}&page=1">liq</a></th>
+        <th>Почему</th>
+        <th>Подсказка</th>
+        <th>Paper</th>
+        <th>Действия</th>
+      </tr>
+    {% endset %}
+    {% set body %}
+      {% for c in rows|default([]) %}
+        {% set market_id = c.get("market_id") %}
+        {% set title = c.get("title") %}
+        {% set group_key = c.get("group_key") %}
+        {% set last_ts = c.get("last_signal_ts") or c.get("last_snapshot_ts") %}
+        {% set status = c.get("status") %}
+        {% set sum_mid = c.get("sum_mid") %}
+        {% set spread = c.get("spread") %}
+        {% set liq = c.get("liq") %}
+        {% set why = c.get("reason") or "—" %}
+        {% set hint = ui.hint_from_reason(why) %}
+        {% set prio = c.get("prio", 1.0) %}
+        {% set prio_reason = c.get("prio_reason", "") %}
+        {% set prio_matched = c.get("prio_matched", 0) %}
+        <tr data-weight="{{ '%.2f'|format(prio or 1.0) }}" data-case-id="{{ market_id }}"{% if market_id %} data-href="/cases/{{ market_id | urlencode }}"{% endif %}>
+          <td class="mono nowrap"><span class="ellipsis" title="{{ group_key if group_key else '' }}">{{ group_key if group_key else "—" }}</span></td>
+          <td class="ellipsis" title="{{ (title if title else market_id) if market_id else '—' }}">
+            {% if market_id %}
+              <a href="/cases/{{ market_id | urlencode }}" data-role="open">
+                {{ (title if title else market_id) }}
+              </a>
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td class="mono nowrap"><span data-case-last>{{ ui.ts_1line(last_ts if last_ts else "—") }}</span></td>
+          <td class="nowrap">
+            <code data-case-status>{{ ru_status(status) if status else "—" }}</code>
+            <span class="badge badge-yellow" data-case-stale style="display:none;margin-left:6px;">УСТАРЕЛО</span>
+          </td>
+          <td class="mono nowrap" title="Weight: {{ '%.2f'|format(prio or 1.0) }}&#10;Rules: {{ prio_matched or 0 }}&#10;Reason: {{ prio_reason }}">
+            {{ '%.2f'|format(prio or 1.0) }}{% if (prio_matched or 0) > 1 %}<span class="muted small"> *</span>{% endif %}
+          </td>
+          <td class="mono nowrap"><span data-case-sum-mid>{{ fnum(sum_mid, 3) if sum_mid is not none and sum_mid != "" else "—" }}</span></td>
+          <td class="mono nowrap"><span data-case-spread>{{ fnum(spread * 100, 2) ~ "%" if spread is not none and spread != "" else "—" }}</span></td>
+          <td class="mono nowrap"><span data-case-liq>{{ fnum(liq, 0) if liq is not none and liq != "" else "—" }}</span></td>
+          <td class="muted ellipsis" title="{{ why }}">{{ why }}</td>
+          <td class="muted ellipsis" title="{{ hint }}">
+            <span>{{ hint }}</span>
+            <div class="edge-line mono" data-edge-line>—</div>
+            <div class="why-line mono" data-why-line>—</div>
+          </td>
+          <td class="nowrap">
+            {% if market_id %}
+              <div class="paper-cell">
+                <span class="badge badge-gray" data-paper-status>—</span>
+                {{ paper.paper_buttons(market_id) }}
+              </div>
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
+          </td>
+          <td class="nowrap">
+            {% if market_id %}
+              <button class="pill micro-trigger" type="button" data-micro-trigger data-market-id="{{ market_id }}">i</button>
+              <a class="pill" href="/cases/{{ market_id | urlencode }}">Кейс</a>
+              <a class="pill" href="/decisions?market_id={{ market_id | urlencode }}">Решения</a>
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      {% if (rows|default([]))|length == 0 %}
+        <tr><td colspan="12" class="muted" style="padding:12px 12px;font-style:italic">Пока нет возможностей. Либо недостаточно данных, либо фильтры слишком строгие.</td></tr>
+      {% endif %}
+    {% endset %}
+    <div data-cases-table>
+      {{ tbl.table(head, body, dense=true) }}
+    </div>
+  {% endcall %}
+
+  <div class="card">
+    <div class="card-body" style="padding:10px 14px;">
+      <div class="page-actions">
+        <span class="muted">Страница {{ p.get('page',1) }} / {{ p.get('pages',1) }} · всего {{ p.get('total',0) }}</span>
+        {% if p.get('prev_url') %}<a class="btn btn-default" href="{{ p.get('prev_url') }}">← Назад</a>{% endif %}
+        {% if p.get('next_url') %}<a class="btn btn-default" href="{{ p.get('next_url') }}">Вперёд →</a>{% endif %}
+      </div>
+    </div>
+  </div>
+{% endblock %}

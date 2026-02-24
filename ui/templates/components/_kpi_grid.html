@@ -1,0 +1,21 @@
+{% macro kpi_grid(items, grid_class="") -%}
+  <div class="kpi-grid{% if grid_class %} {{ grid_class }}{% endif %}">
+    {% for it in items %}
+      <div class="kpi-card{% if it.featured %} featured{% endif %}">
+        <div class="kpi-header">
+          <div class="kpi-label">{{ it.label }}</div>
+          {% if it.icon %}<div class="kpi-icon">{{ it.icon }}</div>{% endif %}
+        </div>
+        <div class="kpi-value{% if it.value_class %} {{ it.value_class }}{% endif %}">{{ it.value | safe }}</div>
+        {% if it.subvalue is defined and it.subvalue != "" %}
+          <div class="kpi-meta">{{ it.subvalue | safe }}</div>
+        {% else %}
+          <div class="kpi-meta">&nbsp;</div>
+        {% endif %}
+        {% if it.extra_html %}
+          {{ it.extra_html | safe }}
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+{%- endmacro %}

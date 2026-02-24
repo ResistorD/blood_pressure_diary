@@ -1,0 +1,14 @@
+{% macro panel(title, subtitle="", right_html="", body_class="") -%}
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">{{ title }}</div>
+        {% if subtitle %}<div class="card-subtitle">{{ subtitle }}</div>{% endif %}
+      </div>
+      {% if right_html %}{{ right_html | safe }}{% endif %}
+    </div>
+    <div class="card-body{% if body_class %} {{ body_class }}{% endif %}">
+      {{ caller() if caller else "" }}
+    </div>
+  </div>
+{%- endmacro %}

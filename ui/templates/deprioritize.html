@@ -1,0 +1,59 @@
+{% extends "_base.html" %}
+{% set page_title = "Deprioritize" %}
+{% block title %}Deprioritize rules — PolySyndicate{% endblock %}
+
+{% block content %}
+  <div class="page-head">
+    <div>
+      <h1>Deprioritize rules</h1>
+      <div class="page-lead">Read-only список правил приоритизации (market / action / market_action).</div>
+    </div>
+  </div>
+  {% set _mode = (deprioritize_mode or 'ui')|lower %}
+  <div class="muted mt-6">UI-only: {{ 'ON' if _mode == 'ui' else 'OFF' }} · Pipeline: {{ 'ON' if _mode == 'pipeline' else 'OFF' }}</div>
+
+  <div class="table-wrap">
+    <table class="table table-tight">
+      <colgroup>
+        <col style="width: 70px;">
+        <col style="width: 140px;">
+        <col style="width: 240px;">
+        <col style="width: 80px;">
+        <col>
+        <col style="width: 170px;">
+        <col style="width: 170px;">
+        <col style="width: 90px;">
+      </colgroup>
+      <thead>
+        <tr>
+          <th class="center nowrap">ID</th>
+          <th class="nowrap">Scope</th>
+          <th class="nowrap">Key</th>
+          <th class="center nowrap">Weight</th>
+          <th>Reason</th>
+          <th class="nowrap">Created</th>
+          <th class="nowrap">Expires</th>
+          <th class="center nowrap">Enabled</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rules|default([]) %}
+        <tr>
+          <td class="center mono nowrap">{{ r.get('id') }}</td>
+          <td class="mono nowrap">{{ r.get('scope') }}</td>
+          <td class="mono ellipsis" title="{{ r.get('key') }}">{{ r.get('key') }}</td>
+          <td class="center mono nowrap">{{ "%.2f"|format(r.get('weight', 1.0)) }}</td>
+          <td class="ellipsis" title="{{ r.get('reason','') }}">{{ r.get('reason','') }}</td>
+          <td class="mono nowrap">{{ r.get('created_ts') or '—' }}</td>
+          <td class="mono nowrap">{{ r.get('expires_ts') or '—' }}</td>
+          <td class="center mono nowrap">{{ '1' if r.get('is_enabled') else '0' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if (rules|default([]))|length == 0 %}
+    <div class="muted mt-10">Пока нет правил deprioritize.</div>
+  {% endif %}
+{% endblock %}

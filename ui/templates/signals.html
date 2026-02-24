@@ -1,0 +1,107 @@
+{% extends "_base.html" %}
+{% import "_ui_macros.html" as ui %}
+{% import "components/_page_header.html" as page %}
+{% import "components/_panel.html" as panel %}
+{% import "components/_kpi_grid.html" as kpi %}
+{% import "components/_table.html" as tbl %}
+{% import "components/_paper_buttons.html" as paper %}
+{% set page_title = "Сигналы" %}
+{% block title %}Сигналы — PolySyndicate{% endblock %}
+
+{% block content %}
+  {% set f = filters if filters is defined else {} %}
+  {% set p = pager if pager is defined else {} %}
+  {% set ns = namespace(total=(rows|default([]))|length, pair=0, impl=0, anom=0) %}
+  {% for r in rows|default([]) %}
+    {% set k = (r[2] or '')|upper %}
+    {% if k == 'PAIR_ARB' %}{% set ns.pair = ns.pair + 1 %}{% endif %}
+    {% if k == 'IMPLICATION' %}{% set ns.impl = ns.impl + 1 %}{% endif %}
+    {% if k == 'ANOMALY' %}{% set ns.anom = ns.anom + 1 %}{% endif %}
+  {% endfor %}
+
+  {{ page.page_header("Сигналы", "Слой наблюдения: что именно система заметила в рынке до принятия решения.") }}
+
+  {% set kpi_items = [
+    {"label":"На странице","value":ns.total,"subvalue":"&nbsp;","kpi_color":"var(--blue)"},
+    {"label":"PAIR_ARB","value":ns.pair,"subvalue":"&nbsp;","kpi_color":"var(--green)"},
+    {"label":"IMPLICATION","value":ns.impl,"subvalue":"&nbsp;","kpi_color":"var(--purple)"},
+    {"label":"ANOMALY","value":ns.anom,"subvalue":"&nbsp;","kpi_color":"var(--yellow)"}
+  ] %}
+  {{ kpi.kpi_grid(kpi_items, "kpi-4") }}
+
+  {% call panel.panel("Фильтры") %}
+    <form method="get" class="filter-row">
+      <input class="input" type="text" name="q" placeholder="поиск по explain/market" value="{{ f.get('q','') }}" />
+      <input class="input" type="text" name="agent" placeholder="agent" value="{{ f.get('agent','') }}" />
+      <select class="select" name="kind">
+        <option value="" {% if not f.get('kind') %}selected{% endif %}>Все типы</option>
+        <option value="PAIR_ARB" {% if f.get('kind') == 'PAIR_ARB' %}selected{% endif %}>PAIR_ARB</option>
+        <option value="IMPLICATION" {% if f.get('kind') == 'IMPLICATION' %}selected{% endif %}>IMPLICATION</option>
+        <option value="ANOMALY" {% if f.get('kind') == 'ANOMALY' %}selected{% endif %}>ANOMALY</option>
+        <option value="QUALITY_ALERT" {% if f.get('kind') == 'QUALITY_ALERT' %}selected{% endif %}>QUALITY_ALERT</option>
+        <option value="RISK_CONSTRAINT" {% if f.get('kind') == 'RISK_CONSTRAINT' %}selected{% endif %}>RISK_CONSTRAINT</option>
+      </select>
+      <input class="input" type="text" name="market_id" placeholder="market_id" value="{{ f.get('market_id','') }}" />
+      <input type="hidden" name="sort" value="{{ f.get('sort','ts') }}" />
+      <input type="hidden" name="dir" value="{{ f.get('dir','desc') }}" />
+      <select class="select" name="size">
+        {% for s in [20,50,100,200] %}
+          <option value="{{ s }}" {% if p.get('size',50) == s %}selected{% endif %}>{{ s }} / стр</option>
+        {% endfor %}
+      </select>
+      <button class="btn btn-default" type="submit">Применить</button>
+    </form>
+  {% endcall %}
+
+  {% call panel.panel("Последние сигналы", "Время · агент · тип · рынок · короткое объяснение.") %}
+    {% if error %}<div class="notice" style="margin:10px 14px 0">{{ error }}</div>{% endif %}
+    {% set head %}
+      <tr>
+        <th class="nowrap"><a href="?q={{ f.get('q','') }}&agent={{ f.get('agent','') }}&kind={{ f.get('kind','') }}&market_id={{ f.get('market_id','') }}&size={{ p.get('size',50) }}&sort=ts&dir={{ 'asc' if f.get('sort') == 'ts' and f.get('dir','desc') == 'desc' else 'desc' }}&page=1">Время</a></th>
+        <th class="nowrap"><a href="?q={{ f.get('q','') }}&agent={{ f.get('agent','') }}&kind={{ f.get('kind','') }}&market_id={{ f.get('market_id','') }}&size={{ p.get('size',50) }}&sort=agent&dir={{ 'asc' if f.get('sort') == 'agent' and f.get('dir','desc') == 'desc' else 'desc' }}&page=1">Агент</a></th>
+        <th class="nowrap"><a href="?q={{ f.get('q','') }}&agent={{ f.get('agent','') }}&kind={{ f.get('kind','') }}&market_id={{ f.get('market_id','') }}&size={{ p.get('size',50) }}&sort=kind&dir={{ 'asc' if f.get('sort') == 'kind' and f.get('dir','desc') == 'desc' else 'desc' }}&page=1">Тип</a></th>
+        <th class="nowrap"><a href="?q={{ f.get('q','') }}&agent={{ f.get('agent','') }}&kind={{ f.get('kind','') }}&market_id={{ f.get('market_id','') }}&size={{ p.get('size',50) }}&sort=market&dir={{ 'asc' if f.get('sort') == 'market' and f.get('dir','desc') == 'desc' else 'desc' }}&page=1">Рынок</a></th>
+        <th>Почему</th>
+        <th>Подсказка</th>
+      </tr>
+    {% endset %}
+    {% set body %}
+      {% for r in rows|default([]) %}
+        {% set ts = r[0] %}
+        {% set agent = r[1] %}
+        {% set kind = r[2] %}
+        {% set market_id = r[3] %}
+        {% set why = r[4] %}
+        {% set full_reason = (why or "—") %}
+        <tr{% if market_id %} data-market-id="{{ market_id }}" data-href="/cases/{{ market_id | urlencode }}"{% endif %}>
+          <td class="mono nowrap">{{ ui.ts_1line(ts) }}</td>
+          <td class="nowrap"><span class="ellipsis" title="{{ agent }}">{{ agent }}</span></td>
+          <td class="nowrap"><code class="ellipsis" title="{{ ru_kind(kind) }}">{{ ru_kind(kind) }}</code></td>
+          <td class="nowrap">{% if market_id %}<a href="/cases/{{ market_id | urlencode }}" data-role="open"><code class="ellipsis" title="{{ market_id }}">{{ market_id }}</code></a>{% else %}—{% endif %}</td>
+          <td class="muted ellipsis" title="{{ full_reason }}">{{ full_reason }}</td>
+          <td class="nowrap" title="{{ ui.hint_from_reason(why) }}">
+            {% if market_id %}
+              {{ paper.paper_buttons(market_id) }}
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      {% if (rows|default([]))|length == 0 %}
+        <tr><td colspan="6" class="muted" style="padding:12px 12px;font-style:italic">Сигналов пока нет.</td></tr>
+      {% endif %}
+    {% endset %}
+    {{ tbl.table(head, body, dense=true) }}
+  {% endcall %}
+
+  <div class="card">
+    <div class="card-body" style="padding:10px 14px;">
+      <div class="page-actions">
+        <span class="muted">Страница {{ p.get('page',1) }} / {{ p.get('pages',1) }} · всего {{ p.get('total',0) }}</span>
+        {% if p.get('prev_url') %}<a class="btn btn-default" href="{{ p.get('prev_url') }}">← Назад</a>{% endif %}
+        {% if p.get('next_url') %}<a class="btn btn-default" href="{{ p.get('next_url') }}">Вперёд →</a>{% endif %}
+      </div>
+    </div>
+  </div>
+{% endblock %}

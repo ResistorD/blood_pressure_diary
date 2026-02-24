@@ -1,0 +1,173 @@
+{% extends "_base.html" %}
+{% import "_ui_macros.html" as ui %}
+{% import "components/_page_header.html" as page %}
+{% import "components/_panel.html" as panel %}
+{% import "components/_kpi_grid.html" as kpi %}
+{% import "components/_table.html" as tbl %}
+{% set page_title = "Позиции" %}
+{% block title %}Позиции (paper) — PolySyndicate{% endblock %}
+
+{% block content %}
+  {% set pm = paper_metrics if paper_metrics is defined and paper_metrics else {} %}
+  {% set tm = tradeability_metrics if tradeability_metrics is defined and tradeability_metrics else {} %}
+  {% set pnl_ts = paper_pnl_timeseries if paper_pnl_timeseries is defined and paper_pnl_timeseries else [] %}
+  {% set f = filters if filters is defined else {} %}
+  {% set pp = pager_positions if pager_positions is defined else {} %}
+  {% set pt = pager_trades if pager_trades is defined else {} %}
+
+  {{ page.page_header("Позиции (paper)", "Контроль исполнения: открытые позиции, сделки, качество входа и динамика результата.") }}
+
+  {% set kpi_items = [
+    {"label":"PnL (gross)","value":fnum(pm.get('pnl_total', 0), 2),"subvalue":"&nbsp;","kpi_color":"var(--green)","value_class":"pos mono"},
+    {"label":"Fees","value":fnum(pm.get('fees_paid', 0), 2),"subvalue":"&nbsp;","kpi_color":"var(--red)","value_class":"mono"},
+    {"label":"PnL (net)","value":fnum(pm.get('net_pnl', 0), 2),"subvalue":"&nbsp;","kpi_color":"var(--green)","value_class":"pos mono"},
+    {"label":"Hit rate","value":fnum((pm.get('hit_rate', 0) * 100), 1) ~ "%","subvalue":"&nbsp;","kpi_color":"var(--blue)","value_class":"mono"},
+    {"label":"TP / FP","value":pm.get('true_positive', 0) ~ " / " ~ pm.get('false_positive', 0),"subvalue":"&nbsp;","kpi_color":"var(--purple)","value_class":"mono"},
+    {"label":"Допущено → Открыто","value":tm.get('opened_from_tradeable', 0) ~ "/" ~ tm.get('tradeable_cases', 0),"subvalue":"&nbsp;","kpi_color":"var(--yellow)","value_class":"mono"}
+  ] %}
+  {{ kpi.kpi_grid(kpi_items) }}
+
+  {% call panel.panel("Фильтры") %}
+    <form method="get" class="filter-row">
+      <input class="input" type="text" name="market_id" placeholder="market_id" value="{{ f.get('market_id','') }}" />
+      <select class="select" name="status">
+        <option value="" {% if not f.get('status') %}selected{% endif %}>Все статусы позиций</option>
+        <option value="OPEN" {% if f.get('status') == 'OPEN' %}selected{% endif %}>OPEN</option>
+        <option value="CLOSED" {% if f.get('status') == 'CLOSED' %}selected{% endif %}>CLOSED</option>
+      </select>
+      <select class="select" name="side">
+        <option value="" {% if not f.get('side') %}selected{% endif %}>Все стороны сделок</option>
+        <option value="BUY" {% if f.get('side') == 'BUY' %}selected{% endif %}>BUY</option>
+        <option value="SELL" {% if f.get('side') == 'SELL' %}selected{% endif %}>SELL</option>
+      </select>
+      <select class="select" name="size">
+        {% for s in [20,50,100,200] %}
+          <option value="{{ s }}" {% if pp.get('size',50) == s %}selected{% endif %}>{{ s }} / стр</option>
+        {% endfor %}
+      </select>
+      <input type="hidden" name="pos_sort" value="{{ f.get('pos_sort','opened_at') }}" />
+      <input type="hidden" name="pos_dir" value="{{ f.get('pos_dir','desc') }}" />
+      <input type="hidden" name="trd_sort" value="{{ f.get('trd_sort','ts') }}" />
+      <input type="hidden" name="trd_dir" value="{{ f.get('trd_dir','desc') }}" />
+      <input type="hidden" name="pos_page" value="1" />
+      <input type="hidden" name="trd_page" value="1" />
+      <button class="btn btn-default" type="submit">Применить</button>
+    </form>
+    <div class="hint" style="padding:0 14px 12px;">Цепочка: позиция → решение → сигналы. Нажмите на market_id, чтобы открыть кейс.</div>
+  {% endcall %}
+
+  {% set _batch_count = (pp.get('total',0) if pp is defined else 0) %}
+  {% set _batch_right = "" %}
+  {% if _batch_count %}
+    {% set _batch_right = "<button class='btn btn-danger btn-sm batch-action' type='button' data-batch-op='close_all' data-batch-count='" ~ _batch_count ~ "'><span class='batch-label'>Hold to close " ~ _batch_count ~ "</span><span class='batch-progress'></span></button>" %}
+  {% endif %}
+  {% call panel.panel("Открытые позиции", "дата · рынок · исход · кол-во · ср. цена · статус", _batch_right) %}
+    {% set head %}
+      <tr>
+        <th class="nowrap"><a href="?market_id={{ f.get('market_id','') }}&status={{ f.get('status','') }}&side={{ f.get('side','') }}&size={{ pp.get('size',50) }}&pos_sort=opened_at&pos_dir={{ 'asc' if f.get('pos_sort') == 'opened_at' and f.get('pos_dir','desc') == 'desc' else 'desc' }}&trd_sort={{ f.get('trd_sort','ts') }}&trd_dir={{ f.get('trd_dir','desc') }}&pos_page=1&trd_page={{ pt.get('page',1) }}">Открыта</a></th>
+        <th class="nowrap"><a href="?market_id={{ f.get('market_id','') }}&status={{ f.get('status','') }}&side={{ f.get('side','') }}&size={{ pp.get('size',50) }}&pos_sort=market&pos_dir={{ 'asc' if f.get('pos_sort') == 'market' and f.get('pos_dir','desc') == 'desc' else 'desc' }}&trd_sort={{ f.get('trd_sort','ts') }}&trd_dir={{ f.get('trd_dir','desc') }}&pos_page=1&trd_page={{ pt.get('page',1) }}">Рынок</a></th>
+        <th class="nowrap"><a href="?market_id={{ f.get('market_id','') }}&status={{ f.get('status','') }}&side={{ f.get('side','') }}&size={{ pp.get('size',50) }}&pos_sort=outcome&pos_dir={{ 'asc' if f.get('pos_sort') == 'outcome' and f.get('pos_dir','desc') == 'desc' else 'desc' }}&trd_sort={{ f.get('trd_sort','ts') }}&trd_dir={{ f.get('trd_dir','desc') }}&pos_page=1&trd_page={{ pt.get('page',1) }}">Исход</a></th>
+        <th class="nowrap"><a href="?market_id={{ f.get('market_id','') }}&status={{ f.get('status','') }}&side={{ f.get('side','') }}&size={{ pp.get('size',50) }}&pos_sort=qty&pos_dir={{ 'asc' if f.get('pos_sort') == 'qty' and f.get('pos_dir','desc') == 'desc' else 'desc' }}&trd_sort={{ f.get('trd_sort','ts') }}&trd_dir={{ f.get('trd_dir','desc') }}&pos_page=1&trd_page={{ pt.get('page',1) }}">Кол-во</a></th>
+        <th class="nowrap"><a href="?market_id={{ f.get('market_id','') }}&status={{ f.get('status','') }}&side={{ f.get('side','') }}&size={{ pp.get('size',50) }}&pos_sort=avg_price&pos_dir={{ 'asc' if f.get('pos_sort') == 'avg_price' and f.get('pos_dir','desc') == 'desc' else 'desc' }}&trd_sort={{ f.get('trd_sort','ts') }}&trd_dir={{ f.get('trd_dir','desc') }}&pos_page=1&trd_page={{ pt.get('page',1) }}">Ср. цена</a></th>
+        <th class="nowrap"><a href="?market_id={{ f.get('market_id','') }}&status={{ f.get('status','') }}&side={{ f.get('side','') }}&size={{ pp.get('size',50) }}&pos_sort=status&pos_dir={{ 'asc' if f.get('pos_sort') == 'status' and f.get('pos_dir','desc') == 'desc' else 'desc' }}&trd_sort={{ f.get('trd_sort','ts') }}&trd_dir={{ f.get('trd_dir','desc') }}&pos_page=1&trd_page={{ pt.get('page',1) }}">Статус</a></th>
+        <th class="nowrap">Действие</th>
+      </tr>
+    {% endset %}
+    {% set body %}
+      {% for p in positions %}
+        <tr data-case-id="{{ p[1] }}" data-href="/cases/{{ p[1] | urlencode }}">
+          <td>{{ ui.ts_1line(p[0]) }}</td>
+          <td><a href="/cases/{{ p[1] | urlencode }}" data-role="open"><code>{{ p[1] }}</code></a></td>
+          <td><code>{{ p[2] }}</code></td>
+          <td><b>{{ p[3] }}</b></td>
+          <td><b>{{ p[4] }}</b></td>
+          <td><code data-position-status>{{ p[5] }}</code></td>
+          <td>
+            <div class="paper-size" data-paper-size="1">
+              <button class="size-chip is-active" type="button" data-paper-size="1">1</button>
+              <button class="size-chip" type="button" data-paper-size="5">5</button>
+              <button class="size-chip" type="button" data-paper-size="10">10</button>
+            </div>
+            <button class="btn btn-sm trade-action" type="button" data-trade-button="1" data-action="trade" data-paper-action="close" data-case-id="{{ p[1] }}">
+              Закрыть
+            </button>
+          </td>
+        </tr>
+      {% endfor %}
+      {% if positions|length == 0 %}
+        <tr><td colspan="7" class="muted" style="padding:12px 12px;font-style:italic">Открытых симуляционных позиций пока нет.</td></tr>
+      {% endif %}
+    {% endset %}
+    {{ tbl.table(head, body, dense=true) }}
+  {% endcall %}
+
+  <div class="card">
+    <div class="card-body" style="padding:10px 14px;">
+      <div class="page-actions">
+        <span class="muted">Позиции: стр {{ pp.get('page',1) }} / {{ pp.get('pages',1) }} · всего {{ pp.get('total',0) }}</span>
+        {% if pp.get('prev_url') %}<a class="btn btn-default" href="{{ pp.get('prev_url') }}">← Назад</a>{% endif %}
+        {% if pp.get('next_url') %}<a class="btn btn-default" href="{{ pp.get('next_url') }}">Вперёд →</a>{% endif %}
+      </div>
+    </div>
+  </div>
+
+  {% call panel.panel("Последние сделки (симуляция)", "ts · рынок · outcome · side · qty · price · fee · note") %}
+    {% set head %}
+      <tr>
+        <th><a href="?market_id={{ f.get('market_id','') }}&status={{ f.get('status','') }}&side={{ f.get('side','') }}&size={{ pp.get('size',50) }}&pos_sort={{ f.get('pos_sort','opened_at') }}&pos_dir={{ f.get('pos_dir','desc') }}&trd_sort=ts&trd_dir={{ 'asc' if f.get('trd_sort') == 'ts' and f.get('trd_dir','desc') == 'desc' else 'desc' }}&pos_page={{ pp.get('page',1) }}&trd_page=1">Время</a></th>
+        <th><a href="?market_id={{ f.get('market_id','') }}&status={{ f.get('status','') }}&side={{ f.get('side','') }}&size={{ pp.get('size',50) }}&pos_sort={{ f.get('pos_sort','opened_at') }}&pos_dir={{ f.get('pos_dir','desc') }}&trd_sort=market&trd_dir={{ 'asc' if f.get('trd_sort') == 'market' and f.get('trd_dir','desc') == 'desc' else 'desc' }}&pos_page={{ pp.get('page',1) }}&trd_page=1">Рынок</a></th>
+        <th><a href="?market_id={{ f.get('market_id','') }}&status={{ f.get('status','') }}&side={{ f.get('side','') }}&size={{ pp.get('size',50) }}&pos_sort={{ f.get('pos_sort','opened_at') }}&pos_dir={{ f.get('pos_dir','desc') }}&trd_sort=outcome&trd_dir={{ 'asc' if f.get('trd_sort') == 'outcome' and f.get('trd_dir','desc') == 'desc' else 'desc' }}&pos_page={{ pp.get('page',1) }}&trd_page=1">Исход</a></th>
+        <th><a href="?market_id={{ f.get('market_id','') }}&status={{ f.get('status','') }}&side={{ f.get('side','') }}&size={{ pp.get('size',50) }}&pos_sort={{ f.get('pos_sort','opened_at') }}&pos_dir={{ f.get('pos_dir','desc') }}&trd_sort=side&trd_dir={{ 'asc' if f.get('trd_sort') == 'side' and f.get('trd_dir','desc') == 'desc' else 'desc' }}&pos_page={{ pp.get('page',1) }}&trd_page=1">Сторона</a></th>
+        <th><a href="?market_id={{ f.get('market_id','') }}&status={{ f.get('status','') }}&side={{ f.get('side','') }}&size={{ pp.get('size',50) }}&pos_sort={{ f.get('pos_sort','opened_at') }}&pos_dir={{ f.get('pos_dir','desc') }}&trd_sort=qty&trd_dir={{ 'asc' if f.get('trd_sort') == 'qty' and f.get('trd_dir','desc') == 'desc' else 'desc' }}&pos_page={{ pp.get('page',1) }}&trd_page=1">Кол-во</a></th>
+        <th><a href="?market_id={{ f.get('market_id','') }}&status={{ f.get('status','') }}&side={{ f.get('side','') }}&size={{ pp.get('size',50) }}&pos_sort={{ f.get('pos_sort','opened_at') }}&pos_dir={{ f.get('pos_dir','desc') }}&trd_sort=price&trd_dir={{ 'asc' if f.get('trd_sort') == 'price' and f.get('trd_dir','desc') == 'desc' else 'desc' }}&pos_page={{ pp.get('page',1) }}&trd_page=1">Цена</a></th>
+        <th>Комиссия</th>
+        <th>Примечание</th>
+      </tr>
+    {% endset %}
+    {% set body %}
+      {% for t in trades %}
+        <tr>
+          <td>{{ ui.ts_1line(t[0]) }}</td>
+          <td><a href="/cases/{{ t[1] | urlencode }}"><code>{{ t[1] }}</code></a></td>
+          <td><code>{{ t[2] }}</code></td>
+          <td><code>{{ t[3] }}</code></td>
+          <td><b>{{ t[4] }}</b></td>
+          <td><b>{{ t[5] }}</b></td>
+          <td><b>{{ t[6] }}</b></td>
+          <td class="muted">{{ t[7] }}</td>
+        </tr>
+      {% endfor %}
+      {% if trades|length == 0 %}
+        <tr><td colspan="8" class="muted" style="padding:12px 12px;font-style:italic">Истории симуляционных сделок пока нет.</td></tr>
+      {% endif %}
+    {% endset %}
+    {{ tbl.table(head, body, dense=true) }}
+  {% endcall %}
+
+  <div class="card">
+    <div class="card-body" style="padding:10px 14px;">
+      <div class="page-actions">
+        <span class="muted">Сделки: стр {{ pt.get('page',1) }} / {{ pt.get('pages',1) }} · всего {{ pt.get('total',0) }}</span>
+        {% if pt.get('prev_url') %}<a class="btn btn-default" href="{{ pt.get('prev_url') }}">← Назад</a>{% endif %}
+        {% if pt.get('next_url') %}<a class="btn btn-default" href="{{ pt.get('next_url') }}">Вперёд →</a>{% endif %}
+      </div>
+    </div>
+  </div>
+
+  {% call panel.panel("Cumulative PnL (последние точки)") %}
+    {% set head = "<tr><th>Время</th><th class='tr'>Event</th><th class='tr'>Cumulative</th></tr>" %}
+    {% set body %}
+      {% for p in (pnl_ts[-10:] if pnl_ts|length > 10 else pnl_ts) %}
+        <tr>
+          <td>{{ ui.ts_1line(p.ts) }}</td>
+          <td class="tr mono">{{ fnum(p.event_pnl, 3) }}</td>
+          <td class="tr mono"><b>{{ fnum(p.cumulative_pnl, 3) }}</b></td>
+        </tr>
+      {% endfor %}
+      {% if pnl_ts|length == 0 %}
+        <tr><td colspan="3" class="muted" style="padding:12px 12px;font-style:italic">Нет данных</td></tr>
+      {% endif %}
+    {% endset %}
+    {{ tbl.table(head, body, dense=true) }}
+  {% endcall %}
+{% endblock %}

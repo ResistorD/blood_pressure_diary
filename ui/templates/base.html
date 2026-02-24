@@ -1,0 +1,61 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>{% block title %}PolySyndicate{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css"/>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div>
+        <h1 class="mb-8">PolySyndicate</h1>
+        <div class="muted">{% block subtitle %}Панель мониторинга: сигналы → решения → paper-позиции.{% endblock %}</div>
+      </div>
+      <div class="text-right">
+        {% if settings is defined and settings %}
+          <div class="muted">Режим: <b>{{ settings.mode }}</b></div>
+        {% endif %}
+        {% if run_id is defined and run_id %}
+          <div class="muted">Run: <code>{{ run_id }}</code></div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card nav">
+      <a href="/">Обзор</a> ·
+      <a href="/cases">Возможности</a> ·
+      <a href="/signals">Сигналы</a> ·
+      <a href="/decisions">Решения</a> ·
+      <a href="/positions">Позиции (paper)</a> ·
+      <a href="/markets">Рынки</a>
+    </div>
+
+    {% if paused is defined %}
+    <div class="card controls">
+      <div class="row-between">
+        <div>
+          <span class="badge {{ 'badge-off' if paused else 'badge-on' }}">
+            {{ 'ПАУЗА' if paused else 'РАБОТАЕТ' }}
+          </span>
+          {% if settings is defined and settings %}
+            <span class="muted ml-10">Режим: <b>{{ settings.mode }}</b></span>
+          {% endif %}
+        </div>
+        <div class="actions-row">
+          <form method="post" action="/control/toggle_paused">
+            <button class="btn {{ 'btn-on' if paused else 'btn-off' }}">
+              {{ 'Снять с паузы' if paused else 'Пауза' }}
+            </button>
+          </form>
+          {% block controls_right %}{% endblock %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {% block content %}
+  {% import "_ui_macros.html" as ui %}{% endblock %}
+  </div>
+</body>
+</html>

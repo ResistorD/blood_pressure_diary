@@ -1,0 +1,5 @@
+{% macro nav_badge(count, kind="", name="") -%}
+  {% if count %}
+    <span class="nav-badge{% if kind %} {{ kind }}{% endif %}"{% if name %} data-nav-count="{{ name }}"{% endif %}>{{ count }}</span>
+  {% endif %}
+{%- endmacro %}

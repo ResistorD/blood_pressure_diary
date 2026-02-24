@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="light">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>PolySyndicate · Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@300;400;500;600&family=Geist:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --bg:          #F2EFE8;
+  --bg-deep:     #E8E4DC;
+  --surface:     #FDFAF5;
+  --surface-md:  #F0ECE3;
+  --surface-lg:  #E6E2D8;
+  --surface-hover:#DEDAD0;
+  --border:      rgba(60,50,35,0.09);
+  --border-md:   rgba(60,50,35,0.16);
+  --border-hi:   rgba(60,50,35,0.28);
+  --text:        #2E2A22;
+  --text-2:      rgba(46,42,34,0.60);
+  --text-3:      rgba(46,42,34,0.35);
+  --text-bright: #1A1713;
+  --green:       #2E7D45;
+  --green-dim:   rgba(46,125,69,0.12);
+  --red:         #B03030;
+  --red-dim:     rgba(176,48,48,0.10);
+  --yellow:      #906820;
+  --yellow-dim:  rgba(144,104,32,0.12);
+  --blue:        #2A6E9E;
+  --blue-dim:    rgba(42,110,158,0.12);
+  --purple:      #5E4A96;
+  --purple-dim:  rgba(94,74,150,0.12);
+  --accent:      #2E7D45;
+  --accent-dim:  rgba(46,125,69,0.10);
+  --r-sm: 6px; --r-md: 10px; --r-lg: 14px; --r-xl: 18px;
+  --font-ui:   'Geist', -apple-system, sans-serif;
+  --font-mono: 'Geist Mono', 'SF Mono', monospace;
+  --shadow:    0 2px 12px rgba(0,0,0,0.12);
+}
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+html { background:var(--bg); color:var(--text); font-family:var(--font-ui); font-size:13px; }
+a { color:var(--blue); text-decoration:none; }
+a:hover { color:var(--text-bright); }
+code { font-family:var(--font-mono); font-size:11.5px; color:var(--blue); }
+
+/* ── App shell ── */
+.app { display:grid; grid-template-columns:200px 1fr; grid-template-rows:40px 1fr; min-height:100vh; }
+
+/* ── Titlebar ── */
+.titlebar {
+  grid-column:1/-1;
+  background:rgba(242,239,232,0.97);
+  border-bottom:1px solid var(--border-md);
+  display:flex; align-items:center; padding:0 14px; gap:10px;
+  position:sticky; top:0; z-index:100;
+  backdrop-filter:blur(16px);
+}
+.traffic { display:flex; gap:6px; }
+.dot { width:11px; height:11px; border-radius:50%; }
+.dot-r{background:#ff5f57;} .dot-y{background:#febc2e;} .dot-g{background:#28c840;}
+.titlebar-title { position:absolute; left:50%; transform:translateX(-50%); font-size:12.5px; font-weight:500; color:var(--text-2); letter-spacing:.01em; }
+.titlebar-right { margin-left:auto; display:flex; align-items:center; gap:8px; }
+.mode-badge { display:flex; align-items:center; gap:5px; padding:2px 9px; border-radius:20px; font-size:10.5px; font-weight:600; font-family:var(--font-mono); letter-spacing:.05em; }
+.mode-badge.demo { background:var(--accent-dim); color:var(--green); border:1px solid rgba(87,168,107,.28); }
+.pulse { width:5px; height:5px; border-radius:50%; background:currentColor; animation:pulse 2s ease infinite; }
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.35;transform:scale(.65)} }
+.refresh-hint { font-size:10.5px; color:var(--text-3); font-family:var(--font-mono); }
+
+/* ── Sidebar ── */
+.sidebar {
+  background:var(--bg-deep);
+  border-right:1px solid var(--border-md);
+  padding:10px 0;
+  display:flex; flex-direction:column;
+  overflow-y:auto;
+}
+.nav-section { padding:10px 14px 3px; font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.1em; color:var(--text-3); }
+.nav-item {
+  display:flex; align-items:center; gap:9px;
+  padding:6px 14px; font-size:12.5px; color:var(--text-2);
+  cursor:pointer; border-left:2px solid transparent;
+  transition:all .12s; text-decoration:none;
+}
+.nav-item:hover { background:var(--surface); color:var(--text); border-left-color:var(--border-hi); }
+.nav-item.active { color:var(--green); border-left-color:var(--green); background:var(--accent-dim); }
+.nav-icon { width:15px; text-align:center; font-size:13px; flex-shrink:0; opacity:.8; }
+.nav-badge { margin-left:auto; font-size:10px; font-weight:600; background:var(--surface-lg); color:var(--text-2); padding:1px 5px; border-radius:8px; font-family:var(--font-mono); }
+.nav-badge.alert { background:var(--red-dim); color:var(--red); }
+
+/* ── Main ── */
+.main { overflow-y:auto; padding:18px 20px 28px; display:flex; flex-direction:column; gap:14px; }
+
+/* ── Page header ── */
+.page-header { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:2px; }
+.page-title { font-size:20px; font-weight:700; color:var(--text-bright); letter-spacing:-.02em; }
+.page-sub { font-size:11px; color:var(--text-3); margin-top:2px; font-family:var(--font-mono); }
+
+/* ── KPI grid ── */
+.kpi-grid { display:grid; grid-template-columns:repeat(6,1fr); gap:10px; }
+.kpi {
+  background:var(--surface);
+  border:1px solid var(--border-md);
+  border-radius:var(--r-lg);
+  padding:11px 13px 12px;
+  position:relative; overflow:hidden;
+  transition:border-color .15s, box-shadow .15s;
+  cursor:default;
+}
+.kpi::after { content:''; position:absolute; top:0; left:0; right:0; height:2px; background:var(--kpi-color, var(--accent)); border-radius:var(--r-lg) var(--r-lg) 0 0; }
+.kpi:hover { border-color:var(--border-hi); box-shadow:0 4px 18px rgba(0,0,0,.35); }
+.kpi-label { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.09em; color:var(--text-3); margin-bottom:6px; }
+.kpi-value { font-size:24px; font-weight:700; color:var(--text-bright); line-height:1; font-family:var(--font-mono); letter-spacing:-.03em; }
+.kpi-value.pos { color:var(--green); }
+.kpi-value.neg { color:var(--red); }
+.kpi-value.muted { color:var(--text-2); }
+.kpi-delta { font-size:10px; color:var(--text-3); margin-top:4px; font-family:var(--font-mono); }
+
+/* ── Panel ── */
+.panel {
+  background:var(--surface);
+  border:1px solid var(--border-md);
+  border-radius:var(--r-xl);
+  overflow:hidden;
+  box-shadow:0 1px 6px rgba(60,50,35,.08);
+}
+.panel-head {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:9px 14px; border-bottom:1px solid var(--border);
+}
+.panel-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.07em; color:var(--text); }
+.panel-sub { font-size:10px; color:var(--text-3); margin-top:1px; }
+.panel-action { font-size:11px; color:var(--blue); cursor:pointer; opacity:.8; }
+.panel-action:hover { opacity:1; }
+.panel-body { padding:0; }
+
+/* ── Tables ── */
+.tbl-wrap { overflow-x:auto; }
+table { width:100%; border-collapse:collapse; }
+thead th {
+  background:var(--surface-md);
+  padding:6px 12px;
+  font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.07em;
+  color:var(--text-2); border-bottom:1px solid var(--border-md);
+  text-align:left; white-space:nowrap;
+}
+tbody tr { border-bottom:1px solid var(--border); transition:background .08s; }
+tbody tr:last-child { border-bottom:none; }
+tbody tr:hover { background:var(--surface-md); }
+tbody td { padding:7px 12px; font-size:12px; color:var(--text); vertical-align:middle; }
+.mono { font-family:var(--font-mono); font-size:11.5px; }
+.tr { text-align:right; }
+.muted { color:var(--text-3); }
+.nowrap { white-space:nowrap; }
+.val-pos { color:var(--green); }
+.val-neg { color:var(--red); }
+.val-zero { color:var(--text-3); }
+.ellipsis { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:200px; display:inline-block; vertical-align:middle; }
+
+/* ── Badges ── */
+.badge { display:inline-flex; align-items:center; gap:3px; padding:2px 7px; border-radius:4px; font-size:10px; font-weight:700; font-family:var(--font-mono); letter-spacing:.04em; text-transform:uppercase; white-space:nowrap; border:1px solid transparent; }
+.badge-green  { background:var(--green-dim);  color:var(--green);  border-color:rgba(87,168,107,.22); }
+.badge-red    { background:var(--red-dim);    color:var(--red);    border-color:rgba(201,100,100,.22); }
+.badge-yellow { background:var(--yellow-dim); color:var(--yellow); border-color:rgba(201,150,60,.22); }
+.badge-blue   { background:var(--blue-dim);   color:var(--blue);   border-color:rgba(107,158,196,.22); }
+.badge-purple { background:var(--purple-dim); color:var(--purple); border-color:rgba(153,128,196,.22); }
+.badge-gray   { background:var(--surface-lg); color:var(--text-2); border-color:var(--border-md); }
+.badge-accent { background:var(--accent-dim); color:var(--green);  border-color:rgba(87,168,107,.22); }
+
+/* ── 2-col grids ── */
+.grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.grid-3-2 { display:grid; grid-template-columns:1.5fr 1fr; gap:14px; }
+
+/* ── Signal list ── */
+.signal-list { display:flex; flex-direction:column; }
+.signal-item { display:flex; gap:11px; padding:9px 14px; border-bottom:1px solid var(--border); transition:background .08s; align-items:flex-start; }
+.signal-item:last-child { border-bottom:none; }
+.signal-item:hover { background:var(--surface-md); }
+.sig-dot { width:6px; height:6px; border-radius:50%; margin-top:4px; flex-shrink:0; }
+.sig-content { flex:1; min-width:0; }
+.sig-top { display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+.sig-agent { font-size:10.5px; color:var(--text-3); font-family:var(--font-mono); }
+.sig-time { font-size:10.5px; color:var(--text-3); font-family:var(--font-mono); margin-left:auto; white-space:nowrap; }
+.sig-explain { font-size:11px; color:var(--text-2); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+/* ── Progress ── */
+.prog-track { height:3px; background:rgba(60,50,35,.08); border-radius:2px; overflow:hidden; width:80px; }
+.prog-fill { height:100%; border-radius:2px; }
+
+/* ── Health grid ── */
+.health-rows { padding:10px 14px; display:flex; flex-direction:column; gap:8px; }
+.health-row { display:flex; align-items:center; gap:10px; }
+.health-name { flex:0 0 150px; font-size:12px; color:var(--text); }
+.health-status { flex:0 0 76px; }
+.health-bar { flex:1; }
+.health-val { flex:0 0 32px; text-align:right; font-size:10.5px; color:var(--text-3); font-family:var(--font-mono); }
+
+/* ── Chart ── */
+.chart-wrap { padding:12px 14px 14px; height:170px; position:relative; }
+canvas { width:100%!important; height:100%!important; }
+
+/* ── Jump form ── */
+.jump-form { display:flex; gap:8px; align-items:center; padding:10px 14px; }
+.jump-input {
+  flex:1; background:var(--surface-md); border:1px solid var(--border-md);
+  border-radius:var(--r-md); padding:6px 10px; color:var(--text);
+  font-family:var(--font-mono); font-size:12px; outline:none;
+}
+.jump-input::placeholder { color:var(--text-3); }
+.jump-input:focus { border-color:var(--border-hi); }
+.jump-hint { padding:0 14px 10px; font-size:11px; color:var(--text-3); }
+.btn { display:inline-flex; align-items:center; gap:5px; padding:6px 12px; border-radius:var(--r-md); font-size:12px; font-weight:600; cursor:pointer; border:1px solid transparent; font-family:var(--font-ui); transition:all .12s; }
+.btn-primary { background:var(--green); color:#fff; border-color:transparent; }
+.btn-primary:hover { filter:brightness(1.1); }
+.btn-default { background:var(--surface-md); color:var(--text); border-color:var(--border-md); }
+.btn-default:hover { border-color:var(--border-hi); color:var(--text-bright); }
+
+/* ── Decision quality inline section ── */
+.dq-section { padding:12px 14px; }
+.dq-title { font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--text-3); margin-bottom:8px; }
+
+/* ── scrollbar ── */
+::-webkit-scrollbar { width:5px; height:5px; }
+::-webkit-scrollbar-thumb { background:rgba(60,50,35,.10); border-radius:3px; }
+
+/* ── animations ── */
+@keyframes fadeUp { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+.main > * { animation:fadeUp .3s ease both; }
+.main > *:nth-child(1){animation-delay:.00s}
+.main > *:nth-child(2){animation-delay:.04s}
+.main > *:nth-child(3){animation-delay:.08s}
+.main > *:nth-child(4){animation-delay:.12s}
+.main > *:nth-child(5){animation-delay:.16s}
+.main > *:nth-child(6){animation-delay:.20s}
+.main > *:nth-child(7){animation-delay:.24s}
+.main > *:nth-child(8){animation-delay:.28s}
+.main > *:nth-child(9){animation-delay:.32s}
+.main > *:nth-child(10){animation-delay:.36s}
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- TITLEBAR -->
+  <div class="titlebar">
+    <div class="traffic">
+      <div class="dot dot-r"></div>
+      <div class="dot dot-y"></div>
+      <div class="dot dot-g"></div>
+    </div>
+    <div class="titlebar-title">PolySyndicate · Dashboard</div>
+    <div class="titlebar-right">
+      <span class="refresh-hint">Обновление каждые 30 сек</span>
+      <div class="mode-badge demo"><div class="pulse"></div>DEMO</div>
+    </div>
+  </div>
+
+  <!-- SIDEBAR -->
+  <nav class="sidebar">
+    <div class="nav-section">Монитор</div>
+    <a class="nav-item active" href="#"><span class="nav-icon">⬡</span> Обзор</a>
+    <a class="nav-item" href="#"><span class="nav-icon">◈</span> Рынки <span class="nav-badge">233</span></a>
+    <a class="nav-item" href="#"><span class="nav-icon">◉</span> Сигналы <span class="nav-badge alert">5</span></a>
+    <div class="nav-section" style="margin-top:6px">Торговля</div>
+    <a class="nav-item" href="#"><span class="nav-icon">◎</span> Возможности</a>
+    <a class="nav-item" href="#"><span class="nav-icon">◧</span> Кейсы</a>
+    <a class="nav-item" href="#"><span class="nav-icon">◫</span> Позиции <span class="nav-badge">5</span></a>
+    <a class="nav-item" href="#"><span class="nav-icon">▦</span> Решения</a>
+    <div class="nav-section" style="margin-top:6px">Система</div>
+    <a class="nav-item" href="#"><span class="nav-icon">◎</span> Здоровье</a>
+    <a class="nav-item" href="#"><span class="nav-icon">≡</span> Логи</a>
+    <a class="nav-item" href="#"><span class="nav-icon">ℹ</span> О системе</a>
+  </nav>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <!-- Page header -->
+    <div class="page-header">
+      <div>
+        <div class="page-title">Обзор системы</div>
+        <div class="page-sub">Обновление каждые 30 сек</div>
+      </div>
+    </div>
+
+    <!-- KPI ROW -->
+    <div class="kpi-grid">
+      <div class="kpi" style="--kpi-color:var(--blue)">
+        <div class="kpi-label">Рынков</div>
+        <div class="kpi-value">233</div>
+        <div class="kpi-delta">cache hit 0%</div>
+      </div>
+      <div class="kpi" style="--kpi-color:var(--purple)">
+        <div class="kpi-label">Сигналов 24h</div>
+        <div class="kpi-value" style="font-size:20px">168 942</div>
+        <div class="kpi-delta">&nbsp;</div>
+      </div>
+      <div class="kpi" style="--kpi-color:var(--yellow)">
+        <div class="kpi-label">Позиций</div>
+        <div class="kpi-value">5</div>
+        <div class="kpi-delta">&nbsp;</div>
+      </div>
+      <div class="kpi" style="--kpi-color:var(--green)">
+        <div class="kpi-label">PnL (gross)</div>
+        <div class="kpi-value pos">$12.40</div>
+        <div class="kpi-delta">&nbsp;</div>
+      </div>
+      <div class="kpi" style="--kpi-color:var(--red)">
+        <div class="kpi-label">Fees</div>
+        <div class="kpi-value muted">$0.00</div>
+        <div class="kpi-delta">&nbsp;</div>
+      </div>
+      <div class="kpi" style="--kpi-color:var(--green)">
+        <div class="kpi-label">PnL (net)</div>
+        <div class="kpi-value pos">$12.40</div>
+        <div class="kpi-delta">&nbsp;</div>
+      </div>
+    </div>
+
+    <!-- DECISION QUALITY -->
+    <div class="panel">
+      <div class="panel-head">
+        <div>
+          <div class="panel-title">Decision Quality</div>
+        </div>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Closed</th>
+              <th>Win Rate</th>
+              <th>Avg Net</th>
+              <th>Profit Factor</th>
+              <th>Expectancy</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="mono">8</td>
+              <td class="mono">—</td>
+              <td class="mono">—</td>
+              <td class="mono">—</td>
+              <td class="mono">—</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- JUMP TO CASE + LAST ACTIVITY -->
+    <div class="grid-2">
+
+      <!-- Jump to case -->
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title">Перейти к кейсу</div>
+        </div>
+        <div class="jump-form">
+          <input class="jump-input" type="text" placeholder="market_id..."/>
+          <button class="btn btn-primary">Открыть</button>
+        </div>
+        <div class="jump-hint">Введите market_id и откройте кейс напрямую.</div>
+      </div>
+
+      <!-- Last activity -->
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title">Последняя активность</div>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead>
+              <tr><th>Рынок</th><th>Тип</th><th>Время</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>1237456</code></td><td class="muted">decision</td><td class="mono muted" style="font-size:10.5px">2026-02-22T21:12:41+00:00</td></tr>
+              <tr><td><code>558974</code></td><td class="muted">decision</td><td class="mono muted" style="font-size:10.5px">2026-02-22T21:12:41+00:00</td></tr>
+              <tr><td><code>566146</code></td><td class="muted">decision</td><td class="mono muted" style="font-size:10.5px">2026-02-22T21:12:41+00:00</td></tr>
+              <tr><td><code>1337788</code></td><td class="muted">decision</td><td class="mono muted" style="font-size:10.5px">2026-02-22T21:12:41+00:00</td></tr>
+              <tr><td><code>566244</code></td><td class="muted">decision</td><td class="mono muted" style="font-size:10.5px">2026-02-22T21:12:41+00:00</td></tr>
+              <tr><td><code>1367169</code></td><td class="muted">decision</td><td class="mono muted" style="font-size:10.5px">2026-02-22T21:12:41+00:00</td></tr>
+              <tr><td><code>558949</code></td><td class="muted">decision</td><td class="mono muted" style="font-size:10.5px">2026-02-22T21:12:41+00:00</td></tr>
+              <tr><td><code>1383480</code></td><td class="muted">decision</td><td class="mono muted" style="font-size:10.5px">2026-02-22T21:12:41+00:00</td></tr>
+              <tr><td><code>566246</code></td><td class="muted">decision</td><td class="mono muted" style="font-size:10.5px">2026-02-22T21:12:41+00:00</td></tr>
+              <tr><td><code>1386650</code></td><td class="muted">decision</td><td class="mono muted" style="font-size:10.5px">2026-02-22T21:12:41+00:00</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- COVERAGE -->
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">Coverage</div>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Linked decisions</th>
+              <th>Closed / Open</th>
+              <th>Closed rate</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="mono">0 / 24635 (0.0%)</td>
+              <td class="mono">0 / 0</td>
+              <td class="mono">0.0%</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- QUALITY BREAKDOWN — ACTION -->
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">Quality Breakdown — Action</div>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Action</th>
+              <th>Closed</th>
+              <th>Win Rate</th>
+              <th>Avg Net</th>
+              <th>Profit Factor</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td colspan="5" class="muted" style="padding:14px 12px;font-style:italic">нет данных</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- POSITIONS + SIGNALS -->
+    <div class="grid-2">
+
+      <!-- Active positions -->
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title">Активные позиции</div>
+          <a class="panel-action" href="#">все →</a>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Рынок</th>
+                <th>Исход</th>
+                <th class="tr">Цена</th>
+                <th class="tr">Кол-во</th>
+                <th class="tr">P&amp;L</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="ellipsis mono" style="max-width:160px">election-2025-us-pres</span></td>
+                <td><span class="badge badge-green">YES</span></td>
+                <td class="tr mono">$0.620</td>
+                <td class="tr mono">100.0</td>
+                <td class="tr mono val-pos">+$4.20</td>
+              </tr>
+              <tr>
+                <td><span class="ellipsis mono" style="max-width:160px">btc-100k-end-2025</span></td>
+                <td><span class="badge badge-yellow">NO</span></td>
+                <td class="tr mono">$0.341</td>
+                <td class="tr mono">50.0</td>
+                <td class="tr mono val-neg">−$1.80</td>
+              </tr>
+              <tr>
+                <td><span class="ellipsis mono" style="max-width:160px">fed-rate-cut-q1</span></td>
+                <td><span class="badge badge-green">YES</span></td>
+                <td class="tr mono">$0.516</td>
+                <td class="tr mono">200.0</td>
+                <td class="tr mono val-pos">+$8.00</td>
+              </tr>
+              <tr>
+                <td><span class="ellipsis mono" style="max-width:160px">recession-2025-q3</span></td>
+                <td><span class="badge badge-gray">NO</span></td>
+                <td class="tr mono">$0.280</td>
+                <td class="tr mono">75.0</td>
+                <td class="tr mono val-zero">$0.00</td>
+              </tr>
+              <tr>
+                <td><span class="ellipsis mono" style="max-width:160px">nba-finals-lakers</span></td>
+                <td><span class="badge badge-green">YES</span></td>
+                <td class="tr mono">$0.456</td>
+                <td class="tr mono">40.0</td>
+                <td class="tr mono val-pos">+$2.00</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Signals -->
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title">Последние сигналы</div>
+          <a class="panel-action" href="#">все →</a>
+        </div>
+        <div class="signal-list">
+          <div class="signal-item">
+            <div class="sig-dot" style="background:var(--accent)"></div>
+            <div class="sig-content">
+              <div class="sig-top">
+                <span class="badge badge-accent">PAIR_ARB</span>
+                <span class="sig-agent">scout</span>
+                <span class="sig-time">14:22</span>
+              </div>
+              <div class="sig-explain">Найден арбитраж: spread 0.048 (btc-100k / btc-80k)</div>
+            </div>
+          </div>
+          <div class="signal-item">
+            <div class="sig-dot" style="background:var(--yellow)"></div>
+            <div class="sig-content">
+              <div class="sig-top">
+                <span class="badge badge-yellow">ANOMALY</span>
+                <span class="sig-agent">quant</span>
+                <span class="sig-time">14:18</span>
+              </div>
+              <div class="sig-explain">Аномальное движение цены: −12.3% за 5 мин</div>
+            </div>
+          </div>
+          <div class="signal-item">
+            <div class="sig-dot" style="background:var(--green)"></div>
+            <div class="sig-content">
+              <div class="sig-top">
+                <span class="badge badge-green">PAIR_ARB</span>
+                <span class="sig-agent">logic</span>
+                <span class="sig-time">14:10</span>
+              </div>
+              <div class="sig-explain">Кластерная связь подтверждена: fed-rate группа</div>
+            </div>
+          </div>
+          <div class="signal-item">
+            <div class="sig-dot" style="background:var(--red)"></div>
+            <div class="sig-content">
+              <div class="sig-top">
+                <span class="badge badge-red">QUALITY_ALERT</span>
+                <span class="sig-agent">auditor</span>
+                <span class="sig-time">14:02</span>
+              </div>
+              <div class="sig-explain">Низкая ликвидность: recession-2025-q3 (liq &lt; 50)</div>
+            </div>
+          </div>
+          <div class="signal-item">
+            <div class="sig-dot" style="background:var(--accent)"></div>
+            <div class="sig-content">
+              <div class="sig-top">
+                <span class="badge badge-accent">PAIR_ARB</span>
+                <span class="sig-agent">scout</span>
+                <span class="sig-time">13:55</span>
+              </div>
+              <div class="sig-explain">Новая пара арбитража: election / impeachment cluster</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TOP MARKETS BEST + WORST BY NET -->
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-head"><div class="panel-title">Top Markets — Best</div></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Sum Net</th>
+                <th>Win Rate</th>
+                <th>Closed / Total</th>
+                <th>Market</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="mono val-pos">+0.9420</td>
+                <td class="mono">78.6%</td>
+                <td class="mono">11 / 14</td>
+                <td><code>fed-rate-cut-q1</code></td>
+              </tr>
+              <tr>
+                <td class="mono val-pos">+0.6100</td>
+                <td class="mono">66.7%</td>
+                <td class="mono">6 / 9</td>
+                <td><code>election-2025-us-pres</code></td>
+              </tr>
+              <tr>
+                <td class="mono val-pos">+0.3800</td>
+                <td class="mono">60.0%</td>
+                <td class="mono">3 / 5</td>
+                <td><code>nba-finals-lakers</code></td>
+              </tr>
+              <tr><td colspan="4" class="muted" style="font-style:italic;padding:8px 12px">нет данных</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><div class="panel-title">Worst by Net</div></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Sum Net</th>
+                <th>Win Rate</th>
+                <th>Closed / Total</th>
+                <th>Market</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="mono val-neg">−0.4200</td>
+                <td class="mono">33.3%</td>
+                <td class="mono">2 / 6</td>
+                <td><code>btc-100k-end-2025</code></td>
+              </tr>
+              <tr>
+                <td class="mono val-neg">−0.1800</td>
+                <td class="mono">40.0%</td>
+                <td class="mono">2 / 5</td>
+                <td><code>recession-2025-q3</code></td>
+              </tr>
+              <tr><td colspan="4" class="muted" style="font-style:italic;padding:8px 12px">нет данных</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- WORST BY WIN RATE -->
+    <div class="panel">
+      <div class="panel-head"><div class="panel-title">Worst by Win Rate</div></div>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Win Rate</th>
+              <th>Sum Net</th>
+              <th>Closed / Total</th>
+              <th>Market</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td colspan="4" class="muted" style="padding:14px 12px;font-style:italic">Нет данных (нужно минимум 5 закрытых решений на рынок)</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TOP WINNERS + LOSERS -->
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-head"><div class="panel-title">Top Winners</div></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead>
+              <tr><th>Net</th><th>Action</th><th>Market</th><th>Decision</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="mono val-pos">+0.4820</td>
+                <td class="badge badge-green" style="font-size:9.5px">PAPER_BUY</td>
+                <td><code>fed-rate-cut-q1</code></td>
+                <td class="mono muted" style="font-size:10.5px">dec-a4f2…</td>
+              </tr>
+              <tr>
+                <td class="mono val-pos">+0.3200</td>
+                <td class="badge badge-green" style="font-size:9.5px">PAPER_BUY</td>
+                <td><code>election-2025-us-pres</code></td>
+                <td class="mono muted" style="font-size:10.5px">dec-b7c1…</td>
+              </tr>
+              <tr><td colspan="4" class="muted" style="padding:8px 12px;font-style:italic">нет данных</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><div class="panel-title">Top Losers</div></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead>
+              <tr><th>Net</th><th>Action</th><th>Market</th><th>Decision</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="mono val-neg">−0.2400</td>
+                <td class="badge badge-yellow" style="font-size:9.5px">HOLD</td>
+                <td><code>btc-100k-end-2025</code></td>
+                <td class="mono muted" style="font-size:10.5px">dec-e9a3…</td>
+              </tr>
+              <tr><td colspan="4" class="muted" style="padding:8px 12px;font-style:italic">нет данных</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- PNL CHART + HEALTH -->
+    <div class="grid-3-2">
+
+      <div class="panel">
+        <div class="panel-head"><div class="panel-title">P&amp;L Timeseries</div></div>
+        <div class="chart-wrap">
+          <canvas id="pnl-chart"></canvas>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><div class="panel-title">Состояние компонентов</div></div>
+        <div class="health-rows">
+          <div class="health-row">
+            <div class="health-name">🔄 Ingest</div>
+            <div class="health-status"><span class="badge badge-green">Running</span></div>
+            <div class="health-bar"><div class="prog-track"><div class="prog-fill" style="width:95%;background:var(--green)"></div></div></div>
+            <div class="health-val">95%</div>
+          </div>
+          <div class="health-row">
+            <div class="health-name">🤖 Agents</div>
+            <div class="health-status"><span class="badge badge-green">Active</span></div>
+            <div class="health-bar"><div class="prog-track"><div class="prog-fill" style="width:88%;background:var(--green)"></div></div></div>
+            <div class="health-val">88%</div>
+          </div>
+          <div class="health-row">
+            <div class="health-name">🎯 Decision Engine</div>
+            <div class="health-status"><span class="badge badge-green">Running</span></div>
+            <div class="health-bar"><div class="prog-track"><div class="prog-fill" style="width:92%;background:var(--green)"></div></div></div>
+            <div class="health-val">92%</div>
+          </div>
+          <div class="health-row">
+            <div class="health-name">💾 Database</div>
+            <div class="health-status"><span class="badge badge-green">Healthy</span></div>
+            <div class="health-bar"><div class="prog-track"><div class="prog-fill" style="width:98%;background:var(--green)"></div></div></div>
+            <div class="health-val">98%</div>
+          </div>
+          <div class="health-row">
+            <div class="health-name">⚡ Cache</div>
+            <div class="health-status"><span class="badge badge-green">Hot</span></div>
+            <div class="health-bar"><div class="prog-track"><div class="prog-fill" style="width:78%;background:var(--green)"></div></div></div>
+            <div class="health-val">78%</div>
+          </div>
+          <div class="health-row">
+            <div class="health-name">🛡️ Risk Gate</div>
+            <div class="health-status"><span class="badge badge-yellow">Warn</span></div>
+            <div class="health-bar"><div class="prog-track"><div class="prog-fill" style="width:61%;background:var(--yellow)"></div></div></div>
+            <div class="health-val">61%</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+// Draw PnL chart
+function drawPnl() {
+  const canvas = document.getElementById('pnl-chart');
+  if (!canvas) return;
+  const dpr = window.devicePixelRatio || 1;
+  const W = canvas.parentElement.offsetWidth - 28;
+  const H = canvas.parentElement.offsetHeight - 26;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  const series = [0,0.5,0.3,1.1,0.9,1.8,1.6,2.4,2.2,3.1,2.8,3.6,4.2,4.0,4.8,5.2,5.0,6.1,5.8,6.8,7.2,7.0,8.1,8.4,8.2,9.3,9.8,10.2,10.0,11.1,10.8,11.6,11.4,12.4];
+  const min = Math.min(...series), max = Math.max(...series);
+  const range = max - min || 1;
+  const pad = { l:4, r:4, t:8, b:8 };
+  const cw = W - pad.l - pad.r;
+  const ch = H - pad.t - pad.b;
+  const toX = i => pad.l + (i / (series.length - 1)) * cw;
+  const toY = v => pad.t + ch - ((v - min) / range) * ch;
+  const pts = series.map((v,i) => ({ x: toX(i), y: toY(v) }));
+
+  // Gradient fill
+  const grad = ctx.createLinearGradient(0, pad.t, 0, H - pad.b);
+  grad.addColorStop(0, 'rgba(46,125,69,0.20)');
+  grad.addColorStop(0.6, 'rgba(46,125,69,0.04)');
+  grad.addColorStop(1, 'rgba(87,168,107,0)');
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, H - pad.b);
+  pts.forEach(p => ctx.lineTo(p.x, p.y));
+  ctx.lineTo(pts[pts.length-1].x, H - pad.b);
+  ctx.closePath();
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  pts.forEach((p,i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+  ctx.strokeStyle = '#2E7D45';
+  ctx.lineWidth = 1.8;
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+
+  // Endpoint dot
+  const last = pts[pts.length - 1];
+  ctx.beginPath(); ctx.arc(last.x, last.y, 7, 0, Math.PI*2);
+  ctx.fillStyle = 'rgba(46,125,69,0.18)'; ctx.fill();
+  ctx.beginPath(); ctx.arc(last.x, last.y, 3.5, 0, Math.PI*2);
+  ctx.fillStyle = '#2E7D45'; ctx.fill();
+}
+
+window.addEventListener('load', drawPnl);
+window.addEventListener('resize', drawPnl);
+</script>
+
+</body>
+</html>

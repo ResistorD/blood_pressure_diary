@@ -1,0 +1,38 @@
+{% macro paper_buttons(case_id, disabled_open=false, disabled_close=false) -%}
+  {% if not case_id %}
+    <span class="muted">—</span>
+  {% else %}
+    <div class="btn-group">
+      <div class="paper-size" data-paper-size="1">
+        <button class="size-chip is-active" type="button" data-paper-size="1">1</button>
+        <button class="size-chip" type="button" data-paper-size="5">5</button>
+        <button class="size-chip" type="button" data-paper-size="10">10</button>
+      </div>
+      <div class="paper-safe" data-safe-size>
+        Макс. безопасный: Покупка <span data-safe-buy>—</span> / Закрытие <span data-safe-sell>—</span>
+      </div>
+      <button class="btn btn-success btn-sm trade-action" type="button"
+              data-trade-button="1" data-action="trade" data-paper-action="buy" data-case-id="{{ case_id }}"
+              {% if disabled_open %} disabled{% endif %}>
+        Откр.
+      </button>
+      <button class="btn btn-default btn-sm explain-trigger" type="button"
+              data-explain-trigger data-case-id="{{ case_id }}" data-paper-action="buy">
+        ?
+      </button>
+      <button class="btn btn-default btn-sm preview-trigger" type="button"
+              data-preview-trigger data-case-id="{{ case_id }}" data-paper-action="buy">
+        Превью
+      </button>
+      <button class="btn btn-danger btn-sm trade-action" type="button"
+              data-trade-button="1" data-action="trade" data-paper-action="close" data-case-id="{{ case_id }}"
+              {% if disabled_close %} disabled{% endif %}>
+        Закр.
+      </button>
+      <button class="btn btn-default btn-sm explain-trigger" type="button"
+              data-explain-trigger data-case-id="{{ case_id }}" data-paper-action="close">
+        ?
+      </button>
+    </div>
+  {% endif %}
+{%- endmacro %}
