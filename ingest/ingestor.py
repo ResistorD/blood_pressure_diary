@@ -15,11 +15,26 @@ class Ingestor:
         self.repo = repo
         self.client = client
         self.logger = logging.getLogger(__name__)
+        self._backfill_queue: list[str] = []
+
+    def enqueue_backfill_market(self, market_id: str) -> bool:
+        mid = str(market_id or "").strip()
+        if not mid:
+            return False
+        if mid in self._backfill_queue:
+            return False
+        self._backfill_queue.append(mid)
+        return True
 
     def ingest(self) -> Tuple[int, int]:
         BACKFILL_MAX = 10
         BACKFILL_TTL_SEC = 600
         backfill_ids: list[str] = []
+        if self._backfill_queue:
+            for mid in self._backfill_queue:
+                if mid not in backfill_ids:
+                    backfill_ids.append(mid)
+            self._backfill_queue = []
         try:
             with self.repo.conn() as con:
                 rows = con.execute(

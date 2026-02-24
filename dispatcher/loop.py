@@ -154,6 +154,7 @@ class MainLoop:
         dropped_no_clob_tokens = 0
         source_counts: dict[str, int] = {"cases": 0, "positions": 0, "pinned": 0}
         unknown_samples: list[str] = []
+        backfill_enqueued = 0
         if not unique:
             return targets, {
                 "sources": source_counts,
@@ -174,6 +175,12 @@ class MainLoop:
                     dropped_unknown_market_id += 1
                     if len(unknown_samples) < 5:
                         unknown_samples.append(mid)
+                    if hasattr(self, "ingestor") and hasattr(self.ingestor, "enqueue_backfill_market"):
+                        try:
+                            if self.ingestor.enqueue_backfill_market(mid):
+                                backfill_enqueued += 1
+                        except Exception:
+                            pass
                     continue
                 try:
                     raw = json.loads(raw_json)
@@ -199,18 +206,17 @@ class MainLoop:
         except Exception:
             log.exception("orderbook targets build failed")
         if dropped_unknown_market_id:
-            log.warning(
-                "orderbook targets: sources=%s total_ids=%s unknown_ids=%s sample=%s",
-                source_counts,
-                len(unique),
-                dropped_unknown_market_id,
-                unknown_samples,
-            )
+            msg = "orderbook targets: sources=%s total_ids=%s unknown_ids=%s sample=%s backfill_enqueued=%s"
+            if dropped_unknown_market_id <= 2:
+                log.info(msg, source_counts, len(unique), dropped_unknown_market_id, unknown_samples, backfill_enqueued)
+            else:
+                log.warning(msg, source_counts, len(unique), dropped_unknown_market_id, unknown_samples, backfill_enqueued)
         return targets, {
             "sources": source_counts,
             "dropped_unknown_market_id": dropped_unknown_market_id,
             "dropped_no_tokens": dropped_no_tokens,
             "dropped_no_clob_tokens": dropped_no_clob_tokens,
+            "backfill_enqueued": backfill_enqueued,
         }
 
     def stop(self) -> None:
