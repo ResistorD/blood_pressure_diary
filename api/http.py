@@ -803,6 +803,12 @@ def create_app(*, settings, repo, bus) -> FastAPI:
         for idx, c in enumerate(rows):
             c["_base_order"] = idx
         _apply_prio_sort()
+        if os.getenv("PS_DEMO") != "1":
+            rows = [
+                x for x in rows
+                if str(x.get("group_key") or "").lower() != "demo_cluster"
+                and "demo market" not in str(x.get("title") or "").lower()
+            ]
         total = len(rows)
         start = (page - 1) * size
         rows = rows[start:start + size]
@@ -835,6 +841,12 @@ def create_app(*, settings, repo, bus) -> FastAPI:
                 rows = [dict(x) for x in rows]
         except Exception:
             rows = []
+        if os.getenv("PS_DEMO") != "1":
+            rows = [
+                x for x in rows
+                if str(x.get("group_key") or "").lower() != "demo_cluster"
+                and "demo market" not in str(x.get("title") or "").lower()
+            ]
 
         by_id = {str(c.get("market_id")): c for c in (rows or []) if c.get("market_id")}
         items = []

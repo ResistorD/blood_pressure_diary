@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
+import os
 from datetime import datetime, timedelta, timezone
 from statistics import median
 from typing import Any, Dict, List, Optional
@@ -1210,6 +1211,12 @@ class ReadModelRepository:
                 return x.get("last_signal_ts") or x.get("last_snapshot_ts") or ""
 
             out.sort(key=_ts_key, reverse=True)
+            if os.getenv("PS_DEMO") != "1":
+                out = [
+                    x for x in out
+                    if str(x.get("group_key") or "").lower() != "demo_cluster"
+                    and "demo market" not in str(x.get("title") or "").lower()
+                ]
             return out
 
     def get_case_details(self, market_id: str, signals_limit: int = 200, snaps_limit: int = 80) -> dict:
