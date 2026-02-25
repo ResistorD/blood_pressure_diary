@@ -50,6 +50,7 @@
   const GUARD_DEPTH_MIN_USD = 500;
   const GUARD_BOOK_AGE_MAX = 20;
   const GUARD_MAX_SLIP_BPS = 150;
+  const EXPLAIN_MIN_EDGE_PCT = 1.5;
   const GUARD_HOLD_MS = 800;
   const AGENT_POLL_MS = 5000;
   const MICRO_EDGE_TTL = 10000;
@@ -1597,15 +1598,34 @@
       const previewClose = getPreviewData(caseId, "close");
       const safeBuy = previewBuy && previewBuy.safe_max_size_buy != null ? previewBuy.safe_max_size_buy : metrics.safe_buy;
       const safeSell = previewClose && previewClose.safe_max_size_sell != null ? previewClose.safe_max_size_sell : metrics.safe_sell;
-      const safeTxt = `${safeBuy != null ? Math.floor(Number(safeBuy)) : "—"}/${safeSell != null ? Math.floor(Number(safeSell)) : "—"}`;
-      const guardReasons = [];
-      if (state.paused) guardReasons.push("PAUSED");
-      if (metrics.book_age_s != null && metrics.book_age_s > GUARD_BOOK_AGE_MAX) guardReasons.push("STALE_BOOK");
-      if (metrics.spread_pct != null && Number(metrics.spread_pct) > GUARD_SPREAD_MAX) guardReasons.push("WIDE_SPREAD");
-      if (depthMin != null && depthMin < GUARD_DEPTH_MIN_USD) guardReasons.push("LOW_DEPTH");
-      const guardBadges = guardReasons.length
-        ? guardReasons.map((r) => `<span class="badge badge-yellow">${r}</span>`).join("")
-        : "";
+      const safeVal = safeBuy != null ? safeBuy : safeSell;
+      const safeTxt = safeVal != null ? `$${Math.floor(Number(safeVal))}` : "—";
+      const rowStale = row.classList.contains("row-age-bad");
+      const explainEdgeBad = !explain || explain.type === "NONE" || (explain.edge_pct != null && Number(explain.edge_pct) < EXPLAIN_MIN_EDGE_PCT);
+
+      const buildReasons = (action) => {
+        const reasons = [];
+        if (state.paused) reasons.push({ code: "PAUSED", title: "Execution paused" });
+        if (rowStale || (metrics.book_age_s != null && metrics.book_age_s > GUARD_BOOK_AGE_MAX)) {
+          reasons.push({ code: "STALE_BOOK", title: "Orderbook stale" });
+        }
+        if (metrics.spread_pct != null && Number(metrics.spread_pct) > GUARD_SPREAD_MAX) {
+          reasons.push({ code: "WIDE_SPREAD", title: "Spread too wide" });
+        }
+        const preview = action === "close" ? previewClose : previewBuy;
+        if ((depthMin != null && depthMin < GUARD_DEPTH_MIN_USD) ||
+            (preview && preview.slip_bps != null && Math.abs(Number(preview.slip_bps)) > GUARD_MAX_SLIP_BPS)) {
+          reasons.push({ code: "LOW_DEPTH", title: "Low depth / high impact" });
+        }
+        if (explainEdgeBad) {
+          reasons.push({ code: "NO_EXPLAIN_EDGE", title: "No explain edge" });
+        }
+        return reasons;
+      };
+      const buyReasons = buildReasons("buy");
+      const sellReasons = buildReasons("close");
+      const renderBadges = (reasons) =>
+        reasons.map((r) => `<span class="badge badge-yellow" title="${escapeHtml(r.title)}">${r.code}</span>`).join("");
 
       const card = document.createElement("div");
       card.className = "opps-card";
@@ -1618,12 +1638,13 @@
         </div>
         <div class="opps-title">${escapeHtml(title)}</div>
         <div class="opps-metric">spr ${spreadTxt} · book ${bookAge} · depth ${depthTxt}</div>
-        <div class="opps-status mono">BOOK ${bookAge} · SPREAD ${spreadTxt} · DEPTH ${depthStatus} · SAFE ${safeTxt}</div>
+        <div class="opps-status mono">BOOK ${bookAge} | SPREAD ${spreadTxt} | DEPTH ${depthStatus} | SAFE ${safeTxt}</div>
         <div class="opps-why">${escapeHtml(why)}</div>
         <div class="opps-actions">
-          <button class="btn btn-success btn-sm trade-action" type="button" data-paper-action="buy" data-case-id="${escapeHtml(caseId)}">BUY</button>
-          <button class="btn btn-danger btn-sm trade-action" type="button" data-paper-action="close" data-case-id="${escapeHtml(caseId)}">SELL</button>
-          ${guardBadges}
+          <button class="btn btn-success btn-sm trade-action" type="button" data-paper-action="buy" data-case-id="${escapeHtml(caseId)}" ${buyReasons.length ? "disabled" : ""}>BUY</button>
+          ${renderBadges(buyReasons)}
+          <button class="btn btn-danger btn-sm trade-action" type="button" data-paper-action="close" data-case-id="${escapeHtml(caseId)}" ${sellReasons.length ? "disabled" : ""}>SELL</button>
+          ${renderBadges(sellReasons)}
           <button class="pill" type="button" data-opps-why-toggle>Why…</button>
         </div>
         <div class="opps-why-details">${escapeHtml(why)}</div>
