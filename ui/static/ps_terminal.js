@@ -2415,7 +2415,26 @@
         body.classList.remove("has-global-hscroll");
         return;
       }
-      const needs = active.scrollWidth > active.clientWidth + 1;
+      const host = active;
+      const table = host.querySelector("table");
+      const needs = host.scrollWidth > host.clientWidth + 1;
+      if (window.ENABLE_STICKY_XSCROLL_DEBUG) {
+        console.log(
+          "[xscroll]",
+          "host",
+          !!host,
+          "bar",
+          !!bar,
+          "hostW",
+          host.clientWidth,
+          host.scrollWidth,
+          "tableW",
+          table ? table.clientWidth : null,
+          table ? table.scrollWidth : null,
+          "needs",
+          needs
+        );
+      }
       if (!needs) {
         bar.style.display = "none";
         body.classList.remove("has-global-hscroll");
