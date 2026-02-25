@@ -355,7 +355,10 @@ body.is-paused .paused-banner { display: block; }
 }
 [data-xscroll="opps"] {
   overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
+[data-xscroll="opps"]::-webkit-scrollbar { height: 0; }
 [data-xscroll="opps"]::-webkit-scrollbar { height: 0; }
 [data-xscroll="opps"] { scrollbar-width: none; }
 [data-xscroll="opps"] .data-table {
