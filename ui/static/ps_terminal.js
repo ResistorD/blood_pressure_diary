@@ -2403,8 +2403,9 @@
     const bar = document.getElementById("global-hscroll");
     const inner = document.getElementById("global-hscroll-inner");
     if (!bar || !inner) return;
-    const wraps = Array.from(document.querySelectorAll("[data-table-scroll]"));
-    if (!wraps.length) return;
+    if (window.ENABLE_STICKY_XSCROLL === false) return;
+    const wrap = document.querySelector("[data-xscroll='opps']");
+    if (!wrap) return;
     let active = null;
     let syncing = false;
 
@@ -2426,19 +2427,17 @@
       body.classList.add("has-global-hscroll");
     }
 
-    wraps.forEach((wrap) => {
-      wrap.addEventListener("mouseenter", () => {
-        active = wrap;
-        updateBar();
-      });
-      wrap.addEventListener("scroll", () => {
-        if (active !== wrap) active = wrap;
-        if (syncing) return;
-        syncing = true;
-        bar.scrollLeft = wrap.scrollLeft;
-        syncing = false;
-        updateBar();
-      });
+    wrap.addEventListener("mouseenter", () => {
+      active = wrap;
+      updateBar();
+    });
+    wrap.addEventListener("scroll", () => {
+      if (active !== wrap) active = wrap;
+      if (syncing) return;
+      syncing = true;
+      bar.scrollLeft = wrap.scrollLeft;
+      syncing = false;
+      updateBar();
     });
 
     bar.addEventListener("scroll", () => {
@@ -2450,7 +2449,7 @@
     });
 
     window.addEventListener("resize", updateBar);
-    active = wraps[0];
+    active = wrap;
     updateBar();
   }
   document.addEventListener("click", (e) => {
