@@ -2471,6 +2471,41 @@
     active = wrap;
     updateBar();
   }
+
+  function setupTopXScroll() {
+    const host = document.querySelector("[data-xscroll='opps']");
+    const topBar = document.querySelector("[data-xscroll-top='opps']");
+    if (!host || !topBar) return;
+    const inner = topBar.querySelector(".xscroll-top__inner");
+    if (!inner) return;
+    let syncing = false;
+
+    function updateTop() {
+      const needs = host.scrollWidth > host.clientWidth + 1;
+      if (!needs) {
+        topBar.style.display = "none";
+        return;
+      }
+      inner.style.width = `${host.scrollWidth}px`;
+      topBar.scrollLeft = host.scrollLeft;
+      topBar.style.display = "block";
+    }
+
+    host.addEventListener("scroll", () => {
+      if (syncing) return;
+      syncing = true;
+      topBar.scrollLeft = host.scrollLeft;
+      syncing = false;
+    });
+    topBar.addEventListener("scroll", () => {
+      if (syncing) return;
+      syncing = true;
+      host.scrollLeft = topBar.scrollLeft;
+      syncing = false;
+    });
+    window.addEventListener("resize", updateTop);
+    updateTop();
+  }
   document.addEventListener("click", (e) => {
     const btn = e.target.closest("[data-edge-type]");
     if (!btn) return;
@@ -2479,6 +2514,7 @@
     fetchEdgeTrades(type);
   });
   setupGlobalHScroll();
+  setupTopXScroll();
   if (edgeTradesClose) {
     edgeTradesClose.addEventListener("click", (e) => {
       e.preventDefault();

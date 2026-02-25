@@ -62,6 +62,9 @@
   {% endcall %}
 
   {% call panel.panel("Список возможностей", "Открой кейс, чтобы увидеть сигналы, решение и состояние paper-позиции.") %}
+    <div class="xscroll-top" data-xscroll-top="opps">
+      <div class="xscroll-top__inner"></div>
+    </div>
     {% set head %}
       <tr>
         <th class="nowrap">Группа</th>

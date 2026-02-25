@@ -363,6 +363,18 @@ body.is-paused .paused-banner { display: block; }
   min-width: 100%;
   table-layout: auto;
 }
+.xscroll-top {
+  position: sticky;
+  top: var(--titlebar-h, 44px);
+  height: 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: var(--surface-md);
+  border-top: 1px solid rgba(255,255,255,0.08);
+  z-index: 20;
+  display: none;
+}
+.xscroll-top__inner { height: 1px; }
 .global-hscroll {
   position: fixed;
   left: 0;
