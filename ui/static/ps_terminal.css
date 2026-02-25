@@ -393,6 +393,67 @@ body.is-paused .paused-banner { display: block; }
 }
 .global-hscroll-inner { height: 1px; }
 body.has-global-hscroll .main { padding-bottom: 14px; }
+
+.opps-mode {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 6px;
+}
+.opps-guided {
+  margin-top: 10px;
+}
+.opps-guided-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 10px;
+}
+.opps-card {
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(0,0,0,0.12);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.opps-card-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.opps-edge {
+  font-size: 18px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+.opps-badges {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.opps-metric {
+  font-size: 11px;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+}
+.opps-why {
+  font-size: 11px;
+  color: var(--text-2);
+}
+.opps-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.opps-why-details {
+  display: none;
+  font-size: 11px;
+  color: var(--text-2);
+}
+.opps-why-details.show { display: block; }
 .micro-row {
   display: flex;
   justify-content: space-between;

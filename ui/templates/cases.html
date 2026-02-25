@@ -23,6 +23,16 @@
   {% set right = badge.badge("deprioritize: " ~ (deprioritize_active or 0), "muted") %}
   {{ page.page_header("Возможности", "Рынки с актуальными сигналами и причиной, почему кейс может быть tradeable.", right) }}
 
+  <div class="opps-mode">
+    <span class="muted small">Режим:</span>
+    <button class="pill pill-muted" type="button" data-opps-mode="terminal">Terminal</button>
+    <button class="pill pill-muted" type="button" data-opps-mode="guided">Guided</button>
+  </div>
+
+  <div class="opps-guided" data-opps-guided style="display:none;">
+    <div class="opps-guided-grid" data-opps-guided-grid></div>
+  </div>
+
   {% set kpi_items = [
     {"label":"На странице","value":(rows|default([]))|length,"subvalue":"&nbsp;","kpi_color":"var(--blue)"},
     {"label":"ОК","value":ns.ok,"subvalue":"&nbsp;","kpi_color":"var(--green)"},

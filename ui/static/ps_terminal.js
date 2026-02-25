@@ -197,6 +197,23 @@
     return "Why: —";
   }
 
+  function buildGuidedWhy(explain, micro) {
+    if (!explain || !explain.type || explain.type === "NONE") return "Why: —";
+    const pct = formatEdgePct(explain.edge_pct);
+    const warnings = (micro && micro.warnings) ? micro.warnings : [];
+    const suffix = warnings.includes("NO_ORDERBOOK") ? " · NO_BOOK" : warnings.includes("STALE_BOOK") ? " · STALE_BOOK" : "";
+    if (explain.type === "MX") return `Why: MX gap ${pct}${suffix}`;
+    if (explain.type === "IMPL") return `Why: A>B ${pct}${suffix}`;
+    if (explain.type === "OVERROUND") return `Why: Overround ${pct}${suffix}`;
+    if (explain.type === "DIVERGENCE") return `Why: Divergence ${pct}${suffix}`;
+    return `Why: ${explain.type}${suffix}`;
+  }
+
+  function formatDepthPair(a, b) {
+    if (a == null || b == null) return "—";
+    return `${formatUsdCompact(a)}/${formatUsdCompact(b)}`;
+  }
+
   function formatClock(sec) {
     if (sec == null) return "—";
     const s = Math.max(0, Math.round(sec));
@@ -1485,6 +1502,13 @@
     return null;
   }
 
+  function getMicro(caseId) {
+    if (!caseId) return null;
+    const cached = microCache.get(caseId);
+    if (cached && cached.data) return cached.data;
+    return null;
+  }
+
   function queueExplainFetch(caseId) {
     if (!caseId) return;
     const cached = explainCache.get(caseId);
@@ -1525,6 +1549,68 @@
     if (whyEl.textContent !== line) {
       whyEl.textContent = line;
     }
+  }
+
+  function renderOppsGuided() {
+    const wrap = document.querySelector("[data-opps-guided]");
+    const grid = document.querySelector("[data-opps-guided-grid]");
+    if (!wrap || !grid) return;
+    if (localStorage.getItem("ps.opps.mode") !== "guided") return;
+    const rows = Array.from(document.querySelectorAll("tr[data-case-id]"));
+    const top = rows.slice(0, 5);
+    grid.innerHTML = "";
+    top.forEach((row) => {
+      const caseId = row.getAttribute("data-case-id");
+      if (!caseId) return;
+      const titleEl = row.querySelector("[data-role='open']");
+      const title = titleEl ? titleEl.textContent.trim() : caseId;
+      const explain = getExplain(caseId);
+      const micro = getMicro(caseId);
+      const edgePct = explain && explain.edge_pct != null ? formatEdgePct(explain.edge_pct) : "—";
+      const explainType = explain && explain.type ? String(explain.type) : "NONE";
+      const badges = [];
+      if (explainType) badges.push(explainType);
+      const metrics = {
+        age_s: null,
+        spread_pct: getSpreadPctFromRow(row),
+        liq_usd: null,
+        depth_ask_1pct: micro ? micro.depth_ask_1pct_usd : null,
+        depth_bid_1pct: micro ? micro.depth_bid_1pct_usd : null,
+        book_age_s: micro ? micro.book_age_s : null,
+        safe_buy: micro ? micro.safe_max_size_buy : null,
+        safe_sell: micro ? micro.safe_max_size_sell : null,
+        warnings: micro ? micro.warnings || [] : [],
+      };
+      const label = pickEdgeLabel(metrics);
+      if (label && label.text) badges.push(label.text);
+      if (metrics.warnings && metrics.warnings.includes("NO_ORDERBOOK")) badges.push("NO_BOOK");
+      if (metrics.warnings && metrics.warnings.includes("STALE_BOOK")) badges.push("STALE_BOOK");
+      const spreadTxt = formatSpreadPct(metrics.spread_pct);
+      const bookAge = metrics.book_age_s != null ? formatAgeCompact(metrics.book_age_s) : "—";
+      const depthTxt = formatDepthPair(metrics.depth_ask_1pct, metrics.depth_bid_1pct);
+      const why = buildGuidedWhy(explain, micro);
+
+      const card = document.createElement("div");
+      card.className = "opps-card";
+      card.innerHTML = `
+        <div class="opps-card-top">
+          <div class="opps-edge">${edgePct}</div>
+          <div class="opps-badges">
+            ${badges.slice(0, 2).map((b) => `<span class="badge badge-gray">${escapeHtml(b)}</span>`).join("")}
+          </div>
+        </div>
+        <div class="opps-title">${escapeHtml(title)}</div>
+        <div class="opps-metric">spr ${spreadTxt} · book ${bookAge} · depth ${depthTxt}</div>
+        <div class="opps-why">${escapeHtml(why)}</div>
+        <div class="opps-actions">
+          <button class="btn btn-success btn-sm trade-action" type="button" data-paper-action="buy" data-case-id="${escapeHtml(caseId)}">BUY</button>
+          <button class="btn btn-danger btn-sm trade-action" type="button" data-paper-action="close" data-case-id="${escapeHtml(caseId)}">SELL</button>
+          <button class="pill" type="button" data-opps-why-toggle>Why…</button>
+        </div>
+        <div class="opps-why-details">${escapeHtml(why)}</div>
+      `;
+      grid.appendChild(card);
+    });
   }
 
   async function pollCasesTop() {
@@ -1664,6 +1750,7 @@
 
         updateEdgeLine(row, item);
         updateWhyLine(row, caseId);
+        renderOppsGuided();
 
         if (explainOpenId === caseId && explainAnchor) {
           const microCached = microCache.get(caseId);
@@ -1671,7 +1758,7 @@
           renderExplainPopover(explainAnchor, row, explainOpenAction, microCached ? microCached.data : null, preview);
         }
         });
-        casesErrors = 0;
+      casesErrors = 0;
     } catch (e) {
       casesErrors += 1;
     }
@@ -2387,6 +2474,29 @@
   document.addEventListener("click", handleExplainClick);
   document.addEventListener("click", handleSizeClick);
   document.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-opps-mode]");
+    if (!btn) return;
+    e.preventDefault();
+    const mode = btn.getAttribute("data-opps-mode") || "terminal";
+    localStorage.setItem("ps.opps.mode", mode);
+    const guided = document.querySelector("[data-opps-guided]");
+    const table = document.querySelector("[data-cases-table]");
+    if (guided) guided.style.display = mode === "guided" ? "block" : "none";
+    if (table) table.style.display = mode === "guided" ? "none" : "block";
+    document.querySelectorAll("[data-opps-mode]").forEach((b) => {
+      b.classList.toggle("pill-ok", b.getAttribute("data-opps-mode") === mode);
+      b.classList.toggle("pill-muted", b.getAttribute("data-opps-mode") !== mode);
+    });
+    renderOppsGuided();
+  });
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-opps-why-toggle]");
+    if (!btn) return;
+    e.preventDefault();
+    const details = btn.closest(".opps-card")?.querySelector(".opps-why-details");
+    if (details) details.classList.toggle("show");
+  });
+  document.addEventListener("click", (e) => {
     const btn = e.target.closest("[data-paper-toggle]");
     if (!btn) return;
     e.preventDefault();
@@ -2515,6 +2625,16 @@
   });
   setupGlobalHScroll();
   setupTopXScroll();
+  const oppsMode = localStorage.getItem("ps.opps.mode") || "terminal";
+  const guided = document.querySelector("[data-opps-guided]");
+  const table = document.querySelector("[data-cases-table]");
+  if (guided) guided.style.display = oppsMode === "guided" ? "block" : "none";
+  if (table) table.style.display = oppsMode === "guided" ? "none" : "block";
+  document.querySelectorAll("[data-opps-mode]").forEach((b) => {
+    b.classList.toggle("pill-ok", b.getAttribute("data-opps-mode") === oppsMode);
+    b.classList.toggle("pill-muted", b.getAttribute("data-opps-mode") !== oppsMode);
+  });
+  renderOppsGuided();
   if (edgeTradesClose) {
     edgeTradesClose.addEventListener("click", (e) => {
       e.preventDefault();
