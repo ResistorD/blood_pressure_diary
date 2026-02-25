@@ -353,6 +353,12 @@ body.is-paused .paused-banner { display: block; }
 .table-scroll {
   overflow-x: auto;
 }
+.table-scroll[data-xscroll="opps"] {
+  scrollbar-width: none;
+}
+.table-scroll[data-xscroll="opps"]::-webkit-scrollbar {
+  height: 0;
+}
 .global-hscroll {
   position: fixed;
   left: 0;
