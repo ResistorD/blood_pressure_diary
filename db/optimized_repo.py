@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import logging
 import sqlite3
 import threading
@@ -322,6 +323,14 @@ class OptimizedRepo(Repo):
         Returns:
             Number of signals inserted
         """
+        if not signals:
+            return 0
+        if os.getenv("PS_DEMO") != "1":
+            before = len(signals)
+            signals = [s for s in signals if (not s.scope_market_id) or str(s.scope_market_id).isdigit()]
+            dropped = before - len(signals)
+            if dropped:
+                logger.warning("drop invalid signals: %s", dropped)
         if not signals:
             return 0
         

@@ -1200,6 +1200,8 @@ def create_app(*, settings, repo, bus) -> FastAPI:
             try:
                 where = []
                 params: List[Any] = []
+                if os.getenv("PS_DEMO") != "1":
+                    where.append("(scope_market_id IS NULL OR scope_market_id GLOB '[0-9]*')")
                 if agent:
                     where.append("agent_id = ?")
                     params.append(agent)

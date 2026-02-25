@@ -13,6 +13,15 @@ from app.runtime_config import load_runtime_config
 from utils.logging import get_logger, warn_exc
 
 logger = get_logger("db.repository_modules")
+_invalid_signal_count = 0
+
+
+def _valid_market_id(market_id: str | None) -> bool:
+    if not market_id:
+        return True
+    if os.getenv("PS_DEMO") == "1":
+        return True
+    return str(market_id).isdigit()
 
 
 def _dt_to_str(dt: datetime | None) -> str | None:
@@ -331,6 +340,17 @@ class SignalRepository:
         self._repo = repo
 
     def insert_signal(self, signal: Any) -> None:
+        global _invalid_signal_count
+        if not _valid_market_id(getattr(signal, "scope_market_id", None)):
+            _invalid_signal_count += 1
+            if _invalid_signal_count <= 5 or _invalid_signal_count % 50 == 0:
+                logger.warning(
+                    "drop invalid signal market_id=%s agent=%s kind=%s",
+                    getattr(signal, "scope_market_id", None),
+                    getattr(signal, "agent_id", None),
+                    getattr(signal, "kind", None),
+                )
+            return
         with self._repo.conn() as con:
             con.execute(
                 """
@@ -361,6 +381,16 @@ class SignalRepository:
     def list_recent_signals(self, limit: int = 200):
         lim = int(limit) if limit is not None else 100
         with self._repo.conn() as con:
+            if os.getenv("PS_DEMO") != "1":
+                return con.execute(
+                    """
+                    SELECT ts, agent_id, kind, scope_market_id, explain_short
+                    FROM signals
+                    WHERE scope_market_id IS NULL OR scope_market_id GLOB '[0-9]*'
+                    ORDER BY ts DESC LIMIT ?
+                    """,
+                    (lim,),
+                ).fetchall()
             return con.execute(
                 """
                 SELECT ts, agent_id, kind, scope_market_id, explain_short
@@ -389,6 +419,8 @@ class SignalRepository:
     ):
         where = []
         params: List[Any] = []
+        if os.getenv("PS_DEMO") != "1":
+            where.append("(scope_market_id IS NULL OR scope_market_id GLOB '[0-9]*')")
         if agent:
             where.append("agent_id = ?")
             params.append(agent)
@@ -434,6 +466,8 @@ class SignalRepository:
     ) -> int:
         where = []
         params: List[Any] = []
+        if os.getenv("PS_DEMO") != "1":
+            where.append("(scope_market_id IS NULL OR scope_market_id GLOB '[0-9]*')")
         if agent:
             where.append("agent_id = ?")
             params.append(agent)
