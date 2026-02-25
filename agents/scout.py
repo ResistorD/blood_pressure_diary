@@ -80,7 +80,17 @@ class ScoutAgent(EnhancedAgent):
         markets: List[Market] = ctx.list_markets(limit=500)
         if not markets:
             return []
-        markets = [m for m in markets if str(m.market_id or "").isdigit()]
+        dropped_invalid = 0
+        filtered = []
+        for m in markets:
+            mid = str(m.market_id or "")
+            if mid and not mid.isdigit():
+                dropped_invalid += 1
+                continue
+            filtered.append(m)
+        markets = filtered
+        if dropped_invalid:
+            self.logger.debug("dropped_invalid_market_id=%s", dropped_invalid)
 
         # Filter to specific market if requested
         if market_id is not None:

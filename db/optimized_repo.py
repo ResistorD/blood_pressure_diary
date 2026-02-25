@@ -328,9 +328,20 @@ class OptimizedRepo(Repo):
         if os.getenv("PS_DEMO") != "1":
             before = len(signals)
             signals = [s for s in signals if (not s.scope_market_id) or str(s.scope_market_id).isdigit()]
+            if signals:
+                mids = sorted({str(s.scope_market_id) for s in signals if s.scope_market_id})
+                if mids:
+                    qmarks = ",".join(["?"] * len(mids))
+                    with self.conn() as con:
+                        rows = con.execute(
+                            f"SELECT market_id FROM markets WHERE market_id IN ({qmarks})",
+                            tuple(mids),
+                        ).fetchall()
+                    valid = {r["market_id"] for r in rows or []}
+                    signals = [s for s in signals if (not s.scope_market_id) or str(s.scope_market_id) in valid]
             dropped = before - len(signals)
             if dropped:
-                logger.warning("drop invalid signals: %s", dropped)
+                logger.debug("dropped_invalid_market_id=%s", dropped)
         if not signals:
             return 0
         

@@ -23,13 +23,15 @@
 
   {% call panel.panel("Список рынков", "Если таблица пустая, ingest ещё не наполнил справочник.") %}
     {% if error %}<div class="notice" style="margin:10px 14px 0">{{ error }}</div>{% endif %}
-    {% set head = "<tr><th class='nowrap'>market_id</th><th>Название</th><th class='nowrap'>slug</th><th class='nowrap'>group</th></tr>" %}
+    {% set head = "<tr><th class='nowrap'>market_id</th><th style='min-width:360px'>Название</th><th class='nowrap' style='max-width:220px'>slug</th><th class='nowrap'>group</th></tr>" %}
     {% set body %}
       {% for r in rows %}
         <tr>
           <td class="nowrap"><a href="/cases/{{ r[0] | urlencode }}"><code>{{ r[0] }}</code></a></td>
-          <td><a href="/cases/{{ r[0] | urlencode }}">{{ r[2] }}</a></td>
-          <td class="mono"><span class="ellipsis" title="{{ r[1] }}">{{ r[1] }}</span></td>
+          <td style="min-width:360px"><a href="/cases/{{ r[0] | urlencode }}">{{ r[2] }}</a></td>
+          <td class="mono" style="max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+            <span title="{{ r[1] }}">{{ r[1] }}</span>
+          </td>
           <td class="nowrap">{% if r[3] %}<a href="/cluster/{{ r[3] }}"><code>{{ r[3] }}</code></a>{% else %}—{% endif %}</td>
         </tr>
       {% endfor %}

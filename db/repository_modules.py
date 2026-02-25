@@ -24,6 +24,18 @@ def _valid_market_id(market_id: str | None) -> bool:
     return str(market_id).isdigit()
 
 
+def _market_exists(repo: Any, market_id: str) -> bool:
+    try:
+        with repo.conn() as con:
+            row = con.execute(
+                "SELECT 1 FROM markets WHERE market_id = ?",
+                (market_id,),
+            ).fetchone()
+        return row is not None
+    except Exception:
+        return False
+
+
 def _dt_to_str(dt: datetime | None) -> str | None:
     return dt.isoformat(timespec="seconds") if dt else None
 
@@ -341,16 +353,28 @@ class SignalRepository:
 
     def insert_signal(self, signal: Any) -> None:
         global _invalid_signal_count
-        if not _valid_market_id(getattr(signal, "scope_market_id", None)):
+        mid = getattr(signal, "scope_market_id", None)
+        if not _valid_market_id(mid):
             _invalid_signal_count += 1
             if _invalid_signal_count <= 5 or _invalid_signal_count % 50 == 0:
-                logger.warning(
-                    "drop invalid signal market_id=%s agent=%s kind=%s",
-                    getattr(signal, "scope_market_id", None),
+                logger.debug(
+                    "dropped_invalid_market_id=%s agent=%s kind=%s",
+                    mid,
                     getattr(signal, "agent_id", None),
                     getattr(signal, "kind", None),
                 )
             return
+        if mid and os.getenv("PS_DEMO") != "1":
+            if not _market_exists(self._repo, str(mid)):
+                _invalid_signal_count += 1
+                if _invalid_signal_count <= 5 or _invalid_signal_count % 50 == 0:
+                    logger.debug(
+                        "dropped_invalid_market_id=%s agent=%s kind=%s",
+                        mid,
+                        getattr(signal, "agent_id", None),
+                        getattr(signal, "kind", None),
+                    )
+                return
         with self._repo.conn() as con:
             con.execute(
                 """

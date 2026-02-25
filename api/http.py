@@ -844,6 +844,11 @@ def create_app(*, settings, repo, bus) -> FastAPI:
         if os.getenv("PS_DEMO") != "1":
             rows = [
                 x for x in rows
+                if str(x.get("group_key") or x.get("cluster_id") or "").lower() != "demo_cluster"
+            ]
+        if os.getenv("PS_DEMO") != "1":
+            rows = [
+                x for x in rows
                 if str(x.get("group_key") or "").lower() != "demo_cluster"
                 and "demo market" not in str(x.get("title") or "").lower()
             ]
@@ -1195,6 +1200,8 @@ def create_app(*, settings, repo, bus) -> FastAPI:
             error = "Ошибка запроса сигналов (см. лог)."
             rows = []
             total = 0
+        if rows and os.getenv("PS_DEMO") != "1":
+            rows = [r0 for r0 in rows if (not r0[3]) or str(r0[3]).isdigit()]
         if not rows:
             # Fallback direct SQL in case repo layer fails silently.
             try:
