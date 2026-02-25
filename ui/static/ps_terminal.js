@@ -1589,6 +1589,23 @@
       const bookAge = metrics.book_age_s != null ? formatAgeCompact(metrics.book_age_s) : "—";
       const depthTxt = formatDepthPair(metrics.depth_ask_1pct, metrics.depth_bid_1pct);
       const why = buildGuidedWhy(explain, micro);
+      const depthMin = (metrics.depth_ask_1pct != null && metrics.depth_bid_1pct != null)
+        ? Math.min(Number(metrics.depth_ask_1pct), Number(metrics.depth_bid_1pct))
+        : null;
+      const depthStatus = depthMin == null ? "—" : (depthMin >= GUARD_DEPTH_MIN_USD ? "OK" : "LOW");
+      const previewBuy = getPreviewData(caseId, "buy");
+      const previewClose = getPreviewData(caseId, "close");
+      const safeBuy = previewBuy && previewBuy.safe_max_size_buy != null ? previewBuy.safe_max_size_buy : metrics.safe_buy;
+      const safeSell = previewClose && previewClose.safe_max_size_sell != null ? previewClose.safe_max_size_sell : metrics.safe_sell;
+      const safeTxt = `${safeBuy != null ? Math.floor(Number(safeBuy)) : "—"}/${safeSell != null ? Math.floor(Number(safeSell)) : "—"}`;
+      const guardReasons = [];
+      if (state.paused) guardReasons.push("PAUSED");
+      if (metrics.book_age_s != null && metrics.book_age_s > GUARD_BOOK_AGE_MAX) guardReasons.push("STALE_BOOK");
+      if (metrics.spread_pct != null && Number(metrics.spread_pct) > GUARD_SPREAD_MAX) guardReasons.push("WIDE_SPREAD");
+      if (depthMin != null && depthMin < GUARD_DEPTH_MIN_USD) guardReasons.push("LOW_DEPTH");
+      const guardBadges = guardReasons.length
+        ? guardReasons.map((r) => `<span class="badge badge-yellow">${r}</span>`).join("")
+        : "";
 
       const card = document.createElement("div");
       card.className = "opps-card";
@@ -1601,10 +1618,12 @@
         </div>
         <div class="opps-title">${escapeHtml(title)}</div>
         <div class="opps-metric">spr ${spreadTxt} · book ${bookAge} · depth ${depthTxt}</div>
+        <div class="opps-status mono">BOOK ${bookAge} · SPREAD ${spreadTxt} · DEPTH ${depthStatus} · SAFE ${safeTxt}</div>
         <div class="opps-why">${escapeHtml(why)}</div>
         <div class="opps-actions">
           <button class="btn btn-success btn-sm trade-action" type="button" data-paper-action="buy" data-case-id="${escapeHtml(caseId)}">BUY</button>
           <button class="btn btn-danger btn-sm trade-action" type="button" data-paper-action="close" data-case-id="${escapeHtml(caseId)}">SELL</button>
+          ${guardBadges}
           <button class="pill" type="button" data-opps-why-toggle>Why…</button>
         </div>
         <div class="opps-why-details">${escapeHtml(why)}</div>

@@ -438,6 +438,11 @@ body.has-global-hscroll .main { padding-bottom: 14px; }
   color: var(--text-2);
   font-family: var(--font-mono);
 }
+.opps-status {
+  font-size: 11px;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+}
 .opps-why {
   font-size: 11px;
   color: var(--text-2);
