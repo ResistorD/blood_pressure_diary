@@ -360,7 +360,11 @@ body.is-paused .paused-banner { display: block; }
   height: 0;
 }
 [data-xscroll="opps"] .table-wrap {
-  overflow-x: hidden;
+  overflow-x: visible;
+}
+[data-xscroll="opps"] .data-table {
+  width: max-content;
+  min-width: 100%;
 }
 .global-hscroll {
   position: fixed;
