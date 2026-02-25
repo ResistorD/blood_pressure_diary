@@ -359,6 +359,9 @@ body.is-paused .paused-banner { display: block; }
 .table-scroll[data-xscroll="opps"]::-webkit-scrollbar {
   height: 0;
 }
+[data-xscroll="opps"] .table-wrap {
+  overflow-x: hidden;
+}
 .global-hscroll {
   position: fixed;
   left: 0;
