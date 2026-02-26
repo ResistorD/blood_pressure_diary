@@ -1653,6 +1653,54 @@
     });
   }
 
+  function logOppsTableDebug(tag) {
+    if (window.PS_DEBUG !== 1) return;
+    const now = Date.now();
+    if (!logOppsTableDebug._lastLog || now - logOppsTableDebug._lastLog > 2000) {
+      logOppsTableDebug._lastLog = now;
+      const table = document.getElementById("opps-table");
+      if (!table) {
+        console.log("[opps_table]", tag, "missing");
+        return;
+      }
+      const rect = table.getBoundingClientRect();
+      const offsetParent = table.offsetParent;
+      const offsetLabel = offsetParent
+        ? `${offsetParent.tagName.toLowerCase()}${offsetParent.id ? `#${offsetParent.id}` : ""}`
+        : null;
+      console.log(
+        "[opps_table]",
+        tag,
+        "rect",
+        `${rect.width}x${rect.height}`,
+        "scrollW",
+        table.scrollWidth,
+        "clientW",
+        table.clientWidth,
+        "offsetParent",
+        offsetLabel
+      );
+    }
+  }
+
+  function ensureOppsTableVisible(tag) {
+    const container = document.querySelector("[data-cases-table]");
+    const tbody = document.getElementById("opps-tbody");
+    if (!container || !tbody) return;
+    const mode = (() => {
+      try { return localStorage.getItem("ps.opps.mode") || "terminal"; } catch (e) { return "terminal"; }
+    })();
+    if (mode === "guided") return;
+    if (tbody.querySelectorAll("tr").length === 0) return;
+    const computed = window.getComputedStyle(container);
+    if (computed && computed.display === "none") {
+      container.style.display = "";
+      if (window.PS_DEBUG === 1) {
+        console.log("[opps_table] unhide", tag || "");
+      }
+    }
+  }
+
   async function pollCasesTop() {
     const table = document.querySelector("[data-cases-table]");
     if (!table) return;
@@ -1799,6 +1847,8 @@
         }
         });
       casesErrors = 0;
+      ensureOppsTableVisible("cases_poll");
+      logOppsTableDebug("cases_poll");
     } catch (e) {
       casesErrors += 1;
     }
@@ -2566,7 +2616,7 @@
         return;
       }
       const host = active;
-      const table = host.querySelector("table");
+      const table = document.getElementById("opps-table");
       const needs = host.scrollWidth > host.clientWidth + 1;
       if (window.ENABLE_STICKY_XSCROLL_DEBUG) {
         console.log(
@@ -2670,6 +2720,8 @@
   const table = document.querySelector("[data-cases-table]");
   if (guided) guided.style.display = oppsMode === "guided" ? "block" : "none";
   if (table) table.style.display = oppsMode === "guided" ? "none" : "block";
+  ensureOppsTableVisible("cases_init");
+  logOppsTableDebug("cases_init");
   document.querySelectorAll("[data-opps-mode]").forEach((b) => {
     b.classList.toggle("pill-ok", b.getAttribute("data-opps-mode") === oppsMode);
     b.classList.toggle("pill-muted", b.getAttribute("data-opps-mode") !== oppsMode);

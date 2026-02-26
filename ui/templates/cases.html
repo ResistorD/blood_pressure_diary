@@ -27,6 +27,7 @@
     <span class="muted small">Режим:</span>
     <button class="pill pill-muted" type="button" data-opps-mode="terminal">Terminal</button>
     <button class="pill pill-muted" type="button" data-opps-mode="guided">Guided</button>
+    <span class="muted small">Hotkeys: B/S/C · J/K</span>
   </div>
 
   <div class="opps-guided" data-opps-guided style="display:none;">
@@ -140,11 +141,11 @@
                 <div class="paper-collapsed">
                   <div class="paper-primary">
                     <button class="btn btn-success btn-sm trade-action paper-primary-btn" type="button"
-                            data-trade-button="1" data-action="trade" data-paper-action="buy" data-case-id="{{ market_id }}">
+                            data-trade-button="1" data-action="trade" data-paper-action="buy" data-case-action="buy" data-case-id="{{ market_id }}">
                       Откр.
                     </button>
                     <button class="btn btn-danger btn-sm trade-action paper-primary-btn" type="button"
-                            data-trade-button="1" data-action="trade" data-paper-action="close" data-case-id="{{ market_id }}">
+                            data-trade-button="1" data-action="trade" data-paper-action="close" data-case-action="close" data-case-id="{{ market_id }}">
                       Закр.
                     </button>
                     <span class="badge badge-gray" data-paper-status>—</span>
@@ -195,15 +196,27 @@
           </td>
         </tr>
       {% endfor %}
-      {% if (rows|default([]))|length == 0 %}
-        <tr><td colspan="12" class="muted" style="padding:12px 12px;font-style:italic">Пока нет возможностей. Либо недостаточно данных, либо фильтры слишком строгие.</td></tr>
-      {% endif %}
     {% endset %}
-    <div data-cases-table>
-      <div class="table-scroll" data-table-scroll data-xscroll="opps">
-        {{ tbl.table(head, body, dense=true) }}
+    {% if (rows|default([]))|length > 0 %}
+      <div data-cases-table>
+        <div class="table-scroll" data-table-scroll data-xscroll="opps">
+          <div class="table-wrap">
+            <table class="data-table" id="opps-table">
+              <thead>
+                {{ head | safe }}
+              </thead>
+              <tbody id="opps-tbody">
+                {{ body | safe }}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
-    </div>
+    {% else %}
+      <div class="muted" style="padding:12px 12px;font-style:italic">
+        Пока нет возможностей. Либо недостаточно данных, либо фильтры слишком строгие.
+      </div>
+    {% endif %}
   {% endcall %}
 
   <div class="card">
