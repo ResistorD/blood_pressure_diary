@@ -115,6 +115,7 @@ class MainLoop:
         self._last_loop_log_ts = 0.0
         self._last_summary_log_ts = 0.0
         self._last_ingest_fail_log_ts = 0.0
+        self._last_ingest_skip_log_ts = 0.0
         self._last_book_skip_log_ts = 0.0
         self._telemetry: Dict[str, Any] = {
             "ingest_ok": 0,
@@ -257,7 +258,10 @@ class MainLoop:
         snapshots_5m = 0
         open_positions = 0
         live_cases = 0
+        total_cases = 0
+        status_parts = []
         paused = False
+        pinned_count = 0
         try:
             markets_cnt = int(self.repo.count_markets())
         except Exception:
@@ -281,10 +285,45 @@ class MainLoop:
         except Exception:
             live_cases = 0
         try:
+            with self.repo.conn() as con:
+                row = con.execute("SELECT COUNT(*) AS n FROM cases").fetchone()
+            total_cases = int(row["n"] or 0) if row else 0
+        except Exception:
+            total_cases = 0
+        try:
+            pinned = (os.getenv("PS_PINNED_MARKETS") or "").strip()
+            pinned_count = len([x for x in pinned.split(",") if x.strip()]) if pinned else 0
+        except Exception:
+            pinned_count = 0
+        try:
             if hasattr(self.repo, "is_paused"):
                 paused = bool(self.repo.is_paused())
         except Exception:
             paused = False
+        if total_cases > 0 and live_cases == 0:
+            try:
+                with self.repo.conn() as con:
+                    rows = con.execute(
+                        """
+                        SELECT COALESCE(NULLIF(TRIM(status), ''), 'UNKNOWN') AS status, COUNT(*) AS n
+                        FROM cases
+                        GROUP BY COALESCE(NULLIF(TRIM(status), ''), 'UNKNOWN')
+                        ORDER BY n DESC
+                        LIMIT 5
+                        """
+                    ).fetchall()
+                status_parts = [f"{str(r['status'])}:{int(r['n'] or 0)}" for r in (rows or [])]
+            except Exception:
+                status_parts = []
+        log.info(
+            "CASES_SUMMARY total_cases=%s live_cases=%s open_positions=%s pinned=%s",
+            total_cases,
+            live_cases,
+            open_positions,
+            pinned_count,
+        )
+        if status_parts:
+            log.info("CASES_STATUS sample: %s", " ".join(status_parts))
         reason = ""
         if live_cases == 0:
             if snapshots_5m == 0:
@@ -652,6 +691,23 @@ class MainLoop:
                     self._iter_stage_ms["ingest"] = (time.perf_counter() - t0) * 1000.0
             else:
                 self._telemetry["skipped_ingest_guard"] = int(self._telemetry.get("skipped_ingest_guard", 0) or 0) + 1
+                if (time.monotonic() - self._last_ingest_skip_log_ts) >= 10.0:
+                    self._last_ingest_skip_log_ts = time.monotonic()
+                    if not do_poll:
+                        reason = "SCHEDULER_NOT_POLL"
+                    elif not self.settings.enable_ingest:
+                        reason = "INGEST_DISABLED"
+                    elif mono < self._next_ingest_ts:
+                        reason = "BACKOFF_WAIT"
+                    else:
+                        reason = "GUARD_BLOCKED"
+                    log.info(
+                        "INGEST_SKIP reason=%s enable_ingest=%s do_poll=%s wait_s=%.1f",
+                        reason,
+                        bool(self.settings.enable_ingest),
+                        bool(do_poll),
+                        max(0.0, float(self._next_ingest_ts) - float(mono)),
+                    )
 
             # Orderbook collector (separate cadence)
             if mono >= self._next_book_ts:
