@@ -114,6 +114,8 @@ class MainLoop:
         self._iter = 0
         self._last_loop_log_ts = 0.0
         self._last_summary_log_ts = 0.0
+        self._last_ingest_fail_log_ts = 0.0
+        self._last_book_skip_log_ts = 0.0
         self._telemetry: Dict[str, Any] = {
             "ingest_ok": 0,
             "ingest_err": 0,
@@ -182,6 +184,23 @@ class MainLoop:
             "exc_class": cls,
             "message_short": msg,
         }
+
+    @staticmethod
+    def _extract_http_status(exc: Exception) -> Optional[int]:
+        try:
+            code = getattr(exc, "code", None)
+            if code is not None:
+                return int(code)
+        except Exception:
+            pass
+        try:
+            reason = getattr(exc, "reason", None)
+            code = getattr(reason, "code", None)
+            if code is not None:
+                return int(code)
+        except Exception:
+            pass
+        return None
 
     def _emit_loop_status(self, now: datetime, *, force: bool = False) -> None:
         mono = time.monotonic()
@@ -288,8 +307,10 @@ class MainLoop:
 
     def _active_orderbook_targets(self, top_n: int = 30) -> tuple[list[str], dict]:
         ids: list[tuple[str, str]] = []
+        live_cases_count = 0
         try:
             cases = self.repo.list_cases(minutes_signals=30, minutes_snaps=10)
+            live_cases_count = len(cases or [])
             for c in cases[:top_n]:
                 mid = c.get("market_id") if isinstance(c, dict) else None
                 if mid:
@@ -336,6 +357,7 @@ class MainLoop:
                 "sources": source_counts,
                 "dropped_unknown_market_id": dropped_unknown_market_id,
                 "dropped_no_tokens": dropped_no_tokens,
+                "live_cases_count": live_cases_count,
             }
         try:
             qmarks = ",".join(["?"] * len(unique))
@@ -393,6 +415,7 @@ class MainLoop:
             "dropped_no_tokens": dropped_no_tokens,
             "dropped_no_clob_tokens": dropped_no_clob_tokens,
             "backfill_enqueued": backfill_enqueued,
+            "live_cases_count": live_cases_count,
         }
 
     def stop(self) -> None:
@@ -566,10 +589,21 @@ class MainLoop:
                 try:
                     print("INGEST TICK", now)
                     m_cnt, s_cnt = self.ingestor.ingest()
+                    ingest_stats = getattr(getattr(self.ingestor, "client", None), "last_snapshot_stats", {}) or {}
+                    fetched_n = int(ingest_stats.get("fetched_ok", 0) or 0)
+                    parsed_n = int(ingest_stats.get("parsed", 0) or 0)
+                    inserted_n = int(ingest_stats.get("inserted", s_cnt or 0) or 0)
                     self._ingest_failures = 0
                     self._next_ingest_ts = 0.0
-                    self._telemetry["last_ingest_snapshots"] = int(s_cnt or 0)
+                    self._telemetry["last_ingest_snapshots"] = inserted_n
                     self._record_stage_ok("ingest", now)
+                    log.info(
+                        "INGEST_OK fetched=%s parsed=%s inserted=%s markets=%s",
+                        fetched_n,
+                        parsed_n,
+                        inserted_n,
+                        int(m_cnt or 0),
+                    )
                     log.info(f"ingest: markets={m_cnt} snapshots={s_cnt}")
                     markets = self.repo.list_markets(limit=200)
                     market_ids = [m.market_id for m in markets]
@@ -587,6 +621,25 @@ class MainLoop:
                     retry_in = min(30.0, 0.5 * (2 ** (self._ingest_failures - 1)))
                     self._next_ingest_ts = time.monotonic() + retry_in
                     self._record_stage_error("ingest", e, now)
+                    ingest_stats = getattr(getattr(self.ingestor, "client", None), "last_snapshot_stats", {}) or {}
+                    fetched_n = int(ingest_stats.get("fetched_ok", 0) or 0)
+                    parsed_n = int(ingest_stats.get("parsed", 0) or 0)
+                    inserted_n = int(ingest_stats.get("inserted", 0) or 0)
+                    http_status = self._extract_http_status(e)
+                    if (time.monotonic() - self._last_ingest_fail_log_ts) >= 5.0:
+                        self._last_ingest_fail_log_ts = time.monotonic()
+                        msg = str(e).replace("\n", " ").strip()
+                        if len(msg) > 160:
+                            msg = msg[:160]
+                        log.warning(
+                            "INGEST_FAIL exc=%s msg=%s http=%s fetched=%s parsed=%s inserted=%s",
+                            e.__class__.__name__,
+                            msg,
+                            http_status if http_status is not None else "-",
+                            fetched_n,
+                            parsed_n,
+                            inserted_n,
+                        )
                     self.bus.publish(
                         Alert(
                             ts=now,
@@ -610,6 +663,17 @@ class MainLoop:
                         self._telemetry["skipped_book_no_targets"] = int(
                             self._telemetry.get("skipped_book_no_targets", 0) or 0
                         ) + 1
+                        if (time.monotonic() - self._last_book_skip_log_ts) >= 10.0:
+                            self._last_book_skip_log_ts = time.monotonic()
+                            sources = (target_stats or {}).get("sources") or {}
+                            live_cases_count = int((target_stats or {}).get("live_cases_count", 0) or 0)
+                            log.info(
+                                "BOOK_SKIP targets=0 sources={cases:%s,positions:%s,pinned:%s} live_cases=%s",
+                                int(sources.get("cases", 0) or 0),
+                                int(sources.get("positions", 0) or 0),
+                                int(sources.get("pinned", 0) or 0),
+                                live_cases_count,
+                            )
                     stats = self.book_collector.collect(active_ids)
                     stats["targets"] = target_stats
                     self._book_failures = 0
