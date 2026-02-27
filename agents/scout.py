@@ -90,7 +90,7 @@ class ScoutAgent(EnhancedAgent):
             filtered.append(m)
         markets = filtered
         if dropped_invalid:
-            self.logger.debug("dropped_invalid_market_id=%s", dropped_invalid)
+            self._logger.debug("dropped_invalid_market_id=%s", dropped_invalid)
 
         # Filter to specific market if requested
         if market_id is not None:
