@@ -116,7 +116,10 @@ class MainLoop:
         self._last_summary_log_ts = 0.0
         self._last_ingest_fail_log_ts = 0.0
         self._last_ingest_skip_log_ts = 0.0
+        self._last_ingest_skip_reason_log_ts: Dict[str, float] = {}
         self._last_book_skip_log_ts = 0.0
+        self._last_stage_flags_log_ts = 0.0
+        self._db_path_logged = False
         self._telemetry: Dict[str, Any] = {
             "ingest_ok": 0,
             "ingest_err": 0,
@@ -258,7 +261,9 @@ class MainLoop:
         snapshots_5m = 0
         open_positions = 0
         live_cases = 0
+        live_case_rows = []
         total_cases = 0
+        db_cases_live: Optional[int] = None
         status_parts = []
         paused = False
         pinned_count = 0
@@ -281,9 +286,12 @@ class MainLoop:
         except Exception:
             open_positions = 0
         try:
-            live_cases = len(self.repo.list_cases(minutes_signals=30, minutes_snaps=10) or [])
+            live_case_rows = self.repo.list_cases(minutes_signals=30, minutes_snaps=10) or []
+            live_cases = len(live_case_rows)
+            db_cases_live = live_cases
         except Exception:
             live_cases = 0
+            db_cases_live = None
         try:
             with self.repo.conn() as con:
                 row = con.execute("SELECT COUNT(*) AS n FROM cases").fetchone()
@@ -295,6 +303,9 @@ class MainLoop:
             pinned_count = len([x for x in pinned.split(",") if x.strip()]) if pinned else 0
         except Exception:
             pinned_count = 0
+        if not self._db_path_logged:
+            self._db_path_logged = True
+            log.info("DB_PATH=%s", str(getattr(self.repo, "db_path", "") or ""))
         try:
             if hasattr(self.repo, "is_paused"):
                 paused = bool(self.repo.is_paused())
@@ -322,6 +333,26 @@ class MainLoop:
             open_positions,
             pinned_count,
         )
+        log.info(
+            "CASES_SUMMARY_DB db_cases_total=%s db_cases_live=%s",
+            total_cases,
+            db_cases_live if db_cases_live is not None else "NA",
+        )
+        log.info(
+            "CASES_SOURCE live_cases_source=%s explain=%s",
+            "repo.list_cases(minutes_signals=30, minutes_snaps=10)",
+            "live_cases here counts active markets from recent signals/snapshots, not rows in cases table",
+        )
+        if total_cases == 0 and live_cases > 0:
+            sample_ids = []
+            for row in live_case_rows[:3]:
+                try:
+                    mid = str((row or {}).get("market_id") or "")
+                    if mid:
+                        sample_ids.append(mid)
+                except Exception:
+                    continue
+            log.info("CASES_SUMMARY live_cases_sample=%s", sample_ids)
         if status_parts:
             log.info("CASES_STATUS sample: %s", " ".join(status_parts))
         reason = ""
@@ -342,6 +373,30 @@ class MainLoop:
             open_positions,
             live_cases,
             reason,
+        )
+
+    def _emit_stage_flags(self, now: datetime, *, ran_ingest: int, ran_book: int, ran_agent: int) -> None:
+        mono = time.monotonic()
+        if (mono - self._last_stage_flags_log_ts) < 10.0:
+            return
+        self._last_stage_flags_log_ts = mono
+        paused = 0
+        try:
+            if hasattr(self.repo, "is_paused"):
+                paused = 1 if bool(self.repo.is_paused()) else 0
+        except Exception:
+            paused = 0
+        ingest_age = self._age_sec(self._telemetry.get("last_ok", {}).get("ingest", ""))
+        stale = 1 if (ingest_age is not None and ingest_age > 60.0) else 0
+        trading_enabled = 1 if (not paused and bool(getattr(self.settings, "enable_decision", True))) else 0
+        log.info(
+            "STAGES ran_ingest=%s ran_book=%s ran_agent=%s paused=%s stale=%s trading_enabled=%s",
+            int(ran_ingest),
+            int(ran_book),
+            int(ran_agent),
+            int(paused),
+            int(stale),
+            int(trading_enabled),
         )
 
     def _active_orderbook_targets(self, top_n: int = 30) -> tuple[list[str], dict]:
@@ -619,6 +674,8 @@ class MainLoop:
             self._iter += 1
             self._iter_stage_ms = {"ingest": 0.0, "book": 0.0, "agent": 0.0, "reconcile": 0.0, "idle": 0.0}
             self._iter_errs = 0
+            ran_ingest = 0
+            ran_book = 0
             now = datetime.now(timezone.utc)
             do_poll, do_reconcile = self.scheduler.tick(now)
 
@@ -627,6 +684,7 @@ class MainLoop:
                 t0 = time.perf_counter()
                 try:
                     print("INGEST TICK", now)
+                    ran_ingest = 1
                     m_cnt, s_cnt = self.ingestor.ingest()
                     ingest_stats = getattr(getattr(self.ingestor, "client", None), "last_snapshot_stats", {}) or {}
                     fetched_n = int(ingest_stats.get("fetched_ok", 0) or 0)
@@ -691,16 +749,19 @@ class MainLoop:
                     self._iter_stage_ms["ingest"] = (time.perf_counter() - t0) * 1000.0
             else:
                 self._telemetry["skipped_ingest_guard"] = int(self._telemetry.get("skipped_ingest_guard", 0) or 0) + 1
-                if (time.monotonic() - self._last_ingest_skip_log_ts) >= 10.0:
-                    self._last_ingest_skip_log_ts = time.monotonic()
-                    if not do_poll:
-                        reason = "SCHEDULER_NOT_POLL"
-                    elif not self.settings.enable_ingest:
-                        reason = "INGEST_DISABLED"
-                    elif mono < self._next_ingest_ts:
-                        reason = "BACKOFF_WAIT"
-                    else:
-                        reason = "GUARD_BLOCKED"
+                if not do_poll:
+                    reason = "SCHEDULER_NOT_POLL"
+                elif not self.settings.enable_ingest:
+                    reason = "INGEST_DISABLED"
+                elif mono < self._next_ingest_ts:
+                    reason = "BACKOFF_WAIT"
+                else:
+                    reason = "GUARD_BLOCKED"
+                last_reason_ts = float(self._last_ingest_skip_reason_log_ts.get(reason, 0.0) or 0.0)
+                if (time.monotonic() - last_reason_ts) >= 10.0:
+                    now_mono = time.monotonic()
+                    self._last_ingest_skip_reason_log_ts[reason] = now_mono
+                    self._last_ingest_skip_log_ts = now_mono
                     log.info(
                         "INGEST_SKIP reason=%s enable_ingest=%s do_poll=%s wait_s=%.1f",
                         reason,
@@ -714,6 +775,7 @@ class MainLoop:
                 t0 = time.perf_counter()
                 try:
                     print("BOOK TICK", now)
+                    ran_book = 1
                     active_ids, target_stats = self._active_orderbook_targets(top_n=30)
                     if not active_ids:
                         self._telemetry["skipped_book_no_targets"] = int(
@@ -848,6 +910,8 @@ class MainLoop:
             self._iter_stage_ms["idle"] = (time.perf_counter() - sleep_start) * 1000.0
             self._emit_loop_status(now, force=(self._iter_errs > 0))
             self._emit_summary(now)
+            ran_agent = 1 if self._iter_stage_ms.get("agent", 0.0) > 0.0 else 0
+            self._emit_stage_flags(now, ran_ingest=ran_ingest, ran_book=ran_book, ran_agent=ran_agent)
         self._flush_events()
         if hasattr(self.repo, "flush_writes"):
             try:
