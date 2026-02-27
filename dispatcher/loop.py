@@ -5,6 +5,7 @@ import time
 import os
 import json
 from datetime import datetime, timezone
+from typing import Any, Dict, Optional
 
 from app.settings import Settings
 from db.repo import Repo
@@ -110,6 +111,180 @@ class MainLoop:
         self._event_buffer = []
         self._latest_snapshots_cache = {}
         self._auto_agent = get_auto_paper_agent()
+        self._iter = 0
+        self._last_loop_log_ts = 0.0
+        self._last_summary_log_ts = 0.0
+        self._telemetry: Dict[str, Any] = {
+            "ingest_ok": 0,
+            "ingest_err": 0,
+            "book_ok": 0,
+            "book_err": 0,
+            "agent_ok": 0,
+            "agent_err": 0,
+            "skipped_book_no_targets": 0,
+            "skipped_ingest_guard": 0,
+            "skipped_agent_disabled": 0,
+            "last_ok": {"ingest": "", "book": "", "agent": ""},
+            "last_error": {"ingest": None, "book": None, "agent": None},
+            "error_repeat": {"ingest": 0, "book": 0, "agent": 0},
+            "error_signature": {"ingest": "", "book": "", "agent": ""},
+            "last_ingest_snapshots": 0,
+            "last_book_inserted": 0,
+        }
+        self._iter_stage_ms: Dict[str, float] = {}
+        self._iter_errs = 0
+
+    @staticmethod
+    def _iso_utc(dt: datetime) -> str:
+        return dt.astimezone(timezone.utc).isoformat(timespec="seconds")
+
+    @staticmethod
+    def _age_sec(iso_ts: str) -> Optional[float]:
+        if not iso_ts:
+            return None
+        try:
+            dt = datetime.fromisoformat(str(iso_ts))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return max(0.0, (datetime.now(timezone.utc) - dt).total_seconds())
+        except Exception:
+            return None
+
+    def _fmt_age(self, iso_ts: str) -> str:
+        age = self._age_sec(iso_ts)
+        if age is None:
+            return "-"
+        return f"{age:.1f}s"
+
+    def _record_stage_ok(self, stage: str, now: datetime) -> None:
+        self._telemetry[f"{stage}_ok"] = int(self._telemetry.get(f"{stage}_ok", 0) or 0) + 1
+        self._telemetry["last_ok"][stage] = self._iso_utc(now)
+
+    def _record_stage_error(self, stage: str, exc: Exception, now: datetime) -> None:
+        self._telemetry[f"{stage}_err"] = int(self._telemetry.get(f"{stage}_err", 0) or 0) + 1
+        self._iter_errs += 1
+        cls = exc.__class__.__name__
+        msg = str(exc).replace("\n", " ").strip()
+        if len(msg) > 160:
+            msg = msg[:160]
+        sig = f"{cls}:{msg}"
+        prev_sig = self._telemetry["error_signature"].get(stage, "")
+        if sig != prev_sig:
+            self._telemetry["error_signature"][stage] = sig
+            self._telemetry["error_repeat"][stage] = 1
+            log.exception("%s stage failed: %s", stage, msg)
+        else:
+            self._telemetry["error_repeat"][stage] = int(self._telemetry["error_repeat"].get(stage, 1) or 1) + 1
+            rep = self._telemetry["error_repeat"][stage]
+            log.warning("%s stage failed: same error x%s (%s)", stage, rep, msg)
+        self._telemetry["last_error"][stage] = {
+            "ts": self._iso_utc(now),
+            "exc_class": cls,
+            "message_short": msg,
+        }
+
+    def _emit_loop_status(self, now: datetime, *, force: bool = False) -> None:
+        mono = time.monotonic()
+        if not force and (mono - self._last_loop_log_ts) < 5.0:
+            return
+        self._last_loop_log_ts = mono
+        errs = int(self._iter_errs or 0)
+        e_ing = self._telemetry.get("last_error", {}).get("ingest")
+        e_book = self._telemetry.get("last_error", {}).get("book")
+        e_agent = self._telemetry.get("last_error", {}).get("agent")
+        err_age_ing = self._fmt_age((e_ing or {}).get("ts", ""))
+        err_age_book = self._fmt_age((e_book or {}).get("ts", ""))
+        err_age_agent = self._fmt_age((e_agent or {}).get("ts", ""))
+        ingest_age = self._fmt_age(self._telemetry.get("last_ok", {}).get("ingest", ""))
+        book_age = self._fmt_age(self._telemetry.get("last_ok", {}).get("book", ""))
+        line = (
+            "LOOP t=%s iter=%s ingest=%.0fms book=%.0fms agent=%.0fms reconcile=%.0fms idle=%.0fms "
+            "errs=%s data_age=%s book_age=%s ingest_ins=%s book_ins=%s "
+            "cnt[i_ok=%s i_err=%s b_ok=%s b_err=%s a_ok=%s a_err=%s sk_book0=%s] "
+            "err_age[i=%s b=%s a=%s]"
+        )
+        log.info(
+            line,
+            now.strftime("%H:%M:%S"),
+            self._iter,
+            float(self._iter_stage_ms.get("ingest", 0.0)),
+            float(self._iter_stage_ms.get("book", 0.0)),
+            float(self._iter_stage_ms.get("agent", 0.0)),
+            float(self._iter_stage_ms.get("reconcile", 0.0)),
+            float(self._iter_stage_ms.get("idle", 0.0)),
+            errs,
+            ingest_age,
+            book_age,
+            int(self._telemetry.get("last_ingest_snapshots", 0) or 0),
+            int(self._telemetry.get("last_book_inserted", 0) or 0),
+            int(self._telemetry.get("ingest_ok", 0) or 0),
+            int(self._telemetry.get("ingest_err", 0) or 0),
+            int(self._telemetry.get("book_ok", 0) or 0),
+            int(self._telemetry.get("book_err", 0) or 0),
+            int(self._telemetry.get("agent_ok", 0) or 0),
+            int(self._telemetry.get("agent_err", 0) or 0),
+            int(self._telemetry.get("skipped_book_no_targets", 0) or 0),
+            err_age_ing,
+            err_age_book,
+            err_age_agent,
+        )
+
+    def _emit_summary(self, now: datetime) -> None:
+        mono = time.monotonic()
+        if (mono - self._last_summary_log_ts) < 10.0:
+            return
+        self._last_summary_log_ts = mono
+        markets_cnt = 0
+        snapshots_5m = 0
+        open_positions = 0
+        live_cases = 0
+        paused = False
+        try:
+            markets_cnt = int(self.repo.count_markets())
+        except Exception:
+            markets_cnt = 0
+        try:
+            with self.repo.conn() as con:
+                row = con.execute(
+                    "SELECT COUNT(*) AS n FROM snapshots WHERE julianday(ts) >= julianday('now','-5 minutes')"
+                ).fetchone()
+            snapshots_5m = int(row["n"] or 0) if row else 0
+        except Exception:
+            snapshots_5m = 0
+        try:
+            with self.repo.conn() as con:
+                row = con.execute("SELECT COUNT(*) AS n FROM paper_positions WHERE status='OPEN'").fetchone()
+            open_positions = int(row["n"] or 0) if row else 0
+        except Exception:
+            open_positions = 0
+        try:
+            live_cases = len(self.repo.list_cases(minutes_signals=30, minutes_snaps=10) or [])
+        except Exception:
+            live_cases = 0
+        try:
+            if hasattr(self.repo, "is_paused"):
+                paused = bool(self.repo.is_paused())
+        except Exception:
+            paused = False
+        reason = ""
+        if live_cases == 0:
+            if snapshots_5m == 0:
+                reason = "likely=no data ingest"
+            elif (self._age_sec(self._telemetry.get('last_ok', {}).get('book', '')) or 0.0) > 30.0:
+                reason = "likely=no orderbook freshness"
+            elif paused or ((self._age_sec(self._telemetry.get('last_ok', {}).get('ingest', '')) or 0.0) > 60.0):
+                reason = "likely=trading disabled (expected)"
+            else:
+                reason = "likely=filters/guards produced no live cases"
+        log.info(
+            "LOOP SUMMARY t=%s markets=%s snapshots_5m=%s open_pos=%s live_cases=%s %s",
+            now.strftime("%H:%M:%S"),
+            markets_cnt,
+            snapshots_5m,
+            open_positions,
+            live_cases,
+            reason,
+        )
 
     def _active_orderbook_targets(self, top_n: int = 30) -> tuple[list[str], dict]:
         ids: list[tuple[str, str]] = []
@@ -276,13 +451,16 @@ class MainLoop:
         self._event_buffer.clear()
 
     def _run_agents_for_market(self, ctx: AgentContext, market_id: str) -> None:
+        t0 = time.perf_counter()
+        local_errs = 0
         for agent in getattr(self, "fast_agents", []):
             try:
                 signals = agent.propose(ctx, market_id=market_id)
                 for s in signals:
                     self.repo.insert_signal(s)
             except Exception as e:
-                log.exception(f"agent failed: {getattr(agent, 'agent_id', 'unknown')}: {e}")
+                local_errs += 1
+                self._record_stage_error("agent", e, ctx.now)
                 self._queue_event(
                     ts=ctx.now,
                     level="ERROR",
@@ -290,9 +468,14 @@ class MainLoop:
                     message=str(e),
                     payload={"market_id": market_id},
                 )
+        if local_errs == 0:
+            self._record_stage_ok("agent", ctx.now)
+        self._iter_stage_ms["agent"] = self._iter_stage_ms.get("agent", 0.0) + ((time.perf_counter() - t0) * 1000.0)
 
     def _run_slow_agents(self, ctx: AgentContext) -> None:
         # Run once per reconcile
+        t0 = time.perf_counter()
+        local_errs = 0
         for agent in getattr(self, "slow_agents", []):
             try:
                 # Prefer signature propose(ctx) for slow scans; fallback to per-market scan.
@@ -305,7 +488,8 @@ class MainLoop:
                 for s in signals:
                     self.repo.insert_signal(s)
             except Exception as e:
-                log.exception(f"slow agent failed: {getattr(agent, 'agent_id', 'unknown')}: {e}")
+                local_errs += 1
+                self._record_stage_error("agent", e, ctx.now)
                 self._queue_event(
                     ts=ctx.now,
                     level="ERROR",
@@ -313,6 +497,9 @@ class MainLoop:
                     message=str(e),
                     payload={},
                 )
+        if local_errs == 0:
+            self._record_stage_ok("agent", ctx.now)
+        self._iter_stage_ms["agent"] = self._iter_stage_ms.get("agent", 0.0) + ((time.perf_counter() - t0) * 1000.0)
 
     def _handle_event(self, ev) -> None:
         now = ev.ts
@@ -320,13 +507,15 @@ class MainLoop:
 
         if isinstance(ev, MarketTick) and self.settings.enable_agents:
             self._run_agents_for_market(ctx, ev.market_id)
+        elif isinstance(ev, MarketTick):
+            self._telemetry["skipped_agent_disabled"] = int(self._telemetry.get("skipped_agent_disabled", 0) or 0) + 1
 
         elif isinstance(ev, Timer):
             if ev.purpose == "reconcile":
                 # Slow agents first: generate cross-market signals before decisions
                 if self.settings.enable_agents:
                     self._run_slow_agents(ctx)
-
+                t0 = time.perf_counter()
                 n = self.decision_engine.reconcile(self.run_id)
 
                 x = 0
@@ -341,6 +530,9 @@ class MainLoop:
                         message=f"paper reconcile failed: {e}",
                         payload={},
                     )
+                self._iter_stage_ms["reconcile"] = self._iter_stage_ms.get("reconcile", 0.0) + (
+                    (time.perf_counter() - t0) * 1000.0
+                )
 
                 self._queue_event(
                     ts=now,
@@ -361,15 +553,23 @@ class MainLoop:
 
     def run_forever(self) -> None:
         while not self._stop:
+            iter_start = time.perf_counter()
+            self._iter += 1
+            self._iter_stage_ms = {"ingest": 0.0, "book": 0.0, "agent": 0.0, "reconcile": 0.0, "idle": 0.0}
+            self._iter_errs = 0
             now = datetime.now(timezone.utc)
             do_poll, do_reconcile = self.scheduler.tick(now)
 
             mono = time.monotonic()
             if do_poll and self.settings.enable_ingest and mono >= self._next_ingest_ts:
+                t0 = time.perf_counter()
                 try:
+                    print("INGEST TICK", now)
                     m_cnt, s_cnt = self.ingestor.ingest()
                     self._ingest_failures = 0
                     self._next_ingest_ts = 0.0
+                    self._telemetry["last_ingest_snapshots"] = int(s_cnt or 0)
+                    self._record_stage_ok("ingest", now)
                     log.info(f"ingest: markets={m_cnt} snapshots={s_cnt}")
                     markets = self.repo.list_markets(limit=200)
                     market_ids = [m.market_id for m in markets]
@@ -386,7 +586,7 @@ class MainLoop:
                     self._ingest_failures += 1
                     retry_in = min(30.0, 0.5 * (2 ** (self._ingest_failures - 1)))
                     self._next_ingest_ts = time.monotonic() + retry_in
-                    log.exception(f"ingest failed: {e}")
+                    self._record_stage_error("ingest", e, now)
                     self.bus.publish(
                         Alert(
                             ts=now,
@@ -395,15 +595,27 @@ class MainLoop:
                             message=f"{e} | retry in {retry_in:.1f}s",
                         )
                     )
+                finally:
+                    self._iter_stage_ms["ingest"] = (time.perf_counter() - t0) * 1000.0
+            else:
+                self._telemetry["skipped_ingest_guard"] = int(self._telemetry.get("skipped_ingest_guard", 0) or 0) + 1
 
             # Orderbook collector (separate cadence)
             if mono >= self._next_book_ts:
+                t0 = time.perf_counter()
                 try:
+                    print("BOOK TICK", now)
                     active_ids, target_stats = self._active_orderbook_targets(top_n=30)
+                    if not active_ids:
+                        self._telemetry["skipped_book_no_targets"] = int(
+                            self._telemetry.get("skipped_book_no_targets", 0) or 0
+                        ) + 1
                     stats = self.book_collector.collect(active_ids)
                     stats["targets"] = target_stats
                     self._book_failures = 0
                     self._next_book_ts = mono + 3.0
+                    self._telemetry["last_book_inserted"] = int(stats.get("inserted", 0) or 0)
+                    self._record_stage_ok("book", now)
                     try:
                         last_map = stats.get("last_book_ts") or {}
                         last_count = len(last_map)
@@ -480,7 +692,7 @@ class MainLoop:
                     self._book_failures += 1
                     retry_in = min(30.0, 0.5 * (2 ** (self._book_failures - 1)))
                     self._next_book_ts = mono + retry_in
-                    log.exception(f"orderbook ingest failed: {e}")
+                    self._record_stage_error("book", e, now)
                     self._queue_event(
                         ts=now,
                         level="ERROR",
@@ -488,6 +700,8 @@ class MainLoop:
                         message=str(e),
                         payload={},
                     )
+                finally:
+                    self._iter_stage_ms["book"] = (time.perf_counter() - t0) * 1000.0
 
             try:
                 self._auto_agent.maybe_tick(repo=self.repo, run_id=self.run_id, now=now)
@@ -509,7 +723,11 @@ class MainLoop:
                 except Exception as e:
                     log.warning("repo.flush_if_due failed: %s", e)
 
+            sleep_start = time.perf_counter()
             time.sleep(getattr(self.settings, "dispatcher_tick_sec", 1.0))
+            self._iter_stage_ms["idle"] = (time.perf_counter() - sleep_start) * 1000.0
+            self._emit_loop_status(now, force=(self._iter_errs > 0))
+            self._emit_summary(now)
         self._flush_events()
         if hasattr(self.repo, "flush_writes"):
             try:
