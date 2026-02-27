@@ -1375,9 +1375,9 @@
     if (!lagPill || !lagSources) return;
     const dataAgeSec = state.ingestAgeSec != null ? Number(state.ingestAgeSec) : (state.freshnessSec != null ? Number(state.freshnessSec) : null);
     const bookAgeSec = state.bookAgeSec != null ? Number(state.bookAgeSec) : null;
-    const pingLevel = (pingErrors >= 3 || (pingMs != null && pingMs > 800)) ? "STOP" : (pingMs != null && pingMs > 250 ? "WARN" : "OK");
-    const dataLevel = (dataAgeSec != null && dataAgeSec > 45) ? "STOP" : (dataAgeSec != null && dataAgeSec > 15 ? "WARN" : "OK");
-    const bookLevel = (bookAgeSec != null && bookAgeSec > 7) ? "STOP" : (bookAgeSec != null && bookAgeSec > 2.5 ? "WARN" : "OK");
+    const pingLevel = (pingErrors >= 3 || (pingMs != null && pingMs > 600)) ? "STOP" : (pingMs != null && pingMs > 200 ? "WARN" : "OK");
+    const dataLevel = (dataAgeSec != null && dataAgeSec > 15) ? "STOP" : (dataAgeSec != null && dataAgeSec > 6 ? "WARN" : "OK");
+    const bookLevel = (bookAgeSec != null && bookAgeSec > 2.5) ? "STOP" : (bookAgeSec != null && bookAgeSec > 0.8 ? "WARN" : "OK");
     const execErrTotal = execErrCount || execErrors || 0;
     const execLevel = (execErrTotal >= 3 || state.execBad) ? "STOP" : (execErrTotal >= 1 ? "WARN" : "OK");
     const sourceLevels = { PING: pingLevel, DATA: dataLevel, BOOK: bookLevel, EXEC: execLevel };
@@ -1453,10 +1453,7 @@
       lines.push("LAG OK");
     }
     lagPill.title = lines.slice(0, 2).join("\n");
-    if (window.__PS_LAG_DEBUG) {
-      window.__psLagState = lagState;
-      window.__psLagTick = (window.__psLagTick || 0) + 1;
-    }
+    if (window.__PS_LAG_DEBUG) window.__psLagState = lagState;
   }
 
   function isEvidenceOpen() {
