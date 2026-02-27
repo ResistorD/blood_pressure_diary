@@ -162,6 +162,40 @@ class MainLoop:
             return "-"
         return f"{age:.1f}s"
 
+    @staticmethod
+    def _fmt_age_s(age_s: Optional[float]) -> str:
+        if age_s is None:
+            return "-"
+        return f"{max(0.0, float(age_s)):.1f}s"
+
+    def _db_freshness_ages(self) -> tuple[Optional[float], Optional[float]]:
+        data_age_s: Optional[float] = None
+        book_age_s: Optional[float] = None
+        now = datetime.now(timezone.utc)
+        try:
+            with self.repo.conn() as con:
+                row = con.execute("SELECT MAX(ts) AS ts FROM snapshots").fetchone()
+            ts = str(row["ts"]) if row and row["ts"] else ""
+            if ts:
+                dt = datetime.fromisoformat(ts)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                data_age_s = max(0.0, (now - dt).total_seconds())
+        except Exception:
+            data_age_s = None
+        try:
+            with self.repo.conn() as con:
+                row = con.execute("SELECT MAX(ts_utc) AS ts FROM orderbook_snapshots").fetchone()
+            ts = str(row["ts"]) if row and row["ts"] else ""
+            if ts:
+                dt = datetime.fromisoformat(ts)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                book_age_s = max(0.0, (now - dt).total_seconds())
+        except Exception:
+            book_age_s = None
+        return data_age_s, book_age_s
+
     def _record_stage_ok(self, stage: str, now: datetime) -> None:
         self._telemetry[f"{stage}_ok"] = int(self._telemetry.get(f"{stage}_ok", 0) or 0) + 1
         self._telemetry["last_ok"][stage] = self._iso_utc(now)
@@ -218,8 +252,9 @@ class MainLoop:
         err_age_ing = self._fmt_age((e_ing or {}).get("ts", ""))
         err_age_book = self._fmt_age((e_book or {}).get("ts", ""))
         err_age_agent = self._fmt_age((e_agent or {}).get("ts", ""))
-        ingest_age = self._fmt_age(self._telemetry.get("last_ok", {}).get("ingest", ""))
-        book_age = self._fmt_age(self._telemetry.get("last_ok", {}).get("book", ""))
+        data_age_s, book_age_s = self._db_freshness_ages()
+        ingest_age = self._fmt_age_s(data_age_s)
+        book_age = self._fmt_age_s(book_age_s)
         line = (
             "LOOP t=%s iter=%s ingest=%.0fms book=%.0fms agent=%.0fms reconcile=%.0fms idle=%.0fms "
             "errs=%s data_age=%s book_age=%s ingest_ins=%s book_ins=%s "
@@ -257,6 +292,7 @@ class MainLoop:
         if (mono - self._last_summary_log_ts) < 10.0:
             return
         self._last_summary_log_ts = mono
+        data_age_s, book_age_s = self._db_freshness_ages()
         markets_cnt = 0
         snapshots_5m = 0
         open_positions = 0
@@ -359,9 +395,9 @@ class MainLoop:
         if live_cases == 0:
             if snapshots_5m == 0:
                 reason = "likely=no data ingest"
-            elif (self._age_sec(self._telemetry.get('last_ok', {}).get('book', '')) or 0.0) > 30.0:
+            elif (book_age_s or 0.0) > 30.0:
                 reason = "likely=no orderbook freshness"
-            elif paused or ((self._age_sec(self._telemetry.get('last_ok', {}).get('ingest', '')) or 0.0) > 60.0):
+            elif paused or ((data_age_s or 0.0) > 60.0):
                 reason = "likely=trading disabled (expected)"
             else:
                 reason = "likely=filters/guards produced no live cases"
@@ -380,14 +416,14 @@ class MainLoop:
         if (mono - self._last_stage_flags_log_ts) < 10.0:
             return
         self._last_stage_flags_log_ts = mono
+        data_age_s, _ = self._db_freshness_ages()
         paused = 0
         try:
             if hasattr(self.repo, "is_paused"):
                 paused = 1 if bool(self.repo.is_paused()) else 0
         except Exception:
             paused = 0
-        ingest_age = self._age_sec(self._telemetry.get("last_ok", {}).get("ingest", ""))
-        stale = 1 if (ingest_age is not None and ingest_age > 60.0) else 0
+        stale = 1 if (data_age_s is not None and data_age_s > 60.0) else 0
         trading_enabled = 1 if (not paused and bool(getattr(self.settings, "enable_decision", True))) else 0
         log.info(
             "STAGES ran_ingest=%s ran_book=%s ran_agent=%s paused=%s stale=%s trading_enabled=%s",
