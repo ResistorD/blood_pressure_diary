@@ -139,6 +139,9 @@ class MainLoop:
         }
         self._iter_stage_ms: Dict[str, float] = {}
         self._iter_errs = 0
+        self._last_ingest_done_utc: Optional[str] = None
+        self._last_book_done_utc: Optional[str] = None
+        self._last_agent_done_utc: Optional[str] = None
 
     @staticmethod
     def _iso_utc(dt: datetime) -> str:
@@ -221,7 +224,14 @@ class MainLoop:
 
     def _record_stage_ok(self, stage: str, now: datetime) -> None:
         self._telemetry[f"{stage}_ok"] = int(self._telemetry.get(f"{stage}_ok", 0) or 0) + 1
-        self._telemetry["last_ok"][stage] = self._iso_utc(now)
+        iso_now = self._iso_utc(now)
+        self._telemetry["last_ok"][stage] = iso_now
+        if stage == "ingest":
+            self._last_ingest_done_utc = iso_now
+        elif stage == "book":
+            self._last_book_done_utc = iso_now
+        elif stage == "agent":
+            self._last_agent_done_utc = iso_now
 
     def _record_stage_error(self, stage: str, exc: Exception, now: datetime) -> None:
         self._telemetry[f"{stage}_err"] = int(self._telemetry.get(f"{stage}_err", 0) or 0) + 1
@@ -278,15 +288,22 @@ class MainLoop:
         freshness = self._db_freshness_ages()
         data_age_s = freshness.get("data_age_s")
         book_age_s = freshness.get("book_age_s")
+        pulse_data_age_s = self._age_sec(self._last_ingest_done_utc or "")
+        pulse_book_age_s = self._age_sec(self._last_book_done_utc or "")
+        pulse_agent_age_s = self._age_sec(self._last_agent_done_utc or "")
         data_ts_max = str(freshness.get("data_ts_max") or "")
         book_ts_max = str(freshness.get("book_ts_max") or "")
         data_age_src = str(freshness.get("data_age_src") or "snapshots.ts")
         book_age_src = str(freshness.get("book_age_src") or "orderbook_snapshots.ts_utc")
-        ingest_age = self._fmt_age_s(data_age_s)
-        book_age = self._fmt_age_s(book_age_s)
+        pulse_data_age = self._fmt_age_s(pulse_data_age_s)
+        pulse_book_age = self._fmt_age_s(pulse_book_age_s)
+        pulse_agent_age = self._fmt_age_s(pulse_agent_age_s)
+        market_data_age = self._fmt_age_s(data_age_s)
+        market_book_age = self._fmt_age_s(book_age_s)
         log.info(
             "LOOP t=%s iter=%s ingest=%.0fms book=%.0fms agent=%.0fms reconcile=%.0fms idle=%.0fms "
-            "errs=%s data_age=%s book_age=%s ingest_ins=%s book_ins=%s "
+            "errs=%s pulse_data_age=%s pulse_book_age=%s pulse_agent_age=%s "
+            "market_data_age=%s market_book_age=%s ingest_ins=%s book_ins=%s "
             "cnt[i_ok=%s i_err=%s b_ok=%s b_err=%s a_ok=%s a_err=%s sk_book0=%s] "
             "err_age[i=%s b=%s a=%s] "
             "data_ts_max=%s data_age_src=%s book_ts_max=%s book_age_src=%s",
@@ -298,8 +315,11 @@ class MainLoop:
             float(self._iter_stage_ms.get("reconcile", 0.0)),
             float(self._iter_stage_ms.get("idle", 0.0)),
             errs,
-            ingest_age,
-            book_age,
+            pulse_data_age,
+            pulse_book_age,
+            pulse_agent_age,
+            market_data_age,
+            market_book_age,
             int(self._telemetry.get("last_ingest_snapshots", 0) or 0),
             int(self._telemetry.get("last_book_inserted", 0) or 0),
             int(self._telemetry.get("ingest_ok", 0) or 0),
@@ -449,23 +469,40 @@ class MainLoop:
         if (mono - self._last_stage_flags_log_ts) < 10.0:
             return
         self._last_stage_flags_log_ts = mono
-        freshness = self._db_freshness_ages()
-        data_age_s = freshness.get("data_age_s")
+        pulse_data_age_s = self._age_sec(self._last_ingest_done_utc or "")
+        pulse_book_age_s = self._age_sec(self._last_book_done_utc or "")
         paused = 0
         try:
             if hasattr(self.repo, "is_paused"):
                 paused = 1 if bool(self.repo.is_paused()) else 0
         except Exception:
             paused = 0
-        stale = 1 if (data_age_s is not None and data_age_s > 60.0) else 0
+        stale = 0
+        stale_reason = "OK"
+        if pulse_data_age_s is None:
+            stale = 1
+            stale_reason = "NO_PULSE_DATA"
+        elif pulse_data_age_s > 45.0:
+            stale = 1
+            stale_reason = "PULSE_DATA_GT_45S"
+        elif pulse_book_age_s is None:
+            stale = 1
+            stale_reason = "NO_PULSE_BOOK"
+        elif pulse_book_age_s > 7.0:
+            stale = 1
+            stale_reason = "PULSE_BOOK_GT_7S"
         trading_enabled = 1 if (not paused and bool(getattr(self.settings, "enable_decision", True))) else 0
         log.info(
-            "STAGES ran_ingest=%s ran_book=%s ran_agent=%s paused=%s stale=%s trading_enabled=%s",
+            "STAGES ran_ingest=%s ran_book=%s ran_agent=%s paused=%s stale=%s stale_reason=%s "
+            "pulse_data_age=%s pulse_book_age=%s trading_enabled=%s",
             int(ran_ingest),
             int(ran_book),
             int(ran_agent),
             int(paused),
             int(stale),
+            stale_reason,
+            self._fmt_age_s(pulse_data_age_s),
+            self._fmt_age_s(pulse_book_age_s),
             int(trading_enabled),
         )
 
