@@ -804,12 +804,17 @@ class MainLoop:
                     self._next_ingest_ts = 0.0
                     self._telemetry["last_ingest_snapshots"] = inserted_n
                     self._record_stage_ok("ingest", now)
+                    freshness = self._db_freshness_ages()
+                    db_data_ts_max = str(freshness.get("data_ts_max") or "")
+                    db_data_age_s = freshness.get("data_age_s")
                     log.info(
-                        "INGEST_OK fetched=%s parsed=%s inserted=%s markets=%s",
+                        "INGEST_OK fetched=%s parsed=%s inserted=%s markets=%s db_data_ts_max=%s db_data_age_s=%s",
                         fetched_n,
                         parsed_n,
                         inserted_n,
                         int(m_cnt or 0),
+                        db_data_ts_max or "none",
+                        None if db_data_age_s is None else round(float(db_data_age_s), 1),
                     )
                     log.info(f"ingest: markets={m_cnt} snapshots={s_cnt}")
                     markets = self.repo.list_markets(limit=200)
@@ -945,10 +950,14 @@ class MainLoop:
                         errors = stats.get("errors", 0)
                         dropped_no_clob = (stats.get("targets") or {}).get("dropped_no_clob_tokens", 0)
                         skipped_missing = stats.get("skipped_missing", 0)
+                        freshness = self._db_freshness_ages()
+                        db_book_ts_max = str(freshness.get("book_ts_max") or "")
+                        db_book_age_s = freshness.get("book_age_s")
                         should_info = bool(errors or inserted == 0 or (mono - self._last_orderbook_log) >= 60.0)
                         if should_info:
                             log.info(
-                                "orderbook: total=%s inserted=%s errors=%s dropped_no_clob=%s skipped_missing=%s last_book_count=%s max_age_s=%s",
+                                "orderbook: total=%s inserted=%s errors=%s dropped_no_clob=%s skipped_missing=%s "
+                                "last_book_count=%s max_age_s=%s db_book_ts_max=%s db_book_age_s=%s",
                                 total,
                                 inserted,
                                 errors,
@@ -956,11 +965,14 @@ class MainLoop:
                                 skipped_missing,
                                 last_count,
                                 None if max_age_s is None else round(max_age_s, 1),
+                                db_book_ts_max or "none",
+                                None if db_book_age_s is None else round(float(db_book_age_s), 1),
                             )
                             self._last_orderbook_log = mono
                         else:
                             log.debug(
-                                "orderbook: total=%s inserted=%s errors=%s dropped_no_clob=%s skipped_missing=%s last_book_count=%s max_age_s=%s",
+                                "orderbook: total=%s inserted=%s errors=%s dropped_no_clob=%s skipped_missing=%s "
+                                "last_book_count=%s max_age_s=%s db_book_ts_max=%s db_book_age_s=%s",
                                 total,
                                 inserted,
                                 errors,
@@ -968,6 +980,8 @@ class MainLoop:
                                 skipped_missing,
                                 last_count,
                                 None if max_age_s is None else round(max_age_s, 1),
+                                db_book_ts_max or "none",
+                                None if db_book_age_s is None else round(float(db_book_age_s), 1),
                             )
                     except Exception:
                         log.debug("orderbook: summary failed", exc_info=True)
