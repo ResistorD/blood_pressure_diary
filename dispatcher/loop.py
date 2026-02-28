@@ -181,24 +181,39 @@ class MainLoop:
         now = datetime.now(timezone.utc)
         try:
             with self.repo.conn() as con:
-                row = con.execute("SELECT MAX(ts) AS ts FROM snapshots").fetchone()
-            ts = str(row["ts"]) if row and row["ts"] else ""
-            data_ts_max = ts
-            if not ts:
+                row = con.execute(
+                    """
+                    SELECT ts, (julianday('now') - julianday(ts)) * 86400.0 AS age_s
+                    FROM snapshots
+                    WHERE ts IS NOT NULL AND ts <> ''
+                    ORDER BY julianday(ts) DESC
+                    LIMIT 1
+                    """
+                ).fetchone()
+            if row and row["ts"]:
+                data_ts_max = str(row["ts"])
+                age_raw = row["age_s"]
+                data_age_s = max(0.0, float(age_raw)) if age_raw is not None else None
+            else:
                 # Match /health/state compatibility fallback for legacy schemas.
                 try:
                     with self.repo.conn() as con:
-                        row = con.execute("SELECT MAX(updated_at) AS ts FROM snapshots").fetchone()
-                    ts = str(row["ts"]) if row and row["ts"] else ""
-                    data_ts_max = ts
-                    data_age_src = "snapshots.updated_at"
+                        row = con.execute(
+                            """
+                            SELECT updated_at AS ts, (julianday('now') - julianday(updated_at)) * 86400.0 AS age_s
+                            FROM snapshots
+                            WHERE updated_at IS NOT NULL AND updated_at <> ''
+                            ORDER BY julianday(updated_at) DESC
+                            LIMIT 1
+                            """
+                        ).fetchone()
+                    if row and row["ts"]:
+                        data_ts_max = str(row["ts"])
+                        age_raw = row["age_s"]
+                        data_age_s = max(0.0, float(age_raw)) if age_raw is not None else None
+                        data_age_src = "snapshots.updated_at"
                 except Exception:
-                    ts = ""
-            if ts:
-                dt = datetime.fromisoformat(ts)
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=timezone.utc)
-                data_age_s = max(0.0, (now - dt).total_seconds())
+                    pass
         except Exception:
             data_age_s = None
         try:
