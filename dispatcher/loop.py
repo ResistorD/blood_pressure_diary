@@ -168,14 +168,29 @@ class MainLoop:
             return "-"
         return f"{max(0.0, float(age_s)):.1f}s"
 
-    def _db_freshness_ages(self) -> tuple[Optional[float], Optional[float]]:
+    def _db_freshness_ages(self) -> Dict[str, Any]:
         data_age_s: Optional[float] = None
         book_age_s: Optional[float] = None
+        data_ts_max = ""
+        book_ts_max = ""
+        data_age_src = "snapshots.ts"
+        book_age_src = "orderbook_snapshots.ts_utc"
         now = datetime.now(timezone.utc)
         try:
             with self.repo.conn() as con:
                 row = con.execute("SELECT MAX(ts) AS ts FROM snapshots").fetchone()
             ts = str(row["ts"]) if row and row["ts"] else ""
+            data_ts_max = ts
+            if not ts:
+                # Match /health/state compatibility fallback for legacy schemas.
+                try:
+                    with self.repo.conn() as con:
+                        row = con.execute("SELECT MAX(updated_at) AS ts FROM snapshots").fetchone()
+                    ts = str(row["ts"]) if row and row["ts"] else ""
+                    data_ts_max = ts
+                    data_age_src = "snapshots.updated_at"
+                except Exception:
+                    ts = ""
             if ts:
                 dt = datetime.fromisoformat(ts)
                 if dt.tzinfo is None:
@@ -187,6 +202,7 @@ class MainLoop:
             with self.repo.conn() as con:
                 row = con.execute("SELECT MAX(ts_utc) AS ts FROM orderbook_snapshots").fetchone()
             ts = str(row["ts"]) if row and row["ts"] else ""
+            book_ts_max = ts
             if ts:
                 dt = datetime.fromisoformat(ts)
                 if dt.tzinfo is None:
@@ -194,7 +210,14 @@ class MainLoop:
                 book_age_s = max(0.0, (now - dt).total_seconds())
         except Exception:
             book_age_s = None
-        return data_age_s, book_age_s
+        return {
+            "data_age_s": data_age_s,
+            "book_age_s": book_age_s,
+            "data_ts_max": data_ts_max,
+            "book_ts_max": book_ts_max,
+            "data_age_src": data_age_src,
+            "book_age_src": book_age_src,
+        }
 
     def _record_stage_ok(self, stage: str, now: datetime) -> None:
         self._telemetry[f"{stage}_ok"] = int(self._telemetry.get(f"{stage}_ok", 0) or 0) + 1
@@ -252,14 +275,21 @@ class MainLoop:
         err_age_ing = self._fmt_age((e_ing or {}).get("ts", ""))
         err_age_book = self._fmt_age((e_book or {}).get("ts", ""))
         err_age_agent = self._fmt_age((e_agent or {}).get("ts", ""))
-        data_age_s, book_age_s = self._db_freshness_ages()
+        freshness = self._db_freshness_ages()
+        data_age_s = freshness.get("data_age_s")
+        book_age_s = freshness.get("book_age_s")
+        data_ts_max = str(freshness.get("data_ts_max") or "")
+        book_ts_max = str(freshness.get("book_ts_max") or "")
+        data_age_src = str(freshness.get("data_age_src") or "snapshots.ts")
+        book_age_src = str(freshness.get("book_age_src") or "orderbook_snapshots.ts_utc")
         ingest_age = self._fmt_age_s(data_age_s)
         book_age = self._fmt_age_s(book_age_s)
         line = (
             "LOOP t=%s iter=%s ingest=%.0fms book=%.0fms agent=%.0fms reconcile=%.0fms idle=%.0fms "
             "errs=%s data_age=%s book_age=%s ingest_ins=%s book_ins=%s "
             "cnt[i_ok=%s i_err=%s b_ok=%s b_err=%s a_ok=%s a_err=%s sk_book0=%s] "
-            "err_age[i=%s b=%s a=%s]"
+            "err_age[i=%s b=%s a=%s] "
+            "data_ts_max=%s data_age_src=%s book_ts_max=%s book_age_src=%s"
         )
         log.info(
             line,
@@ -285,6 +315,10 @@ class MainLoop:
             err_age_ing,
             err_age_book,
             err_age_agent,
+            data_ts_max or "none",
+            data_age_src,
+            book_ts_max or "none",
+            book_age_src,
         )
 
     def _emit_summary(self, now: datetime) -> None:
@@ -292,7 +326,9 @@ class MainLoop:
         if (mono - self._last_summary_log_ts) < 10.0:
             return
         self._last_summary_log_ts = mono
-        data_age_s, book_age_s = self._db_freshness_ages()
+        freshness = self._db_freshness_ages()
+        data_age_s = freshness.get("data_age_s")
+        book_age_s = freshness.get("book_age_s")
         markets_cnt = 0
         snapshots_5m = 0
         open_positions = 0
@@ -416,7 +452,8 @@ class MainLoop:
         if (mono - self._last_stage_flags_log_ts) < 10.0:
             return
         self._last_stage_flags_log_ts = mono
-        data_age_s, _ = self._db_freshness_ages()
+        freshness = self._db_freshness_ages()
+        data_age_s = freshness.get("data_age_s")
         paused = 0
         try:
             if hasattr(self.repo, "is_paused"):
