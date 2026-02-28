@@ -224,14 +224,14 @@ class MainLoop:
 
     def _record_stage_ok(self, stage: str, now: datetime) -> None:
         self._telemetry[f"{stage}_ok"] = int(self._telemetry.get(f"{stage}_ok", 0) or 0) + 1
-        iso_now = self._iso_utc(now)
-        self._telemetry["last_ok"][stage] = iso_now
+        done_iso = self._iso_utc(datetime.now(timezone.utc))
+        self._telemetry["last_ok"][stage] = done_iso
         if stage == "ingest":
-            self._last_ingest_done_utc = iso_now
+            self._last_ingest_done_utc = done_iso
         elif stage == "book":
-            self._last_book_done_utc = iso_now
+            self._last_book_done_utc = done_iso
         elif stage == "agent":
-            self._last_agent_done_utc = iso_now
+            self._last_agent_done_utc = done_iso
 
     def _record_stage_error(self, stage: str, exc: Exception, now: datetime) -> None:
         self._telemetry[f"{stage}_err"] = int(self._telemetry.get(f"{stage}_err", 0) or 0) + 1
