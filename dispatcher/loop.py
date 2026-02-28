@@ -469,6 +469,9 @@ class MainLoop:
         if (mono - self._last_stage_flags_log_ts) < 10.0:
             return
         self._last_stage_flags_log_ts = mono
+        freshness = self._db_freshness_ages()
+        market_data_age_s = freshness.get("data_age_s")
+        market_book_age_s = freshness.get("book_age_s")
         pulse_data_age_s = self._age_sec(self._last_ingest_done_utc or "")
         pulse_book_age_s = self._age_sec(self._last_book_done_utc or "")
         paused = 0
@@ -479,18 +482,18 @@ class MainLoop:
             paused = 0
         stale = 0
         stale_reason = "OK"
-        if pulse_data_age_s is None:
+        if market_data_age_s is None:
             stale = 1
-            stale_reason = "NO_PULSE_DATA"
-        elif pulse_data_age_s > 45.0:
+            stale_reason = "NO_MARKET_DATA_TS"
+        elif market_data_age_s > 45.0:
             stale = 1
-            stale_reason = "PULSE_DATA_GT_45S"
-        elif pulse_book_age_s is None:
+            stale_reason = "MARKET_DATA_GT_45S"
+        elif market_book_age_s is None:
             stale = 1
-            stale_reason = "NO_PULSE_BOOK"
-        elif pulse_book_age_s > 7.0:
+            stale_reason = "NO_MARKET_BOOK_TS"
+        elif market_book_age_s > 7.0:
             stale = 1
-            stale_reason = "PULSE_BOOK_GT_7S"
+            stale_reason = "MARKET_BOOK_GT_7S"
         trading_enabled = 1 if (not paused and bool(getattr(self.settings, "enable_decision", True))) else 0
         log.info(
             "STAGES ran_ingest=%s ran_book=%s ran_agent=%s paused=%s stale=%s stale_reason=%s "
