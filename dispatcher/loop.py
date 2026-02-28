@@ -284,15 +284,12 @@ class MainLoop:
         book_age_src = str(freshness.get("book_age_src") or "orderbook_snapshots.ts_utc")
         ingest_age = self._fmt_age_s(data_age_s)
         book_age = self._fmt_age_s(book_age_s)
-        line = (
+        log.info(
             "LOOP t=%s iter=%s ingest=%.0fms book=%.0fms agent=%.0fms reconcile=%.0fms idle=%.0fms "
             "errs=%s data_age=%s book_age=%s ingest_ins=%s book_ins=%s "
             "cnt[i_ok=%s i_err=%s b_ok=%s b_err=%s a_ok=%s a_err=%s sk_book0=%s] "
             "err_age[i=%s b=%s a=%s] "
-            "data_ts_max=%s data_age_src=%s book_ts_max=%s book_age_src=%s"
-        )
-        log.info(
-            line,
+            "data_ts_max=%s data_age_src=%s book_ts_max=%s book_age_src=%s",
             now.strftime("%H:%M:%S"),
             self._iter,
             float(self._iter_stage_ms.get("ingest", 0.0)),
