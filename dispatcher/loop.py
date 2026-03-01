@@ -177,56 +177,49 @@ class MainLoop:
         book_age_s: Optional[float] = None
         data_ts_max = ""
         book_ts_max = ""
-        data_age_src = "snapshots.ts"
-        book_age_src = "orderbook_snapshots.ts_utc"
-        now = datetime.now(timezone.utc)
-        try:
-            with self.repo.conn() as con:
-                row = con.execute(
-                    """
-                    SELECT ts, (julianday('now') - julianday(ts)) * 86400.0 AS age_s
-                    FROM snapshots
-                    WHERE ts IS NOT NULL AND ts <> '' AND julianday(ts) IS NOT NULL
-                    ORDER BY julianday(ts) DESC
-                    LIMIT 1
-                    """
-                ).fetchone()
-            if row and row["ts"] and row["age_s"] is not None:
-                data_ts_max = str(row["ts"])
+        data_age_src = "snapshots.ts(rowid)"
+        book_age_src = "orderbook_snapshots.ts_utc(rowid)"
+
+        def _rowid_latest(table: str, col: str) -> tuple[str, Optional[float]]:
+            try:
+                with self.repo.conn() as con:
+                    row = con.execute(
+                        f"""
+                        SELECT {col} AS ts, (julianday('now') - julianday({col})) * 86400.0 AS age_s
+                        FROM {table}
+                        WHERE {col} IS NOT NULL AND {col} <> ''
+                        ORDER BY rowid DESC
+                        LIMIT 1
+                        """
+                    ).fetchone()
+                if not row or not row["ts"]:
+                    return "", None
+                ts = str(row["ts"])
                 age_raw = row["age_s"]
-                data_age_s = max(0.0, float(age_raw)) if age_raw is not None else None
+                if age_raw is None:
+                    return ts, None
+                return ts, max(0.0, float(age_raw))
+            except Exception:
+                return "", None
+
+        try:
+            ts, age_s = _rowid_latest("snapshots", "ts")
+            if ts and age_s is not None:
+                data_ts_max = ts
+                data_age_s = age_s
             else:
-                # Match /health/state compatibility fallback for legacy schemas.
-                try:
-                    with self.repo.conn() as con:
-                        row = con.execute(
-                            """
-                            SELECT updated_at AS ts, (julianday('now') - julianday(updated_at)) * 86400.0 AS age_s
-                            FROM snapshots
-                            WHERE updated_at IS NOT NULL AND updated_at <> '' AND julianday(updated_at) IS NOT NULL
-                            ORDER BY julianday(updated_at) DESC
-                            LIMIT 1
-                            """
-                        ).fetchone()
-                    if row and row["ts"] and row["age_s"] is not None:
-                        data_ts_max = str(row["ts"])
-                        age_raw = row["age_s"]
-                        data_age_s = max(0.0, float(age_raw)) if age_raw is not None else None
-                        data_age_src = "snapshots.updated_at"
-                except Exception:
-                    pass
+                ts_fallback, age_fallback = _rowid_latest("snapshots", "updated_at")
+                if ts_fallback and age_fallback is not None:
+                    data_ts_max = ts_fallback
+                    data_age_s = age_fallback
+                    data_age_src = "snapshots.updated_at(rowid)"
         except Exception:
             data_age_s = None
         try:
-            with self.repo.conn() as con:
-                row = con.execute("SELECT MAX(ts_utc) AS ts FROM orderbook_snapshots").fetchone()
-            ts = str(row["ts"]) if row and row["ts"] else ""
-            book_ts_max = ts
-            if ts:
-                dt = datetime.fromisoformat(ts)
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=timezone.utc)
-                book_age_s = max(0.0, (now - dt).total_seconds())
+            ts_book, age_book = _rowid_latest("orderbook_snapshots", "ts_utc")
+            if ts_book and age_book is not None:
+                book_ts_max = ts_book
+                book_age_s = age_book
         except Exception:
             book_age_s = None
         return {
