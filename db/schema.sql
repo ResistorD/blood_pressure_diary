@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS snapshots (
   liquidity REAL,
   volume REAL,
   implied_prob REAL,
+  updated_at TEXT,
   PRIMARY KEY (ts, market_id, outcome),
   FOREIGN KEY (market_id) REFERENCES markets(market_id)
 );

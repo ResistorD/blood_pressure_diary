@@ -12,7 +12,7 @@
         Макс. безопасный: Покупка <span data-safe-buy>—</span> / Закрытие <span data-safe-sell>—</span>
       </div>
       <button class="btn btn-success btn-sm trade-action" type="button"
-              data-trade-button="1" data-action="trade" data-paper-action="buy" data-case-id="{{ case_id }}"
+              data-trade-button="1" data-action="trade" data-paper-action="buy" data-case-action="buy" data-case-id="{{ case_id }}"
               {% if disabled_open %} disabled{% endif %}>
         Откр.
       </button>
@@ -25,7 +25,7 @@
         Превью
       </button>
       <button class="btn btn-danger btn-sm trade-action" type="button"
-              data-trade-button="1" data-action="trade" data-paper-action="close" data-case-id="{{ case_id }}"
+              data-trade-button="1" data-action="trade" data-paper-action="close" data-case-action="close" data-case-id="{{ case_id }}"
               {% if disabled_close %} disabled{% endif %}>
         Закр.
       </button>

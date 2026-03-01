@@ -31,7 +31,7 @@
   </div>
 
   <div class="opps-guided" data-opps-guided style="display:none;">
-    <div class="opps-guided-grid" data-opps-guided-grid></div>
+    <div class="opps-guided-grid" data-opps-guided-grid data-guided-grid></div>
   </div>
 
   {% set kpi_items = [
@@ -114,6 +114,9 @@
               <a href="/cases/{{ market_id | urlencode }}" data-role="open">
                 {{ (title if title else market_id) }}
               </a>
+              {% if title %}
+                <span class="muted small mono">#{{ market_id }}</span>
+              {% endif %}
             {% else %}
               —
             {% endif %}
@@ -197,8 +200,11 @@
         </tr>
       {% endfor %}
     {% endset %}
-    {% if (rows|default([]))|length > 0 %}
-      <div data-cases-table>
+    <div data-cases-table>
+      <div class="muted" data-cases-empty style="padding:12px 12px;font-style:italic{% if (rows|default([]))|length > 0 %};display:none{% endif %}">
+        Пока нет возможностей. Либо недостаточно данных, либо фильтры слишком строгие.
+      </div>
+      <div data-cases-table-wrap{% if (rows|default([]))|length == 0 %} style="display:none"{% endif %}>
         <div class="table-scroll" data-table-scroll data-xscroll="opps">
           <div class="table-wrap">
             <table class="data-table" id="opps-table">
@@ -212,11 +218,7 @@
           </div>
         </div>
       </div>
-    {% else %}
-      <div class="muted" style="padding:12px 12px;font-style:italic">
-        Пока нет возможностей. Либо недостаточно данных, либо фильтры слишком строгие.
-      </div>
-    {% endif %}
+    </div>
   {% endcall %}
 
   <div class="card">

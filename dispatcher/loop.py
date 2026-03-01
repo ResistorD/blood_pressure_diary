@@ -181,8 +181,29 @@ class MainLoop:
         book_age_s: Optional[float] = None
         data_ts_max = ""
         book_ts_max = ""
-        data_age_src = "snapshots.ts(rowid)"
-        book_age_src = "orderbook_snapshots.ts_utc(rowid)"
+        data_age_src = "snapshots.updated_at(MAX)"
+
+        def _max_col_age(table: str, col: str) -> tuple[str, Optional[float]]:
+            """Get MAX(col) and compute age in seconds. Preferred over rowid-based."""
+            try:
+                with self.repo.conn() as con:
+                    row = con.execute(
+                        f"""
+                        SELECT MAX({col}) AS ts,
+                               (julianday('now') - julianday(MAX({col}))) * 86400.0 AS age_s
+                        FROM {table}
+                        WHERE {col} IS NOT NULL AND {col} <> ''
+                        """
+                    ).fetchone()
+                if not row or not row["ts"]:
+                    return "", None
+                ts = str(row["ts"])
+                age_raw = row["age_s"]
+                if age_raw is None:
+                    return ts, None
+                return ts, max(0.0, float(age_raw))
+            except Exception:
+                return "", None
 
         def _rowid_latest(table: str, col: str) -> tuple[str, Optional[float]]:
             try:
@@ -228,34 +249,56 @@ class MainLoop:
             self._last_data_ts_epoch = cur
 
         try:
-            ts, age_s = _rowid_latest("snapshots", "ts")
+            # PRIMARY: use updated_at (wall clock written at insert time) — immune to stale API ts
+            ts, age_s = _max_col_age("snapshots", "updated_at")
             if ts and age_s is not None:
                 data_ts_max = ts
                 data_age_s = age_s
+                data_age_src = "snapshots.updated_at(MAX)"
                 _update_ingest_ema(ts)
             else:
-                ts_fallback, age_fallback = _rowid_latest("snapshots", "updated_at")
-                if ts_fallback and age_fallback is not None:
-                    data_ts_max = ts_fallback
-                    data_age_s = age_fallback
-                    data_age_src = "snapshots.updated_at(rowid)"
-                    _update_ingest_ema(ts_fallback)
+                # FALLBACK: use ts (API timestamp) by rowid
+                ts, age_s = _rowid_latest("snapshots", "ts")
+                if ts and age_s is not None:
+                    data_ts_max = ts
+                    data_age_s = age_s
+                    data_age_src = "snapshots.ts(rowid)"
+                    _update_ingest_ema(ts)
+                else:
+                    # LAST RESORT: MAX(ts)
+                    ts_fallback, age_fallback = _max_col_age("snapshots", "ts")
+                    if ts_fallback and age_fallback is not None:
+                        data_ts_max = ts_fallback
+                        data_age_s = age_fallback
+                        data_age_src = "snapshots.ts(MAX)"
+                        _update_ingest_ema(ts_fallback)
         except Exception:
             data_age_s = None
+        # Also capture raw market ts freshness (API upstream) separately for diagnostics
+        market_ts_max = ""
+        market_ts_age_s: Optional[float] = None
         try:
-            ts_book, age_book = _rowid_latest("orderbook_snapshots", "ts_utc")
+            market_ts_max, market_ts_age_s = _max_col_age("snapshots", "ts")
+        except Exception:
+            pass
+        try:
+            ts_book, age_book = _max_col_age("orderbook_snapshots", "ts_utc")
             if ts_book and age_book is not None:
                 book_ts_max = ts_book
                 book_age_s = age_book
         except Exception:
             book_age_s = None
         return {
+            # ingest_age_s: how long ago the pipeline last wrote (wall clock, updated_at)
             "data_age_s": data_age_s,
-            "book_age_s": book_age_s,
             "data_ts_max": data_ts_max,
-            "book_ts_max": book_ts_max,
             "data_age_src": data_age_src,
-            "book_age_src": book_age_src,
+            # market_ts_age_s: how old the actual market data is (API ts)
+            "market_ts_age_s": market_ts_age_s,
+            "market_ts_max": market_ts_max,
+            "book_age_s": book_age_s,
+            "book_ts_max": book_ts_max,
+            "book_age_src": "orderbook_snapshots.ts_utc(MAX)",
         }
 
     def _record_stage_ok(self, stage: str, now: datetime) -> None:
@@ -322,13 +365,15 @@ class MainLoop:
         err_age_book = self._fmt_age((e_book or {}).get("ts", ""))
         err_age_agent = self._fmt_age((e_agent or {}).get("ts", ""))
         freshness = freshness or self._db_freshness_ages()
-        market_data_age_s = freshness.get("data_age_s")
+        market_data_age_s = freshness.get("data_age_s")   # ingest pipeline age (updated_at)
         market_book_age_s = freshness.get("book_age_s")
+        market_ts_age_s = freshness.get("market_ts_age_s")  # API upstream age (snapshots.ts)
         pulse_data_age_s = self._age_sec(self._last_ingest_done_utc or "")
         pulse_book_age_s = self._age_sec(self._last_book_done_utc or "")
         pulse_agent_age_s = self._age_sec(self._last_agent_done_utc or "")
         data_ts_max = str(freshness.get("data_ts_max") or "")
         book_ts_max = str(freshness.get("book_ts_max") or "")
+        market_ts_max = str(freshness.get("market_ts_max") or "")
         data_age_src = str(freshness.get("data_age_src") or "snapshots.ts")
         book_age_src = str(freshness.get("book_age_src") or "orderbook_snapshots.ts_utc")
         pulse_data_age = self._fmt_age_s(pulse_data_age_s)
@@ -336,13 +381,14 @@ class MainLoop:
         pulse_agent_age = self._fmt_age_s(pulse_agent_age_s)
         market_data_age = self._fmt_age_s(market_data_age_s)
         market_book_age = self._fmt_age_s(market_book_age_s)
+        market_ts_age = self._fmt_age_s(market_ts_age_s)
         log.info(
             "LOOP t=%s iter=%s ingest=%.0fms book=%.0fms agent=%.0fms reconcile=%.0fms idle=%.0fms "
             "errs=%s pulse_data_age=%s pulse_book_age=%s pulse_agent_age=%s "
-            "market_data_age=%s market_book_age=%s ingest_ins=%s book_ins=%s "
+            "ingest_age=%s market_ts_age=%s market_book_age=%s ingest_ins=%s book_ins=%s "
             "cnt[i_ok=%s i_err=%s b_ok=%s b_err=%s a_ok=%s a_err=%s sk_book0=%s] "
             "err_age[i=%s b=%s a=%s] "
-            "data_ts_max=%s data_age_src=%s book_ts_max=%s book_age_src=%s",
+            "ingest_ts_max=%s market_ts_max=%s data_age_src=%s book_ts_max=%s",
             now.strftime("%H:%M:%S"),
             self._iter,
             float(self._iter_stage_ms.get("ingest", 0.0)),
@@ -354,7 +400,8 @@ class MainLoop:
             pulse_data_age,
             pulse_book_age,
             pulse_agent_age,
-            market_data_age,
+            market_data_age,    # ingest pipeline liveness (updated_at)
+            market_ts_age,      # actual market data freshness (API ts)
             market_book_age,
             int(self._telemetry.get("last_ingest_snapshots", 0) or 0),
             int(self._telemetry.get("last_book_inserted", 0) or 0),
@@ -369,9 +416,9 @@ class MainLoop:
             err_age_book,
             err_age_agent,
             data_ts_max or "none",
+            market_ts_max or "none",
             data_age_src,
             book_ts_max or "none",
-            book_age_src,
         )
 
     def _emit_summary(self, now: datetime) -> None:
@@ -514,9 +561,12 @@ class MainLoop:
             return
         self._last_stage_flags_log_ts = mono
         freshness = freshness or self._db_freshness_ages()
-        market_data_age_s = freshness.get("data_age_s")
+        market_data_age_s = freshness.get("data_age_s")       # pipeline liveness (updated_at)
+        market_ts_age_s = freshness.get("market_ts_age_s")    # API upstream freshness (snapshots.ts)
         market_book_age_s = freshness.get("book_age_s")
         db_book_ts_max = str(freshness.get("book_ts_max") or "")
+        ingest_ts_max = str(freshness.get("data_ts_max") or "")     # updated_at max
+        market_ts_max = str(freshness.get("market_ts_max") or "")   # snapshots.ts max
         pulse_data_age_s = self._age_sec(self._last_ingest_done_utc or "")
         pulse_book_age_s = self._age_sec(self._last_book_done_utc or "")
         paused = 0
@@ -539,9 +589,9 @@ class MainLoop:
         elif market_book_age_s is None:
             stale = 1
             stale_reason = "NO_MARKET_BOOK_TS"
-        elif market_book_age_s > 7.0:
+        elif market_book_age_s > 30.0:
             stale = 1
-            stale_reason = "MARKET_BOOK_GT_7S"
+            stale_reason = "MARKET_BOOK_GT_30S"
         try:
             book_age_ref = freshness.get("book_age_s")
             if (
@@ -562,7 +612,9 @@ class MainLoop:
         trading_enabled = 1 if (not paused and bool(getattr(self.settings, "enable_decision", True))) else 0
         log.info(
             "STAGES ran_ingest=%s ran_book=%s ran_agent=%s paused=%s stale=%s stale_reason=%s "
-            "pulse_data_age=%s pulse_book_age=%s market_book_age_s=%s db_book_ts_max=%s "
+            "pulse_data_age=%s pulse_book_age=%s "
+            "ingest_age_s=%s market_ts_age_s=%s market_book_age_s=%s "
+            "ingest_ts_max=%s market_ts_max=%s db_book_ts_max=%s "
             "ingest_ema_s=%s data_warn_s=%s data_stop_s=%s trading_enabled=%s",
             int(ran_ingest),
             int(ran_book),
@@ -572,7 +624,11 @@ class MainLoop:
             stale_reason,
             self._fmt_age_s(pulse_data_age_s),
             self._fmt_age_s(pulse_book_age_s),
+            "-" if market_data_age_s is None else f"{float(market_data_age_s):.1f}",
+            "-" if market_ts_age_s is None else f"{float(market_ts_age_s):.1f}",
             "-" if market_book_age_s is None else f"{float(market_book_age_s):.1f}",
+            ingest_ts_max or "none",
+            market_ts_max or "none",
             db_book_ts_max or "none",
             "-" if ingest_ema_s is None else f"{float(ingest_ema_s):.1f}",
             f"{float(data_warn_s):.1f}",
@@ -876,19 +932,38 @@ class MainLoop:
                     self._next_ingest_ts = 0.0
                     self._telemetry["last_ingest_snapshots"] = inserted_n
                     self._record_stage_ok("ingest", now)
+                    # Flush write buffer immediately so freshness reads see new data
+                    if hasattr(self.repo, "flush_writes"):
+                        try:
+                            self.repo.flush_writes()
+                        except Exception as _fe:
+                            log.warning("flush_writes after ingest failed: %s", _fe)
                     freshness = self._db_freshness_ages()
                     self._iter_freshness = freshness
                     db_data_ts_max = str(freshness.get("data_ts_max") or "")
                     db_data_age_s = freshness.get("data_age_s")
+                    db_data_age_src = str(freshness.get("data_age_src") or "")
                     log.info(
-                        "INGEST_OK fetched=%s parsed=%s inserted=%s markets=%s db_data_ts_max=%s db_data_age_s=%s",
+                        "INGEST_OK fetched=%s parsed=%s inserted=%s markets=%s db_data_ts_max=%s db_data_age_s=%s db_data_age_src=%s",
                         fetched_n,
                         parsed_n,
                         inserted_n,
                         int(m_cnt or 0),
                         db_data_ts_max or "none",
                         None if db_data_age_s is None else round(float(db_data_age_s), 1),
+                        db_data_age_src,
                     )
+                    # Diagnostic: warn if we inserted rows but DB still looks stale
+                    if inserted_n > 0 and (db_data_age_s is None or float(db_data_age_s or 0) > 120.0):
+                        log.warning(
+                            "FRESHNESS_STUCK: inserted=%s but db_data_age_s=%s db_data_ts_max=%s "
+                            "— possible causes: (1) write buffer not flushed, (2) wrong DB path, "
+                            "(3) INSERT replacing old rows with stale ts; db_path=%s",
+                            inserted_n,
+                            None if db_data_age_s is None else round(float(db_data_age_s), 1),
+                            db_data_ts_max or "none",
+                            str(getattr(self.repo, "db_path", "") or ""),
+                        )
                     now_mono = time.monotonic()
                     if (now_mono - self._last_ts_parse_diag_log_ts) >= 60.0:
                         self._last_ts_parse_diag_log_ts = now_mono
@@ -900,20 +975,46 @@ class MainLoop:
                                       COUNT(*) AS total,
                                       SUM(CASE WHEN ts IS NULL OR ts='' THEN 1 ELSE 0 END) AS empty_ts,
                                       SUM(CASE WHEN ts IS NOT NULL AND ts<>'' AND julianday(ts) IS NULL THEN 1 ELSE 0 END) AS bad_ts,
-                                      SUM(CASE WHEN julianday(ts) IS NOT NULL THEN 1 ELSE 0 END) AS ok_ts
+                                      SUM(CASE WHEN julianday(ts) IS NOT NULL THEN 1 ELSE 0 END) AS ok_ts,
+                                      SUM(CASE WHEN updated_at IS NOT NULL AND updated_at <> '' THEN 1 ELSE 0 END) AS has_updated_at,
+                                      MAX(updated_at) AS max_updated_at,
+                                      MAX(ts) AS max_ts
                                     FROM snapshots
                                     """
                                 ).fetchone()
                             if row:
                                 log.info(
-                                    "SNAPSHOTS_TS_PARSE total=%s empty_ts=%s bad_ts=%s ok_ts=%s",
+                                    "SNAPSHOTS_TS_PARSE total=%s empty_ts=%s bad_ts=%s ok_ts=%s has_updated_at=%s max_updated_at=%s max_ts=%s",
                                     int(row["total"] or 0),
                                     int(row["empty_ts"] or 0),
                                     int(row["bad_ts"] or 0),
                                     int(row["ok_ts"] or 0),
+                                    int(row["has_updated_at"] or 0),
+                                    str(row["max_updated_at"] or "none"),
+                                    str(row["max_ts"] or "none"),
                                 )
                         except Exception:
                             log.debug("SNAPSHOTS_TS_PARSE failed", exc_info=True)
+                        # Rowid diagnostic: verify newest rows (by rowid) actually carry fresh ts
+                        # If rowid grows but ts stays frozen → upstream API returning stale timestamps
+                        try:
+                            with self.repo.conn() as con:
+                                rowid_rows = con.execute(
+                                    """
+                                    SELECT rowid, ts, updated_at, market_id, outcome
+                                    FROM snapshots
+                                    ORDER BY rowid DESC
+                                    LIMIT 5
+                                    """
+                                ).fetchall()
+                            if rowid_rows:
+                                entries = [
+                                    f"rowid={r['rowid']} ts={r['ts']} ua={r['updated_at'] or '-'} mid={r['market_id']}/{r['outcome']}"
+                                    for r in rowid_rows
+                                ]
+                                log.info("SNAPSHOTS_ROWID_CHECK (newest 5): %s", " | ".join(entries))
+                        except Exception:
+                            log.debug("SNAPSHOTS_ROWID_CHECK failed", exc_info=True)
                     log.info(f"ingest: markets={m_cnt} snapshots={s_cnt}")
                     markets = self.repo.list_markets(limit=200)
                     market_ids = [m.market_id for m in markets]

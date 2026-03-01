@@ -29,6 +29,7 @@
   {% if status_up == "BLOCKED" %}{% set badge_kind = "danger" %}{% endif %}
   {% set right %}
     {{ badge.badge(status, badge_kind) | safe }}
+    <button class="pill watch-toggle" type="button" data-watch-toggle data-market-id="{{ market_id }}" title="Pin / unpin">☆</button>
     <a class="pill" href="{{ back_url or '/dashboard-v2' }}">← Назад</a>
     <a class="pill" href="/signals?market_id={{ market_id|urlencode }}">Сигналы</a>
     <a class="pill" href="/decisions?market_id={{ market_id|urlencode }}">Решения</a>
@@ -36,6 +37,44 @@
   {% endset %}
 
   {{ page.page_header(market_title, "<span class='mono'>" ~ market_id ~ "</span>", right) }}
+
+  <div class="case-compact" data-case-root data-case-id="{{ market_id }}" data-case-title="{{ market_title }}">
+    <div class="grid-2">
+      {% call panel.panel("WHY", "", "", "pad") %}
+        <div class="case-why">
+          <div class="case-why-type mono" data-case-why-type>—</div>
+          <div class="case-why-desc" data-case-why-desc="1">—</div>
+          <div class="case-why-desc" data-case-why-desc="2">—</div>
+        </div>
+      {% endcall %}
+
+      {% call panel.panel("ACTIONS", "", "", "pad") %}
+        <div class="case-actions" data-case-actions>
+          <div class="case-actions-row">
+            <button class="btn btn-success btn-sm trade-action" type="button" data-paper-action="buy" data-case-action="buy" data-case-id="{{ market_id }}">BUY</button>
+            <span class="opps-disable-badge case-disable-badge" data-case-disable="buy" style="display:none;"></span>
+            <button class="btn btn-danger btn-sm trade-action" type="button" data-paper-action="close" data-case-id="{{ market_id }}" data-case-action="sell">SELL</button>
+            <span class="opps-disable-badge case-disable-badge" data-case-disable="sell" style="display:none;"></span>
+            <button class="btn btn-default btn-sm trade-action" type="button" data-paper-action="close" data-case-id="{{ market_id }}" data-case-action="close">CLOSE</button>
+            <span class="opps-disable-badge case-disable-badge" data-case-disable="close" style="display:none;"></span>
+          </div>
+        </div>
+      {% endcall %}
+    </div>
+
+    {% call panel.panel("MICRO", "", "", "pad") %}
+      <div class="case-micro">
+        <div class="case-micro-line mono" data-case-micro-line="1">—</div>
+        <div class="case-micro-line mono" data-case-micro-line="2">—</div>
+      </div>
+    {% endcall %}
+
+    {% call panel.panel("CASE TAPE", "", "", "pad") %}
+      <div class="tape-panel" data-case-tape>
+        <div class="tape-list" data-case-tape-list></div>
+      </div>
+    {% endcall %}
+  </div>
 
   {% call panel.panel("Microstructure", "Bid / Ask / Spread / Depth") %}
     <div class="micro-panel" data-micro-panel data-market-id="{{ market_id }}">

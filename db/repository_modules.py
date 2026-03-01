@@ -228,39 +228,64 @@ class SnapshotRepository:
         self.insert_snapshots([snap])
 
     def insert_snapshots(self, snaps: Any) -> int:
-        rows = []
+        from datetime import datetime, timezone
+        now_wall = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        rows_with = []
+        rows_without = []
         for s in snaps:
-            rows.append(
-                (
-                    _dt_to_str(s.ts),
-                    s.market_id,
-                    s.outcome,
-                    s.bid,
-                    s.ask,
-                    s.mid,
-                    s.spread,
-                    s.liquidity,
-                    s.volume,
-                    s.implied_prob,
-                )
+            base = (
+                _dt_to_str(s.ts),
+                s.market_id,
+                s.outcome,
+                s.bid,
+                s.ask,
+                s.mid,
+                s.spread,
+                s.liquidity,
+                s.volume,
+                s.implied_prob,
             )
-        if not rows:
+            rows_with.append(base + (now_wall,))
+            rows_without.append(base)
+        if not rows_with:
             return 0
+
         def _op(con):
-            con.executemany(
-                """
-                INSERT OR REPLACE INTO snapshots
-                (ts, market_id, outcome, bid, ask, mid, spread, liquidity, volume, implied_prob)
-                VALUES (?,?,?,?,?,?,?,?,?,?)
-                """,
-                rows,
-            )
+            # Try with updated_at first; fall back to without if column doesn't exist yet
+            try:
+                con.executemany(
+                    """
+                    INSERT OR REPLACE INTO snapshots
+                    (ts, market_id, outcome, bid, ask, mid, spread, liquidity, volume, implied_prob, updated_at)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                    """,
+                    rows_with,
+                )
+            except Exception as e:
+                if "no column named updated_at" in str(e).lower() or "has no column" in str(e).lower():
+                    con.executemany(
+                        """
+                        INSERT OR REPLACE INTO snapshots
+                        (ts, market_id, outcome, bid, ask, mid, spread, liquidity, volume, implied_prob)
+                        VALUES (?,?,?,?,?,?,?,?,?,?)
+                        """,
+                        rows_without,
+                    )
+                else:
+                    raise
+
         if hasattr(self._repo, "enqueue_write"):
             self._repo.enqueue_write(_op)
+            # Flush immediately so freshness reads reflect the new data
+            try:
+                if hasattr(self._repo, "flush_writes"):
+                    self._repo.flush_writes()
+            except Exception as _fe:
+                logger.warning("insert_snapshots: flush_writes failed: %s", _fe)
         else:
             with self._repo.conn() as con:
                 _op(con)
-        return len(rows)
+        return len(rows_with)
 
     def count_snapshots(self) -> int:
         with self._repo.conn() as con:

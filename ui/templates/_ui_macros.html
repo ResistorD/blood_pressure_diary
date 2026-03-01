@@ -105,9 +105,9 @@
   {%- else -%}
     <div class="paper-row">
       <button class="btn {{ 'btn-sm' if compact else '' }} trade-action" type="button" data-trade-button="1" data-action="trade"
-              data-paper-action="buy" data-case-id="{{ market_id }}">{{ 'Откр.' if compact else 'Открыть' }}</button>
+              data-paper-action="buy" data-case-action="buy" data-case-id="{{ market_id }}">{{ 'Откр.' if compact else 'Открыть' }}</button>
       <button class="btn {{ 'btn-sm' if compact else '' }} trade-action" type="button" data-trade-button="1" data-action="trade"
-              data-paper-action="close" data-case-id="{{ market_id }}">{{ 'Закр.' if compact else 'Закрыть' }}</button>
+              data-paper-action="close" data-case-action="close" data-case-id="{{ market_id }}">{{ 'Закр.' if compact else 'Закрыть' }}</button>
     </div>
   {%- endif -%}
 {%- endmacro %}

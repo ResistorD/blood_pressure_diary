@@ -85,21 +85,27 @@ class _WriteBuffer:
                     return
                 batch = self._ops[: self._batch_size]
                 self._ops = self._ops[self._batch_size :]
+            exc_to_raise = None
             try:
                 with self._repo.conn() as con:
-                    con.execute("BEGIN")
-                    for op in batch:
-                        op(con)
-                    con.execute("COMMIT")
-                self._last_flush = time.monotonic()
+                    try:
+                        con.execute("BEGIN")
+                        for op in batch:
+                            op(con)
+                        con.execute("COMMIT")
+                    except Exception as e:
+                        try:
+                            con.execute("ROLLBACK")
+                        except Exception:
+                            pass  # connection may already be in a clean state
+                        exc_to_raise = e
             except Exception as e:
-                try:
-                    con.execute("ROLLBACK")
-                except Exception:
-                    warn_exc(logger, "write-behind rollback failed")
+                exc_to_raise = e
+            if exc_to_raise is not None:
                 with self._lock:
                     self._ops = batch + self._ops
-                raise
+                raise exc_to_raise
+            self._last_flush = time.monotonic()
             batches_done += 1
             if self._max_batches_per_flush > 0 and batches_done >= self._max_batches_per_flush:
                 return
@@ -509,6 +515,14 @@ class Repo:
             add_col("liquidity", "liquidity REAL")
             add_col("volume", "volume REAL")
             add_col("implied_prob", "implied_prob REAL")
+            add_col("updated_at", "updated_at TEXT")  # wall-clock insert time for freshness tracking
+            # Index for fast MAX(updated_at) freshness queries
+            try:
+                con.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_snapshots_updated_at ON snapshots(updated_at DESC)"
+                )
+            except Exception:
+                pass
 
     def ensure_settings_schema(self) -> None:
         with self.conn() as con:
@@ -1531,6 +1545,7 @@ def ensure_snapshots_schema(self) -> None:
             ("liquidity", "ALTER TABLE snapshots ADD COLUMN liquidity REAL"),
             ("volume", "ALTER TABLE snapshots ADD COLUMN volume REAL"),
             ("implied_prob", "ALTER TABLE snapshots ADD COLUMN implied_prob REAL"),
+            ("updated_at", "ALTER TABLE snapshots ADD COLUMN updated_at TEXT"),
         ]:
             if col not in cols:
                 con.execute(ddl)

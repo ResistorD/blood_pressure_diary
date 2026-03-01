@@ -540,6 +540,25 @@ class PolymarketClient:
                         )
                     continue
         self.last_snapshot_stats = stats
+        # Batch timestamp diagnostics: reveals if all snapshots share one ts or span a range
+        if snaps:
+            ts_vals = [s.ts for s in snaps]
+            min_ts = min(ts_vals)
+            max_ts = max(ts_vals)
+            span_sec = (max_ts - min_ts).total_seconds()
+            distinct_ts = len(set(s.ts.isoformat(timespec="seconds") for s in snaps))
+            stats["batch_min_ts"] = min_ts.isoformat(timespec="seconds")
+            stats["batch_max_ts"] = max_ts.isoformat(timespec="seconds")
+            stats["batch_span_sec"] = round(span_sec, 1)
+            stats["batch_distinct_ts"] = distinct_ts
+            logger.info(
+                "snapshots_batch_ts: count=%s min_ts=%s max_ts=%s span_sec=%s distinct_ts=%s",
+                len(snaps),
+                stats["batch_min_ts"],
+                stats["batch_max_ts"],
+                stats["batch_span_sec"],
+                distinct_ts,
+            )
         if stats["fetched_err"] or stats["missing_token"] or stats["missing_outcome"]:
             logger.warning(
                 "snapshots: markets=%s tokens=%s ok=%s err=%s missing_token=%s missing_outcome=%s http403=%s http429=%s other=%s exc=%s",

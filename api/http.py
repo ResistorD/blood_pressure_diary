@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any, Dict, List, Tuple, Optional
+from collections import deque
 
 import os
 import json
@@ -23,6 +24,86 @@ import logging
 from agents.auto_paper_agent import get_auto_paper_agent
 
 logger = logging.getLogger("api.http")
+
+# ----- LAG detection (in-memory price history) -----
+PRICE_HIST_WINDOW_SEC = 300.0
+PRICE_HIST_MAXLEN = 600
+price_hist: Dict[str, deque[tuple[float, float]]] = {}
+_last_lag_log_ts = 0.0
+
+GUARD_SPREAD_MAX = 8.0
+GUARD_DEPTH_MIN_USD = 500.0
+GUARD_BOOK_AGE_MAX = 20.0
+
+
+def _record_price(market_id: str, mid: float, ts: float | None = None) -> None:
+    if not market_id or mid is None:
+        return
+    now = float(ts or time.time())
+    dq = price_hist.get(market_id)
+    if dq is None:
+        dq = deque(maxlen=PRICE_HIST_MAXLEN)
+        price_hist[market_id] = dq
+    dq.append((now, float(mid)))
+    while dq and (now - dq[0][0]) > PRICE_HIST_WINDOW_SEC:
+        dq.popleft()
+
+
+def _get_price_ago(market_id: str, seconds: int = 60) -> float | None:
+    dq = price_hist.get(market_id)
+    if not dq:
+        return None
+    target = time.time() - float(seconds)
+    for ts, price in reversed(dq):
+        if ts <= target:
+            return float(price)
+    return None
+
+
+def _micro_guard_ok(r, market_id: str) -> bool:
+    book = _load_orderbook(r, market_id)
+    if not book:
+        return False
+    bids = _parse_levels(book.get("bids_json"))
+    asks = _parse_levels(book.get("asks_json"))
+    bid = book.get("best_bid")
+    ask = book.get("best_ask")
+    mid = book.get("mid")
+    if mid is None and bid is not None and ask is not None:
+        try:
+            mid = (float(bid) + float(ask)) / 2.0
+        except Exception:
+            mid = None
+    try:
+        if bid is None or ask is None or mid is None:
+            return False
+        spread_abs = max(0.0, float(ask) - float(bid))
+        spread_pct = (spread_abs / float(mid)) * 100.0 if mid else None
+    except Exception:
+        spread_pct = None
+    if spread_pct is None or spread_pct > GUARD_SPREAD_MAX:
+        return False
+    try:
+        dt = datetime.fromisoformat(str(book.get("ts_utc")))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        book_age_s = (datetime.now(timezone.utc) - dt).total_seconds()
+    except Exception:
+        book_age_s = None
+    if book_age_s is None or book_age_s > GUARD_BOOK_AGE_MAX:
+        return False
+    if mid:
+        try:
+            depth_ask_1 = calc_depth(asks, mid=mid, pct=0.01, side="ask")
+            depth_bid_1 = calc_depth(bids, mid=mid, pct=0.01, side="bid")
+        except Exception:
+            depth_ask_1 = None
+            depth_bid_1 = None
+        if depth_ask_1 is None or depth_bid_1 is None:
+            return False
+        if min(float(depth_ask_1), float(depth_bid_1)) < GUARD_DEPTH_MIN_USD:
+            return False
+    return True
 
 # Optional enhanced dashboard (v2)
 try:
@@ -274,24 +355,72 @@ def create_app(*, settings, repo, bus) -> FastAPI:
     def _health_state(r) -> Dict[str, Any]:
         last_snapshot_ts = ""
         last_signal_ts = ""
+        last_ingest_ts = ""
+        last_ingest_row_count_5m = 0
+        table_used = "snapshots"
+        column_used = "updated_at"
+        last_ingest_ts_source = "db.snapshots.max(updated_at)"
         try:
             with r.conn() as con:
-                row = con.execute("SELECT MAX(ts) AS ts FROM snapshots").fetchone()
-            last_snapshot_ts = str(row["ts"]) if row and row["ts"] else ""
+                # PRIMARY: use updated_at (wall clock) — immune to frozen API timestamps
+                row = con.execute(
+                    """
+                    SELECT
+                        MAX(updated_at) AS ts,
+                        SUM(CASE WHEN julianday(updated_at) >= julianday('now','-5 minutes') THEN 1 ELSE 0 END) AS n5m
+                    FROM snapshots
+                    WHERE updated_at IS NOT NULL AND updated_at <> ''
+                    """
+                ).fetchone()
+            if row and row["ts"]:
+                last_snapshot_ts = str(row["ts"])
+                last_ingest_ts = last_snapshot_ts
+                last_ingest_row_count_5m = int(row["n5m"] or 0)
+                column_used = "updated_at"
+                last_ingest_ts_source = "db.snapshots.max(updated_at)"
+            else:
+                # FALLBACK: use ts (API timestamp)
+                with r.conn() as con:
+                    row = con.execute(
+                        """
+                        SELECT
+                            MAX(ts) AS ts,
+                            SUM(CASE WHEN julianday(ts) >= julianday('now','-5 minutes') THEN 1 ELSE 0 END) AS n5m
+                        FROM snapshots
+                        """
+                    ).fetchone()
+                last_snapshot_ts = str(row["ts"]) if row and row["ts"] else ""
+                last_ingest_ts = last_snapshot_ts
+                last_ingest_row_count_5m = int(row["n5m"] or 0) if row else 0
+                column_used = "ts"
+                last_ingest_ts_source = "db.snapshots.max(ts)"
         except Exception:
             last_snapshot_ts = ""
+            last_ingest_ts = ""
+            last_ingest_row_count_5m = 0
         try:
             with r.conn() as con:
                 row = con.execute("SELECT MAX(ts) AS ts FROM signals").fetchone()
             last_signal_ts = str(row["ts"]) if row and row["ts"] else ""
         except Exception:
             last_signal_ts = ""
-        last_data_ts = max(last_snapshot_ts, last_signal_ts) if (last_snapshot_ts or last_signal_ts) else ""
+        last_data_ts = max(last_ingest_ts, last_signal_ts) if (last_ingest_ts or last_signal_ts) else ""
         return {
             "last_snapshot_ts": last_snapshot_ts,
+            "last_ingest_ts": last_ingest_ts,
             "last_signal_ts": last_signal_ts,
             "last_data_ts": last_data_ts,
+            "_last_ingest_ts_source": last_ingest_ts_source,
+            "_last_ingest_row_count_5m": last_ingest_row_count_5m,
+            "_last_ingest_ts_value": last_ingest_ts,
+            "_last_ingest_table_used": table_used,
+            "_last_ingest_column_used": column_used,
         }
+
+    def _debug_enabled(request: Request) -> bool:
+        if (os.getenv("PS_DEBUG") or "").strip() == "1":
+            return True
+        return (request.query_params.get("debug", "") or "").strip() == "1"
 
     def _count_tokens(r) -> int:
         try:
@@ -381,9 +510,9 @@ def create_app(*, settings, repo, bus) -> FastAPI:
     BOOK_STALE_SEC = 15.0
     RISK_MAX_SLIP_BPS = 150.0  # sync with UI GUARD_MAX_SLIP_BPS
 
-    def _stale_age_sec(r) -> Optional[float]:
-        state = _health_state(r)
-        ts = state.get("last_snapshot_ts") or state.get("last_data_ts") or ""
+    def _stale_age_sec(r, state: Optional[Dict[str, Any]] = None) -> Optional[float]:
+        state = state or _health_state(r)
+        ts = state.get("last_ingest_ts") or state.get("last_snapshot_ts") or state.get("last_data_ts") or ""
         if not ts:
             return None
         try:
@@ -868,6 +997,7 @@ def create_app(*, settings, repo, bus) -> FastAPI:
             items.append(
                 {
                     "case_id": mid,
+                    "title": c.get("title") or c.get("question") or c.get("slug") or mid,
                     "sum_mid": c.get("sum_mid"),
                     "spread_pct": spread_pct,
                     "liq_usd": c.get("liq"),
@@ -960,6 +1090,87 @@ def create_app(*, settings, repo, bus) -> FastAPI:
             p = _extract_prob(latest_map.get(m.market_id, {}))
             if p is not None:
                 probs[m.market_id] = p
+                _record_price(m.market_id, p)
+
+        lag_pairs = 0
+        lag_emitted = 0
+        best_lag = None
+        best_window = None
+        if len(market_ids) >= 2 and case_id in market_ids:
+            pa_now = probs.get(case_id)
+            pa_ago_300 = _get_price_ago(case_id, 300)
+            pa_ago_180 = _get_price_ago(case_id, 180)
+            for other in market_ids:
+                if other == case_id:
+                    continue
+                lag_pairs += 1
+                pb_now = probs.get(other)
+                pb_ago_300 = _get_price_ago(other, 300)
+                pb_ago_180 = _get_price_ago(other, 180)
+                if pa_now is None or pb_now is None:
+                    continue
+                use_300 = pa_ago_300 is not None and pb_ago_300 is not None
+                use_180 = pa_ago_180 is not None and pb_ago_180 is not None
+                if not use_300 and not use_180:
+                    continue
+                window_s = 300 if use_300 else 180
+                pa_ago = pa_ago_300 if use_300 else pa_ago_180
+                pb_ago = pb_ago_300 if use_300 else pb_ago_180
+                if pa_ago is None or pb_ago is None:
+                    continue
+                dA = float(pa_now) - float(pa_ago)
+                dB = float(pb_now) - float(pb_ago)
+                divergence = abs(dA - dB)
+                leader_move = max(abs(dA), abs(dB))
+                if leader_move < 0.01 or divergence < 0.015:
+                    continue
+                if not _micro_guard_ok(r, case_id) or not _micro_guard_ok(r, other):
+                    continue
+                leader = case_id if abs(dA) >= abs(dB) else other
+                lagger = other if leader == case_id else case_id
+                score = divergence
+                if best_lag is None or score > best_lag["score"]:
+                    best_lag = {
+                        "score": score,
+                        "leader": leader,
+                        "lagger": lagger,
+                        "d_leader": dA if leader == case_id else dB,
+                        "d_lagger": dB if leader == case_id else dA,
+                        "divergence": divergence,
+                    }
+                    best_window = window_s
+
+        if best_lag:
+            lag_emitted = 1
+
+        now_ts = time.time()
+        global _last_lag_log_ts
+        if now_ts - _last_lag_log_ts > 30:
+            _last_lag_log_ts = now_ts
+            logger.info("lag_v2: checked_pairs=%s emitted=%s window=%s", lag_pairs, lag_emitted, best_window or "—")
+            if os.getenv("PS_DEBUG") == "1" and best_lag:
+                logger.debug(
+                    "lag_v2 sample: case=%s leader=%s lagger=%s div=%.3f",
+                    case_id,
+                    best_lag["leader"],
+                    best_lag["lagger"],
+                    best_lag["divergence"],
+                )
+
+        if best_lag:
+            return {
+                "case_id": case_id,
+                "type": "LAG",
+                "edge_pct": float(best_lag["divergence"]) * 100.0,
+                "detail": {
+                    "lag_leader_id": best_lag["leader"],
+                    "lagger_id": best_lag["lagger"],
+                    "window_s": best_window,
+                    "d_leader": best_lag["d_leader"],
+                    "d_lagger": best_lag["d_lagger"],
+                    "divergence": best_lag["divergence"],
+                },
+            }
 
         if len(market_ids) == 2:
             a, b = market_ids[0], market_ids[1]
@@ -1407,14 +1618,33 @@ def create_app(*, settings, repo, bus) -> FastAPI:
         case_id = (payload.get("case_id") or payload.get("market_id") or "").strip()
         action = (payload.get("action") or "").strip().lower()
         mode = (payload.get("mode") or "paper").strip().lower()
+        manual_code = (payload.get("manual_code") or "").strip().lower()
         if mode != "paper":
             raise HTTPException(status_code=400, detail="Only paper mode is supported")
         if not case_id or action not in {"buy", "close"}:
             raise HTTPException(status_code=400, detail="Invalid action")
         if hasattr(r, "is_paused") and r.is_paused():
+            try:
+                get_auto_paper_agent()._log_event(
+                    "BLOCKED_PAUSED",
+                    case_id=case_id,
+                    market_id=case_id,
+                    detail={"src": "MANUAL", "reason": "PAUSED"},
+                )
+            except Exception:
+                pass
             _record_exec(request, (time.perf_counter() - start_ts) * 1000.0, False)
             return JSONResponse(status_code=423, content={"ok": False, "error": "PAUSED"})
         if _is_stale(r, max_age_sec=60):
+            try:
+                get_auto_paper_agent()._log_event(
+                    "BLOCKED_STALE",
+                    case_id=case_id,
+                    market_id=case_id,
+                    detail={"src": "MANUAL", "reason": "STALE"},
+                )
+            except Exception:
+                pass
             _record_exec(request, (time.perf_counter() - start_ts) * 1000.0, False)
             return JSONResponse(status_code=409, content={"ok": False, "error": "STALE"})
 
@@ -1460,6 +1690,35 @@ def create_app(*, settings, repo, bus) -> FastAPI:
         }
 
         ok = True if result == "ok" else False
+        try:
+            agent = get_auto_paper_agent()
+            size = payload.get("size")
+            price = pos_info.get("avg_price") if isinstance(pos_info, dict) else None
+            if ok:
+                code_map = {"buy": "PAPER_BUY", "sell": "PAPER_SELL", "close": "PAPER_CLOSE"}
+                if manual_code in code_map:
+                    agent._log_event(
+                        code_map[manual_code],
+                        case_id=case_id,
+                        market_id=case_id,
+                        detail={"src": "MANUAL", "size": size, "price": price},
+                    )
+                else:
+                    agent._log_event(
+                        "BLOCKED_NO_MANUAL_CODE",
+                        case_id=case_id,
+                        market_id=case_id,
+                        detail={"src": "MANUAL", "reason": "NO_MANUAL_CODE"},
+                    )
+            else:
+                agent._log_event(
+                    "BLOCKED_GUARD",
+                    case_id=case_id,
+                    market_id=case_id,
+                    detail={"src": "MANUAL", "reason": "GUARD"},
+                )
+        except Exception:
+            pass
         _record_exec(request, (time.perf_counter() - start_ts) * 1000.0, ok)
         return {
             "ok": ok,
@@ -1543,6 +1802,178 @@ def create_app(*, settings, repo, bus) -> FastAPI:
             else _safe(lambda: getattr(r, "count_paper_positions")(), 0),
             "cases": _safe(lambda: getattr(r, "count_cases")(), 0),
         }
+        _record_exec(request, (time.perf_counter() - start_ts) * 1000.0, True)
+        return {
+            "ok": True,
+            "closed": closed,
+            "failed": failed,
+            "errors": errors,
+            "updated_badges": updated_badges,
+            "as_of": _health_state(r).get("last_data_ts") or datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        }
+
+    @app.post("/paper/close_all")
+    async def paper_close_all(request: Request):
+        start_ts = time.perf_counter()
+        r = _repo(request)
+        agent = get_auto_paper_agent()
+        stale = _is_stale(r, max_age_sec=60)
+        paused = hasattr(r, "is_paused") and r.is_paused()
+        try:
+            agent._log_event(
+                "CLOSE_ALL_START",
+                detail={"src": "MANUAL", "reason": "STALE_EXIT" if stale else ("PAUSED_EXIT" if paused else "")},
+            )
+        except Exception:
+            pass
+        try:
+            with r.conn() as con:
+                rows = con.execute(
+                    "SELECT DISTINCT market_id AS market_id FROM paper_positions WHERE status='OPEN'"
+                ).fetchall()
+            market_ids = [str(row["market_id"]) for row in rows or [] if row and row["market_id"]]
+        except Exception:
+            market_ids = []
+        closed = 0
+        failed = 0
+        errors: List[Dict[str, Any]] = []
+        for mid in market_ids:
+            try:
+                res = _case_paper_close_impl(request, mid)
+                if res == "ok":
+                    closed += 1
+                    try:
+                        agent._log_event(
+                            "CLOSE_ALL_CHUNK",
+                            case_id=mid,
+                            market_id=mid,
+                            detail={"src": "MANUAL", "result": "ok"},
+                        )
+                    except Exception:
+                        pass
+                else:
+                    failed += 1
+                    errors.append({"case_id": mid, "error": "BLOCKED"})
+                    try:
+                        agent._log_event(
+                            "CLOSE_ALL_ERR",
+                            case_id=mid,
+                            market_id=mid,
+                            detail={"src": "MANUAL", "error": "BLOCKED"},
+                        )
+                    except Exception:
+                        pass
+            except Exception as e:
+                failed += 1
+                errors.append({"case_id": mid, "error": str(e)})
+                try:
+                    agent._log_event(
+                        "CLOSE_ALL_ERR",
+                        case_id=mid,
+                        market_id=mid,
+                        detail={"src": "MANUAL", "error": str(e)},
+                    )
+                except Exception:
+                    pass
+        updated_badges = {
+            "positions": _safe(lambda: getattr(r, "count_paper_positions_filtered")(status="OPEN"), 0)
+            if hasattr(r, "count_paper_positions_filtered")
+            else _safe(lambda: getattr(r, "count_paper_positions")(), 0),
+            "cases": _safe(lambda: getattr(r, "count_cases")(), 0),
+        }
+        try:
+            agent._log_event(
+                "CLOSE_ALL_DONE",
+                detail={"src": "MANUAL", "closed": closed, "failed": failed},
+            )
+        except Exception:
+            pass
+        _record_exec(request, (time.perf_counter() - start_ts) * 1000.0, True)
+        return {
+            "ok": True,
+            "closed": closed,
+            "failed": failed,
+            "errors": errors,
+            "updated_badges": updated_badges,
+            "as_of": _health_state(r).get("last_data_ts") or datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        }
+
+    @app.post("/paper/unwind")
+    async def paper_unwind(request: Request):
+        start_ts = time.perf_counter()
+        r = _repo(request)
+        agent = get_auto_paper_agent()
+        stale = _is_stale(r, max_age_sec=60)
+        paused = hasattr(r, "is_paused") and r.is_paused()
+        try:
+            agent._log_event(
+                "UNWIND_START",
+                detail={"src": "MANUAL", "reason": "STALE_EXIT" if stale else ("PAUSED_EXIT" if paused else "")},
+            )
+        except Exception:
+            pass
+        try:
+            with r.conn() as con:
+                rows = con.execute(
+                    "SELECT DISTINCT market_id AS market_id FROM paper_positions WHERE status='OPEN'"
+                ).fetchall()
+            market_ids = [str(row["market_id"]) for row in rows or [] if row and row["market_id"]]
+        except Exception:
+            market_ids = []
+        closed = 0
+        failed = 0
+        errors: List[Dict[str, Any]] = []
+        for mid in market_ids:
+            try:
+                res = _case_paper_close_impl(request, mid)
+                if res == "ok":
+                    closed += 1
+                    try:
+                        agent._log_event(
+                            "UNWIND_CHUNK",
+                            case_id=mid,
+                            market_id=mid,
+                            detail={"src": "MANUAL", "result": "ok"},
+                        )
+                    except Exception:
+                        pass
+                else:
+                    failed += 1
+                    errors.append({"case_id": mid, "error": "BLOCKED"})
+                    try:
+                        agent._log_event(
+                            "UNWIND_ERR",
+                            case_id=mid,
+                            market_id=mid,
+                            detail={"src": "MANUAL", "error": "BLOCKED"},
+                        )
+                    except Exception:
+                        pass
+            except Exception as e:
+                failed += 1
+                errors.append({"case_id": mid, "error": str(e)})
+                try:
+                    agent._log_event(
+                        "UNWIND_ERR",
+                        case_id=mid,
+                        market_id=mid,
+                        detail={"src": "MANUAL", "error": str(e)},
+                    )
+                except Exception:
+                    pass
+        updated_badges = {
+            "positions": _safe(lambda: getattr(r, "count_paper_positions_filtered")(status="OPEN"), 0)
+            if hasattr(r, "count_paper_positions_filtered")
+            else _safe(lambda: getattr(r, "count_paper_positions")(), 0),
+            "cases": _safe(lambda: getattr(r, "count_cases")(), 0),
+        }
+        try:
+            agent._log_event(
+                "UNWIND_DONE",
+                detail={"src": "MANUAL", "closed": closed, "failed": failed},
+            )
+        except Exception:
+            pass
         _record_exec(request, (time.perf_counter() - start_ts) * 1000.0, True)
         return {
             "ok": True,
@@ -1897,12 +2328,17 @@ def create_app(*, settings, repo, bus) -> FastAPI:
     def health_state(request: Request):
         r = _repo(request)
         state = _health_state(r)
+        last_ingest_ts_source = str(state.pop("_last_ingest_ts_source", "db.snapshots.max(ts)"))
+        last_ingest_row_count_5m = int(state.pop("_last_ingest_row_count_5m", 0) or 0)
+        last_ingest_ts_value = str(state.pop("_last_ingest_ts_value", "") or "")
+        table_used = str(state.pop("_last_ingest_table_used", "snapshots"))
+        column_used = str(state.pop("_last_ingest_column_used", "ts"))
         markets_count = _safe(lambda: getattr(r, "count_markets")(), 0)
         tokens_count = _count_tokens(r) if markets_count else 0
         issues = []
         if markets_count and tokens_count == 0:
             issues.append("NO_TOKENS")
-        stale_age = _stale_age_sec(r)
+        stale_age = _stale_age_sec(r, state=state)
         state["stale_age_s"] = stale_age
         state["stale"] = bool(stale_age is None or stale_age > 60)
         state["paused"] = _safe(lambda: getattr(r, "is_paused")(), False) if hasattr(r, "is_paused") else False
@@ -1911,6 +2347,14 @@ def create_app(*, settings, repo, bus) -> FastAPI:
         state["tokens_count"] = tokens_count
         state["issues"] = issues
         state["server_ts"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        if _debug_enabled(request):
+            state["server_now_utc"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+            state["db_path"] = str(getattr(r, "db_path", "") or "")
+            state["last_ingest_ts_source"] = last_ingest_ts_source
+            state["last_ingest_row_count_5m"] = last_ingest_row_count_5m
+            state["last_ingest_ts_value"] = last_ingest_ts_value
+            state["table_used"] = table_used
+            state["column_used"] = column_used
         return state
 
     # ---------- Auto Paper Agent (backend runtime) ----------
@@ -1982,11 +2426,13 @@ def create_app(*, settings, repo, bus) -> FastAPI:
         snapshots_per_min = 0
         active_markets = 0
         last_book_ts: Dict[str, str] = {}
+        max_age_s: Optional[float] = None
         errors_1m = 0
+        last_book_ts_source = "db.orderbook_snapshots.max(ts_utc)"
         try:
             with r.conn() as con:
                 row = con.execute(
-                    "SELECT COUNT(*) AS n FROM orderbook_snapshots WHERE ts_utc >= datetime('now','-60 seconds')"
+                    "SELECT COUNT(*) AS n FROM orderbook_snapshots WHERE julianday(ts_utc) >= julianday('now','-60 seconds')"
                 ).fetchone()
             snapshots_per_min = int(row["n"] or 0) if row else 0
         except Exception:
@@ -1994,7 +2440,7 @@ def create_app(*, settings, repo, bus) -> FastAPI:
         try:
             with r.conn() as con:
                 row = con.execute(
-                    "SELECT COUNT(DISTINCT market_id) AS n FROM orderbook_snapshots WHERE ts_utc >= datetime('now','-60 seconds')"
+                    "SELECT COUNT(DISTINCT market_id) AS n FROM orderbook_snapshots WHERE julianday(ts_utc) >= julianday('now','-60 seconds')"
                 ).fetchone()
             active_markets = int(row["n"] or 0) if row else 0
         except Exception:
@@ -2005,7 +2451,6 @@ def create_app(*, settings, repo, bus) -> FastAPI:
                     """
                     SELECT market_id, MAX(ts_utc) AS ts
                     FROM orderbook_snapshots
-                    WHERE ts_utc >= datetime('now','-60 seconds')
                     GROUP BY market_id
                     ORDER BY ts DESC
                     LIMIT 20
@@ -2015,6 +2460,17 @@ def create_app(*, settings, repo, bus) -> FastAPI:
                 last_book_ts[str(row["market_id"])] = str(row["ts"])
         except Exception:
             last_book_ts = {}
+        try:
+            with r.conn() as con:
+                row = con.execute("SELECT MAX(ts_utc) AS ts FROM orderbook_snapshots").fetchone()
+            max_ts_raw = str(row["ts"]) if row and row["ts"] else ""
+            if max_ts_raw:
+                dt = datetime.fromisoformat(max_ts_raw)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                max_age_s = max(0.0, (datetime.now(timezone.utc) - dt).total_seconds())
+        except Exception:
+            max_age_s = None
         try:
             with r.conn() as con:
                 row = con.execute(
@@ -2034,6 +2490,16 @@ def create_app(*, settings, repo, bus) -> FastAPI:
             "errors_1m": errors_1m,
             "active_markets": active_markets,
             "last_book_ts": last_book_ts,
+            "max_age_s": max_age_s,
+            **(
+                {
+                    "server_now_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                    "db_path": str(getattr(r, "db_path", "") or ""),
+                    "last_book_ts_source": last_book_ts_source,
+                }
+                if _debug_enabled(request)
+                else {}
+            ),
         }
 
     @app.get("/market/micro")

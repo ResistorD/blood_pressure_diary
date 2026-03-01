@@ -28,6 +28,52 @@
   ] %}
   {{ kpi.kpi_grid(kpi_items, "kpi-4") }}
 
+  {% call panel.panel("Risk Panel v1", "", "", "pad") %}
+    <div class="risk-panel" data-risk-panel>
+      <div class="risk-panel-line mono" data-risk-line="1">—</div>
+      <div class="risk-panel-line mono" data-risk-line="2">—</div>
+    </div>
+  {% endcall %}
+
+  {% call panel.panel("EMERGENCY", "", "", "pad") %}
+    <div class="emergency-panel" data-emergency-panel>
+      <div class="emergency-row">
+        <button class="btn btn-danger btn-sm emergency-action" type="button" data-emergency-action="close_all">CLOSE ALL</button>
+        <span class="emergency-status" data-emergency-status="close_all">—</span>
+        <span class="emergency-progress" data-emergency-progress="close_all"></span>
+      </div>
+      <div class="emergency-row">
+        <button class="btn btn-danger btn-sm emergency-action" type="button" data-emergency-action="unwind">EMERGENCY UNWIND</button>
+        <span class="emergency-status" data-emergency-status="unwind">—</span>
+        <span class="emergency-progress" data-emergency-progress="unwind"></span>
+      </div>
+    </div>
+  {% endcall %}
+
+  {% call panel.panel("EVIDENCE", "", "", "pad") %}
+    <div class="evidence-panel" data-evidence-panel>
+      <div class="evidence-pills">
+        <button class="pill pill-muted evidence-toggle" type="button" data-evidence-toggle>HARD —</button>
+        <button class="pill pill-muted evidence-toggle" type="button" data-evidence-toggle>SOFT —</button>
+        <button class="pill pill-muted evidence-toggle" type="button" data-evidence-toggle>BONUS —</button>
+      </div>
+      <div class="evidence-table-wrap" data-evidence-table style="display:none;"></div>
+    </div>
+  {% endcall %}
+
+  {% set watch_right = "<button class='pill pill-muted watchlist-sort' type='button' data-watchlist-sort>PIN</button>" %}
+  {% call panel.panel("WATCHLIST", "", watch_right, "pad") %}
+    <div class="watchlist-panel" data-watchlist-panel>
+      <div class="watchlist-list" data-watchlist-list></div>
+    </div>
+  {% endcall %}
+
+  {% call panel.panel("TAPE", "", "", "pad") %}
+    <div class="tape-panel" data-tape-panel>
+      <div class="tape-list" data-tape-list></div>
+    </div>
+  {% endcall %}
+
   <div class="grid-2">
   {% call panel.panel("Управление режимом", "Смена режима влияет на поведение исполнения и допустимость действий.", "", "pad") %}
     <form method="post" action="/control/mode" class="paper-row">
