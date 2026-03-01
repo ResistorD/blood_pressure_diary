@@ -120,6 +120,7 @@ class MainLoop:
         self._last_book_skip_log_ts = 0.0
         self._last_stage_flags_log_ts = 0.0
         self._last_ts_parse_diag_log_ts = 0.0
+        self._last_freshness_diverge_log_ts = 0.0
         self._db_path_logged = False
         self._telemetry: Dict[str, Any] = {
             "ingest_ok": 0,
@@ -145,6 +146,7 @@ class MainLoop:
         self._last_agent_done_utc: Optional[str] = None
         self._ingest_every_ema_sec: Optional[float] = None
         self._last_data_ts_epoch: Optional[float] = None
+        self._iter_freshness: Optional[Dict[str, Any]] = None
 
     @staticmethod
     def _iso_utc(dt: datetime) -> str:
@@ -307,7 +309,7 @@ class MainLoop:
             pass
         return None
 
-    def _emit_loop_status(self, now: datetime, *, force: bool = False) -> None:
+    def _emit_loop_status(self, now: datetime, *, force: bool = False, freshness: Optional[Dict[str, Any]] = None) -> None:
         mono = time.monotonic()
         if not force and (mono - self._last_loop_log_ts) < 5.0:
             return
@@ -319,8 +321,8 @@ class MainLoop:
         err_age_ing = self._fmt_age((e_ing or {}).get("ts", ""))
         err_age_book = self._fmt_age((e_book or {}).get("ts", ""))
         err_age_agent = self._fmt_age((e_agent or {}).get("ts", ""))
-        freshness = self._db_freshness_ages()
-        data_age_s = freshness.get("data_age_s")
+        freshness = freshness or self._db_freshness_ages()
+        market_data_age_s = freshness.get("data_age_s")
         market_book_age_s = freshness.get("book_age_s")
         pulse_data_age_s = self._age_sec(self._last_ingest_done_utc or "")
         pulse_book_age_s = self._age_sec(self._last_book_done_utc or "")
@@ -332,7 +334,7 @@ class MainLoop:
         pulse_data_age = self._fmt_age_s(pulse_data_age_s)
         pulse_book_age = self._fmt_age_s(pulse_book_age_s)
         pulse_agent_age = self._fmt_age_s(pulse_agent_age_s)
-        market_data_age = self._fmt_age_s(data_age_s)
+        market_data_age = self._fmt_age_s(market_data_age_s)
         market_book_age = self._fmt_age_s(market_book_age_s)
         log.info(
             "LOOP t=%s iter=%s ingest=%.0fms book=%.0fms agent=%.0fms reconcile=%.0fms idle=%.0fms "
@@ -498,12 +500,20 @@ class MainLoop:
             reason,
         )
 
-    def _emit_stage_flags(self, now: datetime, *, ran_ingest: int, ran_book: int, ran_agent: int) -> None:
+    def _emit_stage_flags(
+        self,
+        now: datetime,
+        *,
+        ran_ingest: int,
+        ran_book: int,
+        ran_agent: int,
+        freshness: Optional[Dict[str, Any]] = None,
+    ) -> None:
         mono = time.monotonic()
         if (mono - self._last_stage_flags_log_ts) < 10.0:
             return
         self._last_stage_flags_log_ts = mono
-        freshness = self._db_freshness_ages()
+        freshness = freshness or self._db_freshness_ages()
         market_data_age_s = freshness.get("data_age_s")
         market_book_age_s = freshness.get("book_age_s")
         db_book_ts_max = str(freshness.get("book_ts_max") or "")
@@ -532,6 +542,23 @@ class MainLoop:
         elif market_book_age_s > 7.0:
             stale = 1
             stale_reason = "MARKET_BOOK_GT_7S"
+        try:
+            book_age_ref = freshness.get("book_age_s")
+            if (
+                market_book_age_s is not None
+                and book_age_ref is not None
+                and abs(float(market_book_age_s) - float(book_age_ref)) > 1.0
+                and (mono - self._last_freshness_diverge_log_ts) >= 10.0
+            ):
+                self._last_freshness_diverge_log_ts = mono
+                log.warning(
+                    "FRESHNESS_DIVERGE market_book_age_s=%s freshness_book_age_s=%s book_ts_max=%s",
+                    float(market_book_age_s),
+                    float(book_age_ref),
+                    db_book_ts_max or "none",
+                )
+        except Exception:
+            pass
         trading_enabled = 1 if (not paused and bool(getattr(self.settings, "enable_decision", True))) else 0
         log.info(
             "STAGES ran_ingest=%s ran_book=%s ran_agent=%s paused=%s stale=%s stale_reason=%s "
@@ -828,6 +855,7 @@ class MainLoop:
             self._iter += 1
             self._iter_stage_ms = {"ingest": 0.0, "book": 0.0, "agent": 0.0, "reconcile": 0.0, "idle": 0.0}
             self._iter_errs = 0
+            self._iter_freshness = None
             ran_ingest = 0
             ran_book = 0
             now = datetime.now(timezone.utc)
@@ -849,6 +877,7 @@ class MainLoop:
                     self._telemetry["last_ingest_snapshots"] = inserted_n
                     self._record_stage_ok("ingest", now)
                     freshness = self._db_freshness_ages()
+                    self._iter_freshness = freshness
                     db_data_ts_max = str(freshness.get("data_ts_max") or "")
                     db_data_age_s = freshness.get("data_age_s")
                     log.info(
@@ -1020,6 +1049,7 @@ class MainLoop:
                         dropped_no_clob = (stats.get("targets") or {}).get("dropped_no_clob_tokens", 0)
                         skipped_missing = stats.get("skipped_missing", 0)
                         freshness = self._db_freshness_ages()
+                        self._iter_freshness = freshness
                         db_book_ts_max = str(freshness.get("book_ts_max") or "")
                         db_book_age_s = freshness.get("book_age_s")
                         should_info = bool(errors or inserted == 0 or (mono - self._last_orderbook_log) >= 60.0)
@@ -1101,10 +1131,18 @@ class MainLoop:
             sleep_start = time.perf_counter()
             time.sleep(getattr(self.settings, "dispatcher_tick_sec", 1.0))
             self._iter_stage_ms["idle"] = (time.perf_counter() - sleep_start) * 1000.0
-            self._emit_loop_status(now, force=(self._iter_errs > 0))
+            iter_freshness = self._iter_freshness or self._db_freshness_ages()
+            self._iter_freshness = iter_freshness
+            self._emit_loop_status(now, force=(self._iter_errs > 0), freshness=iter_freshness)
             self._emit_summary(now)
             ran_agent = 1 if self._iter_stage_ms.get("agent", 0.0) > 0.0 else 0
-            self._emit_stage_flags(now, ran_ingest=ran_ingest, ran_book=ran_book, ran_agent=ran_agent)
+            self._emit_stage_flags(
+                now,
+                ran_ingest=ran_ingest,
+                ran_book=ran_book,
+                ran_agent=ran_agent,
+                freshness=iter_freshness,
+            )
         self._flush_events()
         if hasattr(self.repo, "flush_writes"):
             try:
