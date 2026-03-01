@@ -143,6 +143,8 @@ class MainLoop:
         self._last_ingest_done_utc: Optional[str] = None
         self._last_book_done_utc: Optional[str] = None
         self._last_agent_done_utc: Optional[str] = None
+        self._ingest_every_ema_sec: Optional[float] = None
+        self._last_data_ts_epoch: Optional[float] = None
 
     @staticmethod
     def _iso_utc(dt: datetime) -> str:
@@ -202,17 +204,39 @@ class MainLoop:
             except Exception:
                 return "", None
 
+        def _update_ingest_ema(ts: str) -> None:
+            if not ts:
+                return
+            try:
+                dt = datetime.fromisoformat(str(ts))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                cur = float(dt.timestamp())
+            except Exception:
+                return
+            prev = self._last_data_ts_epoch
+            if prev is not None and cur > prev:
+                delta = max(0.0, cur - prev)
+                if self._ingest_every_ema_sec is None:
+                    ema = delta
+                else:
+                    ema = (self._ingest_every_ema_sec * 0.8) + (delta * 0.2)
+                self._ingest_every_ema_sec = max(10.0, min(600.0, float(ema)))
+            self._last_data_ts_epoch = cur
+
         try:
             ts, age_s = _rowid_latest("snapshots", "ts")
             if ts and age_s is not None:
                 data_ts_max = ts
                 data_age_s = age_s
+                _update_ingest_ema(ts)
             else:
                 ts_fallback, age_fallback = _rowid_latest("snapshots", "updated_at")
                 if ts_fallback and age_fallback is not None:
                     data_ts_max = ts_fallback
                     data_age_s = age_fallback
                     data_age_src = "snapshots.updated_at(rowid)"
+                    _update_ingest_ema(ts_fallback)
         except Exception:
             data_age_s = None
         try:
@@ -491,12 +515,15 @@ class MainLoop:
             paused = 0
         stale = 0
         stale_reason = "OK"
+        ingest_ema_s = self._ingest_every_ema_sec
+        data_warn_s = max(45.0, 2.0 * float(ingest_ema_s or 0.0))
+        data_stop_s = max(90.0, 3.0 * float(ingest_ema_s or 0.0))
         if market_data_age_s is None:
             stale = 1
             stale_reason = "NO_MARKET_DATA_TS"
-        elif market_data_age_s > 45.0:
+        elif market_data_age_s > data_warn_s:
             stale = 1
-            stale_reason = "MARKET_DATA_GT_45S"
+            stale_reason = f"MARKET_DATA_GT_DYNAMIC({data_warn_s:.1f}s)"
         elif market_book_age_s is None:
             stale = 1
             stale_reason = "NO_MARKET_BOOK_TS"
@@ -506,7 +533,7 @@ class MainLoop:
         trading_enabled = 1 if (not paused and bool(getattr(self.settings, "enable_decision", True))) else 0
         log.info(
             "STAGES ran_ingest=%s ran_book=%s ran_agent=%s paused=%s stale=%s stale_reason=%s "
-            "pulse_data_age=%s pulse_book_age=%s trading_enabled=%s",
+            "pulse_data_age=%s pulse_book_age=%s ingest_ema_s=%s data_warn_s=%s data_stop_s=%s trading_enabled=%s",
             int(ran_ingest),
             int(ran_book),
             int(ran_agent),
@@ -515,6 +542,9 @@ class MainLoop:
             stale_reason,
             self._fmt_age_s(pulse_data_age_s),
             self._fmt_age_s(pulse_book_age_s),
+            "-" if ingest_ema_s is None else f"{float(ingest_ema_s):.1f}",
+            f"{float(data_warn_s):.1f}",
+            f"{float(data_stop_s):.1f}",
             int(trading_enabled),
         )
 
