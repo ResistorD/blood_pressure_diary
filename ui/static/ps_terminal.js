@@ -932,7 +932,7 @@
       if (!resp.ok) return;
       const data = await resp.json();
       if (data && typeof data === "object") {
-        const ingestTsRaw = data.last_ingest_ts || data.last_snapshot_ts || data.last_data_ts || "";
+        const ingestTsRaw = data.last_data_ts || data.last_snapshot_ts || data.last_ingest_ts || "";
         setFreshness(data.last_snapshot_ts || data.last_ingest_ts || data.last_data_ts || "");
         state.ingestAgeSec = data.stale_age_s != null ? Number(data.stale_age_s) : null;
         const ingestTsMs = parseTs(ingestTsRaw);
@@ -1391,24 +1391,24 @@
   function updateLagStatus() {
     if (!lagPill || !lagSources) return;
     const dataAgeSec = state.ingestAgeSec != null ? Number(state.ingestAgeSec) : (state.freshnessSec != null ? Number(state.freshnessSec) : null);
-    const bookAgeSec = state.bookAgeSec != null ? Number(state.bookAgeSec) : null;
+    const bookAgeDbSec = state.bookAgeDbSec != null ? Number(state.bookAgeDbSec) : (state.bookAgeSec != null ? Number(state.bookAgeSec) : null);
     const ingestEveryEmaSec = state.ingestEveryEmaSec != null ? Number(state.ingestEveryEmaSec) : null;
     const dataWarnSec = Math.max(45, ingestEveryEmaSec != null ? (2.0 * ingestEveryEmaSec) : 0);
     const dataStopSec = Math.max(90, ingestEveryEmaSec != null ? (3.0 * ingestEveryEmaSec) : 0);
     const bookMaxAgeSec = state.bookAgeMaxAgeSec != null ? Number(state.bookAgeMaxAgeSec) : null;
-    const bookDbAgeSec = state.bookAgeDbSec != null ? Number(state.bookAgeDbSec) : null;
+    const bookDbAgeSec = bookAgeDbSec;
     const pingLevel = (pingErrors >= 3 || (pingMs != null && pingMs > 600)) ? "STOP" : (pingMs != null && pingMs > 200 ? "WARN" : "OK");
     const dataLevel = (dataAgeSec != null && dataAgeSec > dataStopSec) ? "STOP" : (dataAgeSec != null && dataAgeSec > dataWarnSec ? "WARN" : "OK");
-    const bookLevel = (bookAgeSec != null && bookAgeSec > 2.5) ? "STOP" : (bookAgeSec != null && bookAgeSec > 0.8 ? "WARN" : "OK");
+    const bookLevel = (bookAgeDbSec != null && bookAgeDbSec > 7.0) ? "STOP" : (bookAgeDbSec != null && bookAgeDbSec > 2.5 ? "WARN" : "OK");
     const execErrTotal = execErrCount || execErrors || 0;
     const execLevel = (execErrTotal >= 3 || state.execBad) ? "STOP" : (execErrTotal >= 1 ? "WARN" : "OK");
     const sourceLevels = { PING: pingLevel, DATA: dataLevel, BOOK: bookLevel, EXEC: execLevel };
     const reasons = [];
     if (state.paused) reasons.push({ code: "PAUSED", text: "PAUSED: пауза включена" });
-    if (bookLevel === "STOP") reasons.push({ code: "STALE_BOOK", text: `BOOK age ${bookAgeSec != null ? bookAgeSec.toFixed(1) : "—"}s > 7s` });
+    if (bookLevel === "STOP") reasons.push({ code: "STALE_BOOK", text: `BOOK DB age ${bookAgeDbSec != null ? bookAgeDbSec.toFixed(1) : "—"}s > 7s` });
     if (dataLevel === "STOP") reasons.push({ code: "STALE_DATA", text: `DATA age ${dataAgeSec != null ? dataAgeSec.toFixed(1) : "—"}s > ${dataStopSec.toFixed(0)}s` });
     if (execLevel !== "OK") reasons.push({ code: "EXEC_DOWN", text: `EXEC errors ${execErrTotal}` });
-    if (bookLevel === "WARN") reasons.push({ code: "BOOK_LAG", text: `BOOK age ${bookAgeSec != null ? bookAgeSec.toFixed(1) : "—"}s > 2.5s` });
+    if (bookLevel === "WARN") reasons.push({ code: "BOOK_LAG", text: `BOOK DB age ${bookAgeDbSec != null ? bookAgeDbSec.toFixed(1) : "—"}s > 2.5s` });
     if (dataLevel === "WARN") reasons.push({ code: "DATA_LAG", text: `DATA age ${dataAgeSec != null ? dataAgeSec.toFixed(1) : "—"}s > ${dataWarnSec.toFixed(0)}s` });
     if (pingLevel !== "OK") reasons.push({ code: "PING_SLOW", text: `PING ${pingMs != null ? Math.round(pingMs) : "—"}ms > 250ms` });
     let desiredLevel = "OK";
@@ -1475,7 +1475,7 @@
       lines.push("LAG OK");
     }
     lines.push(`DATA thr warn>${dataWarnSec.toFixed(0)}s stop>${dataStopSec.toFixed(0)}s ema=${ingestEveryEmaSec != null ? ingestEveryEmaSec.toFixed(1) : "—"}s`);
-    lines.push(`BOOK src max_age_s=${bookMaxAgeSec != null ? bookMaxAgeSec.toFixed(1) : "—"}s db_book_age_s=${bookDbAgeSec != null ? bookDbAgeSec.toFixed(1) : "—"}s`);
+    lines.push(`BOOK stop_src=db_book_age_s>7s | db_book_age_s=${bookAgeDbSec != null ? bookAgeDbSec.toFixed(1) : "—"}s | max_age_s=${bookMaxAgeSec != null ? bookMaxAgeSec.toFixed(1) : "—"}s`);
     lagPill.title = lines.slice(0, 4).join("\n");
     if (window.__PS_LAG_DEBUG) window.__psLagState = lagState;
   }
@@ -2122,21 +2122,22 @@
         if (!ms) return;
         if (!maxTs || ms > maxTs) maxTs = ms;
       });
-      const ageSec = maxTs ? Math.max(0, (Date.now() - maxTs) / 1000) : null;
-      state.bookAgeSec = ageSec;
-      state.bookAgeDbSec = ageSec;
+      const ageSecFromMap = maxTs ? Math.max(0, (Date.now() - maxTs) / 1000) : null;
+      const dbAgeSec = data.book_age_s != null ? Number(data.book_age_s) : ageSecFromMap;
+      state.bookAgeSec = dbAgeSec;
+      state.bookAgeDbSec = dbAgeSec;
       state.bookAgeMaxAgeSec = data.max_age_s != null ? Number(data.max_age_s) : null;
       const errors = Number(data.errors_1m || 0);
       const snaps = Number(data.snapshots_per_min || 0);
-      const text = ageSec == null ? "КНИГА —" : `КНИГА ${Math.round(ageSec)}с`;
+      const text = dbAgeSec == null ? "КНИГА —" : `КНИГА ${Math.round(dbAgeSec)}с`;
       if (bookPill) {
         bookPill.textContent = text;
         bookPill.classList.remove("pill-ok", "pill-warn", "pill-bad", "pill-muted");
-        if (ageSec == null) {
+        if (dbAgeSec == null) {
           bookPill.classList.add("pill-muted");
-        } else if (ageSec <= 10 && errors === 0) {
+        } else if (dbAgeSec <= 10 && errors === 0) {
           bookPill.classList.add("pill-ok");
-        } else if ((ageSec > 30) || snaps === 0) {
+        } else if ((dbAgeSec > 30) || snaps === 0) {
           bookPill.classList.add("pill-bad");
         } else {
           bookPill.classList.add("pill-warn");
