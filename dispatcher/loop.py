@@ -119,6 +119,7 @@ class MainLoop:
         self._last_ingest_skip_reason_log_ts: Dict[str, float] = {}
         self._last_book_skip_log_ts = 0.0
         self._last_stage_flags_log_ts = 0.0
+        self._last_ts_parse_diag_log_ts = 0.0
         self._db_path_logged = False
         self._telemetry: Dict[str, Any] = {
             "ingest_ok": 0,
@@ -185,12 +186,12 @@ class MainLoop:
                     """
                     SELECT ts, (julianday('now') - julianday(ts)) * 86400.0 AS age_s
                     FROM snapshots
-                    WHERE ts IS NOT NULL AND ts <> ''
+                    WHERE ts IS NOT NULL AND ts <> '' AND julianday(ts) IS NOT NULL
                     ORDER BY julianday(ts) DESC
                     LIMIT 1
                     """
                 ).fetchone()
-            if row and row["ts"]:
+            if row and row["ts"] and row["age_s"] is not None:
                 data_ts_max = str(row["ts"])
                 age_raw = row["age_s"]
                 data_age_s = max(0.0, float(age_raw)) if age_raw is not None else None
@@ -202,12 +203,12 @@ class MainLoop:
                             """
                             SELECT updated_at AS ts, (julianday('now') - julianday(updated_at)) * 86400.0 AS age_s
                             FROM snapshots
-                            WHERE updated_at IS NOT NULL AND updated_at <> ''
+                            WHERE updated_at IS NOT NULL AND updated_at <> '' AND julianday(updated_at) IS NOT NULL
                             ORDER BY julianday(updated_at) DESC
                             LIMIT 1
                             """
                         ).fetchone()
-                    if row and row["ts"]:
+                    if row and row["ts"] and row["age_s"] is not None:
                         data_ts_max = str(row["ts"])
                         age_raw = row["age_s"]
                         data_age_s = max(0.0, float(age_raw)) if age_raw is not None else None
@@ -831,6 +832,31 @@ class MainLoop:
                         db_data_ts_max or "none",
                         None if db_data_age_s is None else round(float(db_data_age_s), 1),
                     )
+                    now_mono = time.monotonic()
+                    if (now_mono - self._last_ts_parse_diag_log_ts) >= 60.0:
+                        self._last_ts_parse_diag_log_ts = now_mono
+                        try:
+                            with self.repo.conn() as con:
+                                row = con.execute(
+                                    """
+                                    SELECT
+                                      COUNT(*) AS total,
+                                      SUM(CASE WHEN ts IS NULL OR ts='' THEN 1 ELSE 0 END) AS empty_ts,
+                                      SUM(CASE WHEN ts IS NOT NULL AND ts<>'' AND julianday(ts) IS NULL THEN 1 ELSE 0 END) AS bad_ts,
+                                      SUM(CASE WHEN julianday(ts) IS NOT NULL THEN 1 ELSE 0 END) AS ok_ts
+                                    FROM snapshots
+                                    """
+                                ).fetchone()
+                            if row:
+                                log.info(
+                                    "SNAPSHOTS_TS_PARSE total=%s empty_ts=%s bad_ts=%s ok_ts=%s",
+                                    int(row["total"] or 0),
+                                    int(row["empty_ts"] or 0),
+                                    int(row["bad_ts"] or 0),
+                                    int(row["ok_ts"] or 0),
+                                )
+                        except Exception:
+                            log.debug("SNAPSHOTS_TS_PARSE failed", exc_info=True)
                     log.info(f"ingest: markets={m_cnt} snapshots={s_cnt}")
                     markets = self.repo.list_markets(limit=200)
                     market_ids = [m.market_id for m in markets]
