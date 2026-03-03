@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import uuid
 import os
+import time
 from datetime import datetime, timedelta, timezone
 from statistics import median
 from typing import Any, Dict, List, Optional
@@ -426,6 +427,192 @@ class SignalRepository:
                     signal.explain_long,
                 ),
             )
+
+    def insert_signals(self, signals: list[Any], chunk_size: int = 1000) -> Dict[str, Any]:
+        t_total0 = time.perf_counter()
+        rows_in = len(signals or [])
+        rows_ok = 0
+        chunks = 0
+        conn_ms = 0.0
+        begin_ms = 0.0
+        cursor_ms = 0.0
+        build_ms = 0.0
+        exec_ms = 0.0
+        commit_ms = 0.0
+        checkpoint_ms = 0.0
+        ck_busy = 0
+        ck_log = 0
+        ck_done = 0
+        if not signals:
+            return {
+                "rows_in": 0,
+                "rows_ok": 0,
+                "chunks": 0,
+                "conn_ms": 0.0,
+                "begin_ms": 0.0,
+                "cursor_ms": 0.0,
+                "build_ms": 0.0,
+                "exec_ms": 0.0,
+                "commit_ms": 0.0,
+                "checkpoint_ms": 0.0,
+                "ck_busy": 0,
+                "ck_log": 0,
+                "ck_done": 0,
+                "total_ms": 0.0,
+            }
+        global _invalid_signal_count
+        step = max(1, int(chunk_size or 1000))
+        demo_mode = os.getenv("PS_DEMO") == "1"
+        checkpoint_profile = os.getenv("PS_WAL_CHECKPOINT_PROFILE") == "1"
+        con_ctx = self._repo.conn()
+        t_conn0 = time.perf_counter()
+        con = con_ctx.__enter__()
+        conn_ms = (time.perf_counter() - t_conn0) * 1000.0
+        try:
+            for i in range(0, len(signals), step):
+                chunk = signals[i : i + step]
+                chunks += 1
+                t_build0 = time.perf_counter()
+                chunk_rows = []
+                existing_mids: set[str] = set()
+                if not demo_mode:
+                    mids = {
+                        str(getattr(s, "scope_market_id", "")).strip()
+                        for s in chunk
+                        if getattr(s, "scope_market_id", None)
+                    }
+                    if mids:
+                        placeholders = ",".join(["?"] * len(mids))
+                        rows = con.execute(
+                            f"SELECT market_id FROM markets WHERE market_id IN ({placeholders})",
+                            tuple(mids),
+                        ).fetchall()
+                        existing_mids = {str(r["market_id"]) for r in rows}
+                for signal in chunk:
+                    mid = getattr(signal, "scope_market_id", None)
+                    if not _valid_market_id(mid):
+                        _invalid_signal_count += 1
+                        if _invalid_signal_count <= 5 or _invalid_signal_count % 50 == 0:
+                            logger.debug(
+                                "dropped_invalid_market_id=%s agent=%s kind=%s",
+                                mid,
+                                getattr(signal, "agent_id", None),
+                                getattr(signal, "kind", None),
+                            )
+                        continue
+                    if mid and not demo_mode:
+                        if str(mid) not in existing_mids:
+                            _invalid_signal_count += 1
+                            if _invalid_signal_count <= 5 or _invalid_signal_count % 50 == 0:
+                                logger.debug(
+                                    "dropped_invalid_market_id=%s agent=%s kind=%s",
+                                    mid,
+                                    getattr(signal, "agent_id", None),
+                                    getattr(signal, "kind", None),
+                                )
+                            continue
+                    chunk_rows.append(
+                        (
+                            signal.signal_id,
+                            _dt_to_str(signal.ts),
+                            signal.run_id,
+                            signal.agent_id,
+                            signal.kind.value,
+                            signal.scope_market_id,
+                            signal.scope_group_key,
+                            signal.scope_pair_key,
+                            json.dumps(signal.features, ensure_ascii=False),
+                            json.dumps(signal.claim, ensure_ascii=False),
+                            json.dumps([c.__dict__ for c in signal.candidates], ensure_ascii=False),
+                            signal.explain_short,
+                            signal.explain_long,
+                        )
+                    )
+                build_ms += (time.perf_counter() - t_build0) * 1000.0
+                if not chunk_rows:
+                    continue
+                t_begin0 = time.perf_counter()
+                con.execute("BEGIN")
+                begin_ms += (time.perf_counter() - t_begin0) * 1000.0
+                t_cur0 = time.perf_counter()
+                cur = con.cursor()
+                cursor_ms += (time.perf_counter() - t_cur0) * 1000.0
+                t_exec0 = time.perf_counter()
+                cur.executemany(
+                    """
+                    INSERT OR REPLACE INTO signals
+                    (signal_id, ts, run_id, agent_id, kind,
+                     scope_market_id, scope_group_key, scope_pair_key,
+                     features_json, claim_json, candidates_json,
+                     explain_short, explain_long)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    """,
+                    chunk_rows,
+                )
+                exec_ms += (time.perf_counter() - t_exec0) * 1000.0
+                t_c0 = time.perf_counter()
+                try:
+                    con.commit()
+                except Exception:
+                    con.rollback()
+                    raise
+                commit_ms += (time.perf_counter() - t_c0) * 1000.0
+                if checkpoint_profile:
+                    t_ck0 = time.perf_counter()
+                    ck_row = con.execute("PRAGMA wal_checkpoint(PASSIVE)").fetchone()
+                    checkpoint_ms += (time.perf_counter() - t_ck0) * 1000.0
+                    try:
+                        if ck_row is not None:
+                            # SQLite returns 3 ints for PASSIVE checkpoint: busy, log, checkpointed
+                            if isinstance(ck_row, tuple):
+                                ck_busy = int(ck_row[0] or 0)
+                                ck_log = int(ck_row[1] or 0)
+                                ck_done = int(ck_row[2] or 0)
+                            else:
+                                vals = list(ck_row)
+                                if len(vals) >= 3:
+                                    ck_busy = int(vals[0] or 0)
+                                    ck_log = int(vals[1] or 0)
+                                    ck_done = int(vals[2] or 0)
+                    except Exception:
+                        pass
+                rows_ok += len(chunk_rows)
+        finally:
+            con_ctx.__exit__(None, None, None)
+        total_ms = (time.perf_counter() - t_total0) * 1000.0
+        logger.info(
+            "INSERT_SIGNALS_PROFILE rows=%s chunks=%s conn=%.0fms begin=%.0fms cursor=%.0fms build=%.0fms exec=%.0fms "
+            "commit=%.0fms checkpoint=%.0fms ck_busy=%s ck_log=%s ck_done=%s total=%.0fms",
+            rows_ok,
+            chunks,
+            conn_ms,
+            begin_ms,
+            cursor_ms,
+            build_ms,
+            exec_ms,
+            commit_ms,
+            checkpoint_ms,
+            ck_busy,
+            ck_log,
+            ck_done,
+            total_ms,
+        )
+        return {
+            "rows_in": rows_in,
+            "rows_ok": rows_ok,
+            "chunks": chunks,
+            "conn_ms": round(conn_ms, 1),
+            "begin_ms": round(begin_ms, 1),
+            "cursor_ms": round(cursor_ms, 1),
+            "build_ms": round(build_ms, 1),
+            "exec_ms": round(exec_ms, 1),
+            "commit_ms": round(commit_ms, 1),
+            "checkpoint_ms": round(checkpoint_ms, 1),
+            "ck_busy": ck_busy,
+            "ck_log": ck_log,
+            "ck_done": ck_done,
+            "total_ms": round(total_ms, 1),
+        }
 
     def list_recent_signals(self, limit: int = 200):
         lim = int(limit) if limit is not None else 100

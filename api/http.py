@@ -2341,6 +2341,55 @@ def create_app(*, settings, repo, bus) -> FastAPI:
         stale_age = _stale_age_sec(r, state=state)
         state["stale_age_s"] = stale_age
         state["stale"] = bool(stale_age is None or stale_age > 60)
+        fallback_overall = "STOP" if bool(state["stale"]) else "OK"
+        data_warn_s_default = 45.0
+        data_stop_s_default = 90.0
+        book_warn_s_default = 2.5
+        book_stop_s_default = 7.0
+        state["freshness"] = {
+            "state": {
+                "data": {
+                    "state": fallback_overall,
+                    "age_s": stale_age,
+                    "warn_s": data_warn_s_default,
+                    "stop_s": data_stop_s_default,
+                },
+                "book": {
+                    "state": fallback_overall,
+                    "age_s": None,
+                    "warn_s": book_warn_s_default,
+                    "stop_s": book_stop_s_default,
+                },
+                "overall": fallback_overall,
+            }
+        }
+        runtime_freshness = getattr(r, "_runtime_freshness_state", None)
+        if isinstance(runtime_freshness, dict):
+            state["freshness"] = {"state": runtime_freshness}
+        try:
+            fr_state = state.get("freshness", {}).get("state", {})
+            data_state = fr_state.get("data", {})
+            book_state = fr_state.get("book", {})
+            if isinstance(data_state, dict):
+                if data_state.get("warn_s") is None:
+                    data_state["warn_s"] = data_warn_s_default
+                if data_state.get("stop_s") is None:
+                    data_state["stop_s"] = data_stop_s_default
+            if isinstance(book_state, dict):
+                if book_state.get("warn_s") is None:
+                    book_state["warn_s"] = book_warn_s_default
+                if book_state.get("stop_s") is None:
+                    book_state["stop_s"] = book_stop_s_default
+        except Exception:
+            pass
+        state["paper_pipeline"] = {"cand_count": 0, "dec_count": 0, "last": ""}
+        runtime_pipe = getattr(r, "_runtime_pipeline_stats", None)
+        if isinstance(runtime_pipe, dict):
+            state["paper_pipeline"] = {
+                "cand_count": int(runtime_pipe.get("cand_count", 0) or 0),
+                "dec_count": int(runtime_pipe.get("dec_count", 0) or 0),
+                "last": str(runtime_pipe.get("last") or ""),
+            }
         state["paused"] = _safe(lambda: getattr(r, "is_paused")(), False) if hasattr(r, "is_paused") else False
         state["paused_at"] = _safe(lambda: getattr(r, "get_setting_updated_at")("paused"), "")
         state["markets_count"] = markets_count

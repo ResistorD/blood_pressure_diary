@@ -119,6 +119,7 @@ class Repo:
     def __init__(self, db_path: str):
         self.db_path = db_path
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+        self._thread_local = threading.local()
         self._write_buffer = _WriteBuffer(self, flush_sec=3.0)
         self._events_schema_ready = False
         # Modular repositories (stage 1): keep legacy API while exposing narrow SRP-oriented modules.
@@ -149,18 +150,32 @@ class Repo:
 
     @contextmanager
     def conn(self) -> sqlite3.Connection:
-        con = sqlite3.connect(self.db_path, timeout=30, isolation_level=None, check_same_thread=False)
-        con.row_factory = sqlite3.Row
-        try:
-            # Concurrency safety for multi-threaded SQLite workload.
-            con.execute("PRAGMA busy_timeout=30000;")
+        con = getattr(self._thread_local, "con", None)
+        if con is not None:
+            try:
+                con.execute("SELECT 1")
+            except Exception:
+                try:
+                    con.close()
+                except Exception:
+                    pass
+                con = None
+        if con is None:
+            con = sqlite3.connect(self.db_path, timeout=30, isolation_level=None, check_same_thread=False)
+            con.row_factory = sqlite3.Row
+            # Concurrency/perf settings are applied once per thread-local connection.
+            con.execute("PRAGMA busy_timeout=2000;")
             con.execute("PRAGMA journal_mode=WAL;")
             con.execute("PRAGMA synchronous=NORMAL;")
-            con.execute("PRAGMA wal_autocheckpoint=2000;")
+            con.execute("PRAGMA temp_store=MEMORY;")
+            con.execute("PRAGMA cache_size=-65536;")
+            con.execute("PRAGMA wal_autocheckpoint=20000;")
             con.execute("PRAGMA foreign_keys=ON;")
+            self._thread_local.con = con
+        try:
             yield con
         finally:
-            con.close()
+            pass
 
     def set_flush_sec(self, flush_sec: float) -> None:
         if self._write_buffer:

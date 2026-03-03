@@ -24,6 +24,12 @@ from execution.reconcile import reconcile_paper
 from app.risk_gate import RiskGate
 from dispatcher.contract import Dispatcher
 from agents.auto_paper_agent import get_auto_paper_agent
+from dispatcher.freshness import (
+    STATE_OK,
+    compute_state as compute_freshness_state,
+    max_severity as freshness_max_severity,
+)
+from dispatcher.paper_decision_pipeline import run_paper_pipeline
 
 log = logging.getLogger("dispatcher.loop")
 
@@ -63,6 +69,10 @@ def _try_import_optional_agents():
 
 
 class MainLoop:
+    BOOK_WARN_S = 2.5
+    BOOK_STOP_S = 7.0
+    FRESHNESS_HYSTERESIS_S = 0.5
+
     def __init__(self, settings: Settings, repo: Repo, bus: EventBus, run_id: str):
         self.settings = settings
         self.repo = repo
@@ -141,12 +151,44 @@ class MainLoop:
         }
         self._iter_stage_ms: Dict[str, float] = {}
         self._iter_errs = 0
+        self._iter_agent_timing: Dict[str, float] = {
+            "cases": 0.0,
+            "scout": 0.0,
+            "logic": 0.0,
+            "risk": 0.0,
+            "paper": 0.0,
+            "explain": 0.0,
+        }
+        self._iter_db_write_signals_count = 0
+        self._iter_db_write_calls = 0
+        self._iter_signal_flush_timing: Dict[str, float] = {
+            "calls": 0.0,
+            "total_ms": 0.0,
+            "build_ms": 0.0,
+            "call_ms": 0.0,
+            "post_ms": 0.0,
+            "exec_ms": 0.0,
+            "rows": 0.0,
+            "chunks": 0.0,
+        }
+        self._iter_signals_buf = []
         self._last_ingest_done_utc: Optional[str] = None
         self._last_book_done_utc: Optional[str] = None
         self._last_agent_done_utc: Optional[str] = None
         self._ingest_every_ema_sec: Optional[float] = None
         self._last_data_ts_epoch: Optional[float] = None
         self._iter_freshness: Optional[Dict[str, Any]] = None
+        self._freshness_prev_state: Dict[str, Optional[str]] = {"data": None, "book": None, "overall": None}
+        self._iter_pipe: Dict[str, Any] = {"cand_count": 0, "dec_count": 0, "last": "HOLD/NO_CANDIDATES"}
+        self._paper_pipeline_ctx: Dict[str, Any] = {"last_signature": "", "run_id": run_id}
+        self._wal_ck_enabled = str(os.getenv("PS_WAL_CHECKPOINT_ENABLED", "1")).strip() != "0"
+        try:
+            self._wal_ck_every_s = max(1.0, float(os.getenv("PS_WAL_CHECKPOINT_EVERY_S", "60") or 60.0))
+        except Exception:
+            self._wal_ck_every_s = 60.0
+        mode_raw = str(os.getenv("PS_WAL_CHECKPOINT_MODE", "PASSIVE") or "PASSIVE").strip().upper()
+        self._wal_ck_mode = mode_raw if mode_raw in {"PASSIVE", "FULL", "RESTART", "TRUNCATE"} else "PASSIVE"
+        self._last_wal_ck_ts = time.monotonic()
 
     @staticmethod
     def _iso_utc(dt: datetime) -> str:
@@ -301,6 +343,97 @@ class MainLoop:
             "book_age_src": "orderbook_snapshots.ts_utc(MAX)",
         }
 
+    def _attach_freshness_state(self, freshness: Dict[str, Any]) -> Dict[str, Any]:
+        data_age_s = freshness.get("data_age_s")
+        book_age_s = freshness.get("book_age_s")
+        ingest_ema_s = self._ingest_every_ema_sec
+        data_warn_s = max(45.0, 2.0 * float(ingest_ema_s or 0.0))
+        data_stop_s = max(90.0, 3.0 * float(ingest_ema_s or 0.0))
+        if data_warn_s >= data_stop_s:
+            # Existing logic provides stop threshold; derive warn explicitly when needed.
+            data_warn_s = max(1.0, 0.6 * data_stop_s)
+        book_warn_s = float(self.BOOK_WARN_S)
+        book_stop_s = float(self.BOOK_STOP_S)
+
+        prev_data = self._freshness_prev_state.get("data")
+        prev_book = self._freshness_prev_state.get("book")
+        prev_overall = self._freshness_prev_state.get("overall")
+
+        data_state = compute_freshness_state(
+            prev_state=prev_data,
+            age_s=data_age_s,
+            warn_s=data_warn_s,
+            stop_s=data_stop_s,
+            hysteresis_s=float(self.FRESHNESS_HYSTERESIS_S),
+        )
+        book_state = compute_freshness_state(
+            prev_state=prev_book,
+            age_s=book_age_s,
+            warn_s=book_warn_s,
+            stop_s=book_stop_s,
+            hysteresis_s=float(self.FRESHNESS_HYSTERESIS_S),
+        )
+        overall = freshness_max_severity(data_state, book_state)
+
+        if prev_data is not None and data_state != prev_data:
+            log.info(
+                "FRESHNESS_STATE data %s->%s age_s=%s warn_s=%.1f stop_s=%.1f",
+                prev_data,
+                data_state,
+                "-" if data_age_s is None else f"{float(data_age_s):.1f}",
+                float(data_warn_s),
+                float(data_stop_s),
+            )
+        if prev_book is not None and book_state != prev_book:
+            log.info(
+                "FRESHNESS_STATE book %s->%s age_s=%s warn_s=%.1f stop_s=%.1f",
+                prev_book,
+                book_state,
+                "-" if book_age_s is None else f"{float(book_age_s):.1f}",
+                float(book_warn_s),
+                float(book_stop_s),
+            )
+        if prev_overall is not None and overall != prev_overall:
+            log.info("FRESHNESS_STATE overall=%s data=%s book=%s", overall, data_state, book_state)
+
+        self._freshness_prev_state["data"] = data_state
+        self._freshness_prev_state["book"] = book_state
+        self._freshness_prev_state["overall"] = overall
+
+        freshness["state"] = {
+            "data": {
+                "state": data_state,
+                "age_s": data_age_s,
+                "warn_s": float(data_warn_s),
+                "stop_s": float(data_stop_s),
+            },
+            "book": {
+                "state": book_state,
+                "age_s": book_age_s,
+                "warn_s": float(book_warn_s),
+                "stop_s": float(book_stop_s),
+            },
+            "overall": overall,
+        }
+        return freshness
+
+    def _compute_iter_freshness(self) -> Dict[str, Any]:
+        if self._iter_freshness is not None:
+            return self._iter_freshness
+
+        t0 = time.perf_counter()
+
+        ages = self._db_freshness_ages()
+        freshness = self._attach_freshness_state(ages)
+
+        self._iter_stage_ms["db"] = (
+                self._iter_stage_ms.get("db", 0.0)
+                + ((time.perf_counter() - t0) * 1000.0)
+        )
+
+        self._iter_freshness = freshness
+        return freshness
+
     def _record_stage_ok(self, stage: str, now: datetime) -> None:
         self._telemetry[f"{stage}_ok"] = int(self._telemetry.get(f"{stage}_ok", 0) or 0) + 1
         done_iso = self._iso_utc(datetime.now(timezone.utc))
@@ -364,7 +497,7 @@ class MainLoop:
         err_age_ing = self._fmt_age((e_ing or {}).get("ts", ""))
         err_age_book = self._fmt_age((e_book or {}).get("ts", ""))
         err_age_agent = self._fmt_age((e_agent or {}).get("ts", ""))
-        freshness = freshness or self._db_freshness_ages()
+        freshness = freshness or self._compute_iter_freshness()
         market_data_age_s = freshness.get("data_age_s")   # ingest pipeline age (updated_at)
         market_book_age_s = freshness.get("book_age_s")
         market_ts_age_s = freshness.get("market_ts_age_s")  # API upstream age (snapshots.ts)
@@ -382,10 +515,12 @@ class MainLoop:
         market_data_age = self._fmt_age_s(market_data_age_s)
         market_book_age = self._fmt_age_s(market_book_age_s)
         market_ts_age = self._fmt_age_s(market_ts_age_s)
+        pipe = self._iter_pipe or {}
         log.info(
             "LOOP t=%s iter=%s ingest=%.0fms book=%.0fms agent=%.0fms reconcile=%.0fms idle=%.0fms "
             "errs=%s pulse_data_age=%s pulse_book_age=%s pulse_agent_age=%s "
             "ingest_age=%s market_ts_age=%s market_book_age=%s ingest_ins=%s book_ins=%s "
+            "pipe[cand=%s dec=%s last=%s] "
             "cnt[i_ok=%s i_err=%s b_ok=%s b_err=%s a_ok=%s a_err=%s sk_book0=%s] "
             "err_age[i=%s b=%s a=%s] "
             "ingest_ts_max=%s market_ts_max=%s data_age_src=%s book_ts_max=%s",
@@ -405,6 +540,9 @@ class MainLoop:
             market_book_age,
             int(self._telemetry.get("last_ingest_snapshots", 0) or 0),
             int(self._telemetry.get("last_book_inserted", 0) or 0),
+            int(pipe.get("cand_count", 0) or 0),
+            int(pipe.get("dec_count", 0) or 0),
+            str(pipe.get("last") or "-"),
             int(self._telemetry.get("ingest_ok", 0) or 0),
             int(self._telemetry.get("ingest_err", 0) or 0),
             int(self._telemetry.get("book_ok", 0) or 0),
@@ -426,7 +564,7 @@ class MainLoop:
         if (mono - self._last_summary_log_ts) < 10.0:
             return
         self._last_summary_log_ts = mono
-        freshness = self._db_freshness_ages()
+        freshness = self._compute_iter_freshness()
         data_age_s = freshness.get("data_age_s")
         book_age_s = freshness.get("book_age_s")
         markets_cnt = 0
@@ -560,7 +698,7 @@ class MainLoop:
         if (mono - self._last_stage_flags_log_ts) < 10.0:
             return
         self._last_stage_flags_log_ts = mono
-        freshness = freshness or self._db_freshness_ages()
+        freshness = freshness or self._compute_iter_freshness()
         market_data_age_s = freshness.get("data_age_s")       # pipeline liveness (updated_at)
         market_ts_age_s = freshness.get("market_ts_age_s")    # API upstream freshness (snapshots.ts)
         market_book_age_s = freshness.get("book_age_s")
@@ -575,23 +713,15 @@ class MainLoop:
                 paused = 1 if bool(self.repo.is_paused()) else 0
         except Exception:
             paused = 0
-        stale = 0
-        stale_reason = "OK"
+        state_obj = freshness.get("state") or {}
+        data_state_obj = state_obj.get("data") or {}
+        book_state_obj = state_obj.get("book") or {}
+        overall_state = str(state_obj.get("overall") or "STOP")
+        stale = 0 if overall_state == STATE_OK else 1
+        stale_reason = "OK" if stale == 0 else f"FRESHNESS_{overall_state}"
         ingest_ema_s = self._ingest_every_ema_sec
-        data_warn_s = max(45.0, 2.0 * float(ingest_ema_s or 0.0))
-        data_stop_s = max(90.0, 3.0 * float(ingest_ema_s or 0.0))
-        if market_data_age_s is None:
-            stale = 1
-            stale_reason = "NO_MARKET_DATA_TS"
-        elif market_data_age_s > data_warn_s:
-            stale = 1
-            stale_reason = f"MARKET_DATA_GT_DYNAMIC({data_warn_s:.1f}s)"
-        elif market_book_age_s is None:
-            stale = 1
-            stale_reason = "NO_MARKET_BOOK_TS"
-        elif market_book_age_s > 30.0:
-            stale = 1
-            stale_reason = "MARKET_BOOK_GT_30S"
+        data_warn_s = float(data_state_obj.get("warn_s") or 0.0)
+        data_stop_s = float(data_state_obj.get("stop_s") or 0.0)
         try:
             book_age_ref = freshness.get("book_age_s")
             if (
@@ -807,12 +937,31 @@ class MainLoop:
     def _run_agents_for_market(self, ctx: AgentContext, market_id: str) -> None:
         t0 = time.perf_counter()
         local_errs = 0
+        def _mark(name: str, started: float) -> None:
+            self._iter_agent_timing[name] = self._iter_agent_timing.get(name, 0.0) + (
+                (time.perf_counter() - started) * 1000.0
+            )
         for agent in getattr(self, "fast_agents", []):
+            agent_name = str(getattr(agent, "agent_id", "") or agent.__class__.__name__).lower()
+            bucket = None
+            if "scout" in agent_name:
+                bucket = "scout"
+            elif "logic" in agent_name:
+                bucket = "logic"
+            elif "risk" in agent_name:
+                bucket = "risk"
             try:
+                t_agent = time.perf_counter()
                 signals = agent.propose(ctx, market_id=market_id)
-                for s in signals:
-                    self.repo.insert_signal(s)
+                if bucket:
+                    _mark(bucket, t_agent)
+                n_signals = len(signals)
+                self._iter_db_write_signals_count += int(n_signals)
+                if n_signals:
+                    self._iter_signals_buf.extend(signals)
             except Exception as e:
+                if bucket:
+                    _mark(bucket, t_agent if "t_agent" in locals() else time.perf_counter())
                 local_errs += 1
                 self._record_stage_error("agent", e, ctx.now)
                 self._queue_event(
@@ -830,8 +979,21 @@ class MainLoop:
         # Run once per reconcile
         t0 = time.perf_counter()
         local_errs = 0
+        def _mark(name: str, started: float) -> None:
+            self._iter_agent_timing[name] = self._iter_agent_timing.get(name, 0.0) + (
+                (time.perf_counter() - started) * 1000.0
+            )
         for agent in getattr(self, "slow_agents", []):
+            agent_name = str(getattr(agent, "agent_id", "") or agent.__class__.__name__).lower()
+            bucket = None
+            if "scout" in agent_name:
+                bucket = "scout"
+            elif "logic" in agent_name:
+                bucket = "logic"
+            elif "risk" in agent_name:
+                bucket = "risk"
             try:
+                t_agent = time.perf_counter()
                 # Prefer signature propose(ctx) for slow scans; fallback to per-market scan.
                 try:
                     signals = agent.propose(ctx)  # type: ignore[arg-type]
@@ -839,9 +1001,15 @@ class MainLoop:
                     signals = []
                     for m in self.repo.list_markets(limit=200):
                         signals.extend(agent.propose(ctx, market_id=m.market_id))
-                for s in signals:
-                    self.repo.insert_signal(s)
+                if bucket:
+                    _mark(bucket, t_agent)
+                n_signals = len(signals)
+                self._iter_db_write_signals_count += int(n_signals)
+                if n_signals:
+                    self._iter_signals_buf.extend(signals)
             except Exception as e:
+                if bucket:
+                    _mark(bucket, t_agent if "t_agent" in locals() else time.perf_counter())
                 local_errs += 1
                 self._record_stage_error("agent", e, ctx.now)
                 self._queue_event(
@@ -866,9 +1034,13 @@ class MainLoop:
 
         elif isinstance(ev, Timer):
             if ev.purpose == "reconcile":
+                freshness = self._compute_iter_freshness()
+                overall_state = str((freshness.get("state") or {}).get("overall") or "STOP")
                 # Slow agents first: generate cross-market signals before decisions
-                if self.settings.enable_agents:
+                if self.settings.enable_agents and overall_state == STATE_OK:
                     self._run_slow_agents(ctx)
+                if overall_state != STATE_OK:
+                    return
                 t0 = time.perf_counter()
                 n = self.decision_engine.reconcile(self.run_id)
 
@@ -909,9 +1081,40 @@ class MainLoop:
         while not self._stop:
             iter_start = time.perf_counter()
             self._iter += 1
-            self._iter_stage_ms = {"ingest": 0.0, "book": 0.0, "agent": 0.0, "reconcile": 0.0, "idle": 0.0}
+            self._iter_stage_ms = {
+                "ingest": 0.0,
+                "db": 0.0,
+                "book": 0.0,
+                "agent": 0.0,
+                "reconcile": 0.0,
+                "ui": 0.0,
+                "idle": 0.0,
+                "total": 0.0,
+            }
             self._iter_errs = 0
             self._iter_freshness = None
+            self._iter_pipe = {"cand_count": 0, "dec_count": 0, "last": "HOLD/NO_CANDIDATES"}
+            self._iter_db_write_signals_count = 0
+            self._iter_db_write_calls = 0
+            self._iter_signals_buf.clear()
+            self._iter_signal_flush_timing = {
+                "total_ms": 0.0,
+                "build_ms": 0.0,
+                "call_ms": 0.0,
+                "post_ms": 0.0,
+                "exec_ms": 0.0,
+                "rows": 0.0,
+                "chunks": 0.0,
+                "calls": 0.0,
+            }
+            self._iter_agent_timing = {
+                "cases": 0.0,
+                "scout": 0.0,
+                "logic": 0.0,
+                "risk": 0.0,
+                "paper": 0.0,
+                "explain": 0.0,
+            }
             ran_ingest = 0
             ran_book = 0
             now = datetime.now(timezone.utc)
@@ -938,32 +1141,13 @@ class MainLoop:
                             self.repo.flush_writes()
                         except Exception as _fe:
                             log.warning("flush_writes after ingest failed: %s", _fe)
-                    freshness = self._db_freshness_ages()
-                    self._iter_freshness = freshness
-                    db_data_ts_max = str(freshness.get("data_ts_max") or "")
-                    db_data_age_s = freshness.get("data_age_s")
-                    db_data_age_src = str(freshness.get("data_age_src") or "")
                     log.info(
-                        "INGEST_OK fetched=%s parsed=%s inserted=%s markets=%s db_data_ts_max=%s db_data_age_s=%s db_data_age_src=%s",
+                        "INGEST_OK fetched=%s parsed=%s inserted=%s markets=%s",
                         fetched_n,
                         parsed_n,
                         inserted_n,
                         int(m_cnt or 0),
-                        db_data_ts_max or "none",
-                        None if db_data_age_s is None else round(float(db_data_age_s), 1),
-                        db_data_age_src,
                     )
-                    # Diagnostic: warn if we inserted rows but DB still looks stale
-                    if inserted_n > 0 and (db_data_age_s is None or float(db_data_age_s or 0) > 120.0):
-                        log.warning(
-                            "FRESHNESS_STUCK: inserted=%s but db_data_age_s=%s db_data_ts_max=%s "
-                            "— possible causes: (1) write buffer not flushed, (2) wrong DB path, "
-                            "(3) INSERT replacing old rows with stale ts; db_path=%s",
-                            inserted_n,
-                            None if db_data_age_s is None else round(float(db_data_age_s), 1),
-                            db_data_ts_max or "none",
-                            str(getattr(self.repo, "db_path", "") or ""),
-                        )
                     now_mono = time.monotonic()
                     if (now_mono - self._last_ts_parse_diag_log_ts) >= 60.0:
                         self._last_ts_parse_diag_log_ts = now_mono
@@ -1061,6 +1245,7 @@ class MainLoop:
                     )
                 finally:
                     self._iter_stage_ms["ingest"] = (time.perf_counter() - t0) * 1000.0
+                    log.info("INGEST_PHASES iter=%s call=%.0fms", self._iter, float(self._iter_stage_ms["ingest"]))
             else:
                 self._telemetry["skipped_ingest_guard"] = int(self._telemetry.get("skipped_ingest_guard", 0) or 0) + 1
                 if not do_poll:
@@ -1088,112 +1273,110 @@ class MainLoop:
             if mono >= self._next_book_ts:
                 t0 = time.perf_counter()
                 try:
-                    print("BOOK TICK", now)
-                    ran_book = 1
-                    active_ids, target_stats = self._active_orderbook_targets(top_n=30)
-                    if not active_ids:
-                        self._telemetry["skipped_book_no_targets"] = int(
-                            self._telemetry.get("skipped_book_no_targets", 0) or 0
-                        ) + 1
-                        if (time.monotonic() - self._last_book_skip_log_ts) >= 10.0:
-                            self._last_book_skip_log_ts = time.monotonic()
-                            sources = (target_stats or {}).get("sources") or {}
-                            live_cases_count = int((target_stats or {}).get("live_cases_count", 0) or 0)
-                            log.info(
-                                "BOOK_SKIP targets=0 sources={cases:%s,positions:%s,pinned:%s} live_cases=%s",
-                                int(sources.get("cases", 0) or 0),
-                                int(sources.get("positions", 0) or 0),
-                                int(sources.get("pinned", 0) or 0),
-                                live_cases_count,
-                            )
-                    stats = self.book_collector.collect(active_ids)
-                    stats["targets"] = target_stats
-                    self._book_failures = 0
-                    self._next_book_ts = mono + 3.0
-                    self._telemetry["last_book_inserted"] = int(stats.get("inserted", 0) or 0)
-                    self._record_stage_ok("book", now)
-                    try:
-                        last_map = stats.get("last_book_ts") or {}
-                        last_count = len(last_map)
-                        max_age_s = None
-                        if last_map:
-                            max_ts = None
-                            for v in last_map.values():
+                    orderbook_enabled_raw = str(os.getenv("PS_ORDERBOOK_ENABLED", "1") or "1").strip().lower()
+                    orderbook_enabled = orderbook_enabled_raw not in {"0", "false", "no"}
+                    if not orderbook_enabled:
+                        self._next_book_ts = mono + 3.0
+                        log.info("ORDERBOOK_STAGE skipped by PS_ORDERBOOK_ENABLED=0")
+                    else:
+                        print("BOOK TICK", now)
+                        ran_book = 1
+                        active_ids, target_stats = self._active_orderbook_targets(top_n=30)
+                        if not active_ids:
+                            self._telemetry["skipped_book_no_targets"] = int(
+                                self._telemetry.get("skipped_book_no_targets", 0) or 0
+                            ) + 1
+                            if (time.monotonic() - self._last_book_skip_log_ts) >= 10.0:
+                                self._last_book_skip_log_ts = time.monotonic()
+                                sources = (target_stats or {}).get("sources") or {}
+                                live_cases_count = int((target_stats or {}).get("live_cases_count", 0) or 0)
+                                log.info(
+                                    "BOOK_SKIP targets=0 sources={cases:%s,positions:%s,pinned:%s} live_cases=%s",
+                                    int(sources.get("cases", 0) or 0),
+                                    int(sources.get("positions", 0) or 0),
+                                    int(sources.get("pinned", 0) or 0),
+                                    live_cases_count,
+                                )
+                        stats = self.book_collector.collect(active_ids)
+                        stats["targets"] = target_stats
+                        self._book_failures = 0
+                        self._next_book_ts = mono + 3.0
+                        self._telemetry["last_book_inserted"] = int(stats.get("inserted", 0) or 0)
+                        self._record_stage_ok("book", now)
+                        try:
+                            last_map = stats.get("last_book_ts") or {}
+                            last_count = len(last_map)
+                            max_age_s = None
+                            if last_map:
+                                max_ts = None
+                                for v in last_map.values():
+                                    try:
+                                        dt = datetime.fromisoformat(str(v))
+                                        if dt.tzinfo is None:
+                                            dt = dt.replace(tzinfo=timezone.utc)
+                                        if max_ts is None or dt > max_ts:
+                                            max_ts = dt
+                                    except Exception:
+                                        continue
+                                if max_ts:
+                                    max_age_s = (datetime.now(timezone.utc) - max_ts).total_seconds()
+                            else:
                                 try:
-                                    dt = datetime.fromisoformat(str(v))
-                                    if dt.tzinfo is None:
-                                        dt = dt.replace(tzinfo=timezone.utc)
-                                    if max_ts is None or dt > max_ts:
-                                        max_ts = dt
+                                    with self.repo.conn() as con:
+                                        row = con.execute(
+                                            "SELECT COUNT(DISTINCT market_id) AS n, MAX(ts_utc) AS max_ts FROM orderbook_snapshots"
+                                        ).fetchone()
+                                    last_count = int(row["n"] or 0) if row else 0
+                                    max_ts_raw = row["max_ts"] if row else None
+                                    if max_ts_raw:
+                                        dt = datetime.fromisoformat(str(max_ts_raw))
+                                        if dt.tzinfo is None:
+                                            dt = dt.replace(tzinfo=timezone.utc)
+                                        max_age_s = (datetime.now(timezone.utc) - dt).total_seconds()
                                 except Exception:
-                                    continue
-                            if max_ts:
-                                max_age_s = (datetime.now(timezone.utc) - max_ts).total_seconds()
-                        else:
-                            try:
-                                with self.repo.conn() as con:
-                                    row = con.execute(
-                                        "SELECT COUNT(DISTINCT market_id) AS n, MAX(ts_utc) AS max_ts FROM orderbook_snapshots"
-                                    ).fetchone()
-                                last_count = int(row["n"] or 0) if row else 0
-                                max_ts_raw = row["max_ts"] if row else None
-                                if max_ts_raw:
-                                    dt = datetime.fromisoformat(str(max_ts_raw))
-                                    if dt.tzinfo is None:
-                                        dt = dt.replace(tzinfo=timezone.utc)
-                                    max_age_s = (datetime.now(timezone.utc) - dt).total_seconds()
-                            except Exception:
-                                pass
-                        total = stats.get("total", 0)
-                        inserted = stats.get("inserted", 0)
-                        errors = stats.get("errors", 0)
-                        dropped_no_clob = (stats.get("targets") or {}).get("dropped_no_clob_tokens", 0)
-                        skipped_missing = stats.get("skipped_missing", 0)
-                        freshness = self._db_freshness_ages()
-                        self._iter_freshness = freshness
-                        db_book_ts_max = str(freshness.get("book_ts_max") or "")
-                        db_book_age_s = freshness.get("book_age_s")
-                        should_info = bool(errors or inserted == 0 or (mono - self._last_orderbook_log) >= 60.0)
-                        if should_info:
-                            log.info(
-                                "orderbook: total=%s inserted=%s errors=%s dropped_no_clob=%s skipped_missing=%s "
-                                "last_book_count=%s max_age_s=%s db_book_ts_max=%s db_book_age_s=%s",
-                                total,
-                                inserted,
-                                errors,
-                                dropped_no_clob,
-                                skipped_missing,
-                                last_count,
-                                None if max_age_s is None else round(max_age_s, 1),
-                                db_book_ts_max or "none",
-                                None if db_book_age_s is None else round(float(db_book_age_s), 1),
+                                    pass
+                            total = stats.get("total", 0)
+                            inserted = stats.get("inserted", 0)
+                            errors = stats.get("errors", 0)
+                            dropped_no_clob = (stats.get("targets") or {}).get("dropped_no_clob_tokens", 0)
+                            skipped_missing = stats.get("skipped_missing", 0)
+                            should_info = bool(errors or inserted == 0 or (mono - self._last_orderbook_log) >= 60.0)
+                            if should_info:
+                                log.info(
+                                    "orderbook: total=%s inserted=%s errors=%s dropped_no_clob=%s skipped_missing=%s "
+                                    "last_book_count=%s max_age_s=%s",
+                                    total,
+                                    inserted,
+                                    errors,
+                                    dropped_no_clob,
+                                    skipped_missing,
+                                    last_count,
+                                    None if max_age_s is None else round(max_age_s, 1),
+                                )
+                                self._last_orderbook_log = mono
+                            else:
+                                log.debug(
+                                    "orderbook: total=%s inserted=%s errors=%s dropped_no_clob=%s skipped_missing=%s "
+                                    "last_book_count=%s max_age_s=%s",
+                                    total,
+                                    inserted,
+                                    errors,
+                                    dropped_no_clob,
+                                    skipped_missing,
+                                    last_count,
+                                    None if max_age_s is None else round(max_age_s, 1),
+                                )
+                        except Exception:
+                            log.debug("orderbook: summary failed", exc_info=True)
+                        if stats.get("errors"):
+                            log.warning(f"orderbook: {stats}")
+                            self._queue_event(
+                                ts=now,
+                                level="ERROR",
+                                component="orderbook",
+                                message="orderbook_errors",
+                                payload=stats,
                             )
-                            self._last_orderbook_log = mono
-                        else:
-                            log.debug(
-                                "orderbook: total=%s inserted=%s errors=%s dropped_no_clob=%s skipped_missing=%s "
-                                "last_book_count=%s max_age_s=%s db_book_ts_max=%s db_book_age_s=%s",
-                                total,
-                                inserted,
-                                errors,
-                                dropped_no_clob,
-                                skipped_missing,
-                                last_count,
-                                None if max_age_s is None else round(max_age_s, 1),
-                                db_book_ts_max or "none",
-                                None if db_book_age_s is None else round(float(db_book_age_s), 1),
-                            )
-                    except Exception:
-                        log.debug("orderbook: summary failed", exc_info=True)
-                    if stats.get("errors"):
-                        log.warning(f"orderbook: {stats}")
-                        self._queue_event(
-                            ts=now,
-                            level="ERROR",
-                            component="orderbook",
-                            message="orderbook_errors",
-                            payload=stats,
-                        )
                 except Exception as e:
                     self._book_failures += 1
                     retry_in = min(30.0, 0.5 * (2 ** (self._book_failures - 1)))
@@ -1208,11 +1391,32 @@ class MainLoop:
                     )
                 finally:
                     self._iter_stage_ms["book"] = (time.perf_counter() - t0) * 1000.0
+                    log.info("BOOK_PHASES iter=%s call=%.0fms", self._iter, float(self._iter_stage_ms["book"]))
 
-            try:
-                self._auto_agent.maybe_tick(repo=self.repo, run_id=self.run_id, now=now)
-            except Exception as e:
-                log.exception(f"auto_paper_agent tick failed: {e}")
+            agent_t0 = time.perf_counter()
+            iter_freshness = self._compute_iter_freshness()
+            state_obj = iter_freshness.get("state") or {}
+            overall_state = str(state_obj.get("overall") or "STOP")
+            self._paper_pipeline_ctx["now"] = now
+            t_paper = time.perf_counter()
+            self._iter_pipe = run_paper_pipeline(
+                repo=self.repo,
+                freshness_state=state_obj,
+                context=self._paper_pipeline_ctx,
+            )
+            self._iter_agent_timing["paper"] = self._iter_agent_timing.get("paper", 0.0) + (
+                (time.perf_counter() - t_paper) * 1000.0
+            )
+            setattr(self.repo, "_runtime_freshness_state", state_obj)
+            setattr(self.repo, "_runtime_pipeline_stats", dict(self._iter_pipe))
+            if overall_state == STATE_OK:
+                try:
+                    self._auto_agent.maybe_tick(repo=self.repo, run_id=self.run_id, now=now)
+                except Exception as e:
+                    log.exception(f"auto_paper_agent tick failed: {e}")
+            self._iter_stage_ms["agent"] = self._iter_stage_ms.get("agent", 0.0) + (
+                (time.perf_counter() - agent_t0) * 1000.0
+            )
 
             if do_reconcile:
                 self.bus.publish(Timer(ts=now, purpose="reconcile"))
@@ -1222,6 +1426,82 @@ class MainLoop:
                 if ev is None:
                     break
                 self._handle_event(ev)
+            if self._iter_signals_buf:
+                try:
+                    t_build0 = time.perf_counter()
+                    buf_rows = int(len(self._iter_signals_buf))
+                    buf_chunks = (buf_rows + 499) // 500 if buf_rows > 0 else 0
+                    build_ms = (time.perf_counter() - t_build0) * 1000.0
+
+                    t_call0 = time.perf_counter()
+                    stats = self.repo.signals.insert_signals(self._iter_signals_buf, chunk_size=500)
+                    call_ms = (time.perf_counter() - t_call0) * 1000.0
+
+                    t_post0 = time.perf_counter()
+
+                    exec_ms = 0.0
+                    rows_ok = 0
+                    chunks = 0
+                    if isinstance(stats, dict):
+                        exec_ms = float(
+                            stats.get("exec_ms", stats.get("exec", stats.get("elapsed_ms", 0.0))) or 0.0
+                        )
+                        rows_ok = int(stats.get("rows_ok", stats.get("rows", stats.get("inserted", 0))) or 0)
+                        chunks = int(stats.get("chunks", stats.get("chunk_count", 0)) or 0)
+                    elif isinstance(stats, (tuple, list)):
+                        if len(stats) > 0:
+                            try:
+                                rows_ok = int(stats[0] or 0)
+                            except Exception:
+                                rows_ok = 0
+                        if len(stats) > 1:
+                            try:
+                                exec_ms = float(stats[1] or 0.0)
+                            except Exception:
+                                exec_ms = 0.0
+                        if len(stats) > 2:
+                            try:
+                                chunks = int(stats[2] or 0)
+                            except Exception:
+                                chunks = 0
+                    if rows_ok <= 0:
+                        rows_ok = buf_rows
+                    if chunks <= 0:
+                        chunks = buf_chunks if buf_chunks > 0 else ((rows_ok + 499) // 500 if rows_ok > 0 else 0)
+                    post_ms = (time.perf_counter() - t_post0) * 1000.0
+                    flush_ms = build_ms + call_ms + post_ms
+                    self._iter_db_write_calls = 1
+                    self._iter_signal_flush_timing["total_ms"] = (
+                        self._iter_signal_flush_timing.get("total_ms", 0.0) + flush_ms
+                    )
+                    self._iter_signal_flush_timing["build_ms"] = (
+                        self._iter_signal_flush_timing.get("build_ms", 0.0) + build_ms
+                    )
+                    self._iter_signal_flush_timing["call_ms"] = (
+                        self._iter_signal_flush_timing.get("call_ms", 0.0) + call_ms
+                    )
+                    self._iter_signal_flush_timing["post_ms"] = (
+                        self._iter_signal_flush_timing.get("post_ms", 0.0) + post_ms
+                    )
+                    self._iter_signal_flush_timing["exec_ms"] = (
+                        self._iter_signal_flush_timing.get("exec_ms", 0.0) + exec_ms
+                    )
+                    self._iter_signal_flush_timing["rows"] = (
+                        self._iter_signal_flush_timing.get("rows", 0.0) + float(rows_ok)
+                    )
+                    self._iter_signal_flush_timing["chunks"] = (
+                        self._iter_signal_flush_timing.get("chunks", 0.0) + float(chunks)
+                    )
+                    self._iter_signal_flush_timing["calls"] = 1.0
+                except Exception as e:
+                    self._record_stage_error("agent", e, now)
+                    self._queue_event(
+                        ts=now,
+                        level="ERROR",
+                        component="agent:db_write",
+                        message=str(e),
+                        payload={"signals": int(len(self._iter_signals_buf))},
+                    )
             self._flush_events()
             if hasattr(self.repo, "flush_if_due"):
                 try:
@@ -1232,9 +1512,9 @@ class MainLoop:
             sleep_start = time.perf_counter()
             time.sleep(getattr(self.settings, "dispatcher_tick_sec", 1.0))
             self._iter_stage_ms["idle"] = (time.perf_counter() - sleep_start) * 1000.0
-            iter_freshness = self._iter_freshness or self._db_freshness_ages()
-            self._iter_freshness = iter_freshness
+            iter_freshness = self._compute_iter_freshness()
             self._emit_loop_status(now, force=(self._iter_errs > 0), freshness=iter_freshness)
+            ui_t0 = time.perf_counter()
             self._emit_summary(now)
             ran_agent = 1 if self._iter_stage_ms.get("agent", 0.0) > 0.0 else 0
             self._emit_stage_flags(
@@ -1244,6 +1524,120 @@ class MainLoop:
                 ran_agent=ran_agent,
                 freshness=iter_freshness,
             )
+            self._iter_stage_ms["ui"] = (time.perf_counter() - ui_t0) * 1000.0
+            self._iter_stage_ms["total"] = (time.perf_counter() - iter_start) * 1000.0
+            agent_stage_ms = float(self._iter_stage_ms.get("agent", 0.0))
+            agent_cases = float(self._iter_agent_timing.get("cases", 0.0))
+            agent_scout = float(self._iter_agent_timing.get("scout", 0.0))
+            agent_logic = float(self._iter_agent_timing.get("logic", 0.0))
+            agent_risk = float(self._iter_agent_timing.get("risk", 0.0))
+            agent_paper = float(self._iter_agent_timing.get("paper", 0.0))
+            agent_explain = float(self._iter_agent_timing.get("explain", 0.0))
+            known_sum = agent_cases + agent_scout + agent_logic + agent_risk + agent_paper + agent_explain
+            agent_other = max(0.0, agent_stage_ms - known_sum)
+            top_parts = [
+                f"Scout:{agent_scout:.0f}ms(out=?)",
+                f"Logic:{agent_logic:.0f}ms(out=?)",
+                f"Risk:{agent_risk:.0f}ms(out=?)",
+                f"Paper:{agent_paper:.0f}ms(out=?)",
+                f"Explain:{agent_explain:.0f}ms(out=?)",
+            ]
+            flush_ms = float(self._iter_signal_flush_timing.get("total_ms", 0.0))
+            flush_build_ms = float(self._iter_signal_flush_timing.get("build_ms", 0.0))
+            flush_call_ms = float(self._iter_signal_flush_timing.get("call_ms", 0.0))
+            flush_post_ms = float(self._iter_signal_flush_timing.get("post_ms", 0.0))
+            db_exec = float(self._iter_signal_flush_timing.get("exec_ms", 0.0))
+            db_rows_ok = int(self._iter_signal_flush_timing.get("rows", 0.0) or 0.0)
+            db_chunks = int(self._iter_signal_flush_timing.get("chunks", 0.0) or 0.0)
+            db_calls = int(self._iter_signal_flush_timing.get("calls", 0.0) or 0.0)
+            db_signals = int(self._iter_db_write_signals_count or 0)
+            db_ms_per_signal = db_exec / max(1, (db_rows_ok if db_calls == 1 else db_signals))
+            log.info(
+                "AGENT_TIMING iter=%s cases=%.0fms scout=%.0fms logic=%.0fms risk=%.0fms paper=%.0fms "
+                "explain=%.0fms other=%.0fms total=%.0fms sum=%.0fms top=%s",
+                self._iter,
+                agent_cases,
+                agent_scout,
+                agent_logic,
+                agent_risk,
+                agent_paper,
+                agent_explain,
+                agent_other,
+                agent_stage_ms,
+                known_sum,
+                ",".join(top_parts),
+            )
+            if db_calls == 1 and db_rows_ok > 0:
+                log.info(
+                    "SIGNAL_FLUSH_TIMING iter=%s total=%.0fms exec=%.0fms rows=%s chunks=%s",
+                    self._iter,
+                    flush_ms,
+                    db_exec,
+                    db_rows_ok,
+                    db_chunks,
+                )
+            if db_calls == 1 and db_rows_ok > 0:
+                log.info(
+                    "SIGNAL_FLUSH_PHASES iter=%s build=%.0fms call=%.0fms post=%.0fms total=%.0fms exec=%.0fms rows=%s chunks=%s",
+                    self._iter,
+                    flush_build_ms,
+                    flush_call_ms,
+                    flush_post_ms,
+                    flush_ms,
+                    db_exec,
+                    db_rows_ok,
+                    db_chunks,
+                )
+            if db_calls == 1 and db_rows_ok > 0:
+                log.info(
+                    "DB_WRITE_DETAIL iter=%s calls=%s signals=%s prep=%.0fms exec=%.0fms chunks=%s ms_per_signal=%.3f",
+                    self._iter,
+                    db_calls,
+                    db_rows_ok,
+                    0.0,
+                    db_exec,
+                    db_chunks,
+                    db_ms_per_signal,
+                )
+            log.info(
+                "ITER_TIMING ingest=%.0fms db=%.0fms book=%.0fms agent=%.0fms ui=%.0fms total=%.0fms",
+                float(self._iter_stage_ms.get("ingest", 0.0)),
+                float(self._iter_stage_ms.get("db", 0.0)),
+                float(self._iter_stage_ms.get("book", 0.0)),
+                float(self._iter_stage_ms.get("agent", 0.0)),
+                float(self._iter_stage_ms.get("ui", 0.0)),
+                float(self._iter_stage_ms.get("total", 0.0)),
+            )
+            if self._wal_ck_enabled:
+                ck_now = time.monotonic()
+                if (ck_now - float(self._last_wal_ck_ts)) >= float(self._wal_ck_every_s):
+                    ck_ms = 0.0
+                    ck_busy = 0
+                    ck_log = 0
+                    ck_done = 0
+                    try:
+                        t_ck0 = time.perf_counter()
+                        with self.repo.conn() as con:
+                            row = con.execute(f"PRAGMA wal_checkpoint({self._wal_ck_mode})").fetchone()
+                        ck_ms = (time.perf_counter() - t_ck0) * 1000.0
+                        if row is not None:
+                            vals = list(row)
+                            if len(vals) >= 3:
+                                ck_busy = int(vals[0] or 0)
+                                ck_log = int(vals[1] or 0)
+                                ck_done = int(vals[2] or 0)
+                    except Exception:
+                        log.warning("WAL_CHECKPOINT failed mode=%s", self._wal_ck_mode, exc_info=True)
+                    else:
+                        log.info(
+                            "WAL_CHECKPOINT mode=%s ms=%.0f busy=%s log=%s done=%s",
+                            self._wal_ck_mode,
+                            ck_ms,
+                            ck_busy,
+                            ck_log,
+                            ck_done,
+                        )
+                    self._last_wal_ck_ts = ck_now
         self._flush_events()
         if hasattr(self.repo, "flush_writes"):
             try:

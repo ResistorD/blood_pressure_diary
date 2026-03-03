@@ -9,9 +9,10 @@ from dataclasses import dataclass
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
-from urllib.error import HTTPError
-from urllib.parse import urlencode
-from urllib.request import Request, urlopen
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode, urlparse
+from urllib.request import Request, urlopen, build_opener
 
 from domain.models import Market, Snapshot
 
@@ -59,6 +60,33 @@ def _parse_retry_after(exc: HTTPError) -> Optional[float]:
         return None
 
 
+def _call_label_from_url_path(url_path: str) -> str:
+    if url_path == "/book":
+        return "snapshots"
+    if url_path == "/markets":
+        return "universe"
+    if re.match(r"^/markets/[^/]+$", url_path or ""):
+        return "market_detail"
+    return "unknown"
+
+
+def _extract_errno(exc: BaseException) -> Optional[int]:
+    candidates = [
+        exc,
+        getattr(exc, "reason", None),
+        getattr(exc, "__cause__", None),
+        getattr(getattr(exc, "reason", None), "__cause__", None),
+    ]
+    for obj in candidates:
+        if obj is None:
+            continue
+        for attr in ("errno", "winerror"):
+            val = getattr(obj, attr, None)
+            if isinstance(val, int):
+                return val
+    return None
+
+
 def _http_json(
     method: str,
     url: str,
@@ -67,16 +95,33 @@ def _http_json(
     policy: Optional[HttpPolicy] = None,
     limiter: Optional[RateLimiter] = None,
     headers: Optional[Dict[str, str]] = None,
+    trace: Optional[Dict[str, Any]] = None,
+    opener: Any = None,
 ) -> Any:
     p = policy or HttpPolicy()
     attempts = max(1, int(p.retries))
+    req_ms_acc = 0.0
+    read_ms_acc = 0.0
+    json_ms_acc = 0.0
+    retry_count = 0
+    status_last: Any = "?"
+    bytes_last: Any = "?"
+    encoding_last = "?"
+    rl_rem_last: Any = "-"
+    retry_after_last: Any = "-"
+    url_path = urlparse(url).path or "/"
     if params:
         qs = urlencode({k: v for k, v in params.items() if v is not None})
         url = f"{url}?{qs}"
+        try:
+            url_path = urlparse(url).path or url_path
+        except Exception:
+            pass
     last_err: Exception | None = None
     for attempt in range(1, attempts + 1):
         if limiter is not None:
             limiter.wait()
+        t_req0 = time.perf_counter()
         try:
             req = Request(
                 url=url,
@@ -86,17 +131,70 @@ def _http_json(
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                                   "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
                     "Accept": "application/json,text/plain,*/*",
+                    "Connection": "keep-alive",
                     **(headers or {}),
                 },
             )
-            with urlopen(req, timeout=p.timeout_sec) as resp:
-                raw = resp.read().decode("utf-8", errors="replace")
-                return json.loads(raw)
+            if opener is not None:
+                resp_ctx = opener.open(req, timeout=p.timeout_sec)
+            else:
+                resp_ctx = urlopen(req, timeout=p.timeout_sec)
+            with resp_ctx as resp:
+                req_ms_acc += (time.perf_counter() - t_req0) * 1000.0
+                try:
+                    status_last = int(getattr(resp, "status", None) or resp.getcode() or 200)
+                except Exception:
+                    status_last = 200
+                try:
+                    encoding_last = str(resp.headers.get("Content-Encoding") or "-")
+                    rl_rem_last = str(resp.headers.get("x-ratelimit-remaining") or "-")
+                    retry_after_last = str(resp.headers.get("retry-after") or "-")
+                except Exception:
+                    pass
+                t_read0 = time.perf_counter()
+                raw_b = resp.read()
+                read_ms_acc += (time.perf_counter() - t_read0) * 1000.0
+                try:
+                    bytes_last = int(len(raw_b))
+                except Exception:
+                    bytes_last = "?"
+                t_json0 = time.perf_counter()
+                raw = raw_b.decode("utf-8", errors="replace")
+                data = json.loads(raw)
+                json_ms_acc += (time.perf_counter() - t_json0) * 1000.0
+                if trace is not None:
+                    trace.update(
+                        {
+                            "req_ms": req_ms_acc,
+                            "read_ms": read_ms_acc,
+                            "json_ms": json_ms_acc,
+                            "status": status_last,
+                            "bytes": bytes_last,
+                            "encoding": encoding_last,
+                            "url_path": url_path,
+                            "retries": retry_count,
+                            "rl_rem": rl_rem_last,
+                            "retry_after": retry_after_last,
+                        }
+                    )
+                return data
         except HTTPError as e:
             last_err = e
+            req_ms_acc += (time.perf_counter() - t_req0) * 1000.0
+            try:
+                status_last = int(getattr(e, "code", None) or status_last)
+            except Exception:
+                pass
+            try:
+                encoding_last = str((e.headers or {}).get("Content-Encoding") or encoding_last)
+                rl_rem_last = str((e.headers or {}).get("x-ratelimit-remaining") or rl_rem_last)
+                retry_after_last = str((e.headers or {}).get("retry-after") or retry_after_last)
+            except Exception:
+                pass
             # Explicitly back off on anti-bot/rate-limit style responses.
             if e.code not in {403, 429, 500, 502, 503, 504}:
                 break
+            retry_count += 1
             retry_after = _parse_retry_after(e)
             delay = retry_after if retry_after is not None else min(
                 p.backoff_cap_sec,
@@ -105,11 +203,40 @@ def _http_json(
             time.sleep(delay)
         except Exception as e:
             last_err = e
+            req_ms_acc += (time.perf_counter() - t_req0) * 1000.0
+            err_no = _extract_errno(e)
+            if isinstance(e, URLError) and err_no == 10013:
+                reason = getattr(e, "reason", None)
+                err_type = type(reason).__name__ if reason is not None else type(e).__name__
+                logger.info(
+                    "NET_ERR_PROFILE call=%s url=%s url_path=%s err_type=%s errno=%s",
+                    _call_label_from_url_path(url_path),
+                    url,
+                    url_path,
+                    err_type,
+                    err_no,
+                )
+            retry_count += 1
             delay = min(
                 p.backoff_cap_sec,
                 p.backoff_base_sec * (2 ** (attempt - 1)),
             )
             time.sleep(delay)
+    if trace is not None:
+        trace.update(
+            {
+                "req_ms": req_ms_acc,
+                "read_ms": read_ms_acc,
+                "json_ms": json_ms_acc,
+                "status": status_last,
+                "bytes": bytes_last,
+                "encoding": encoding_last,
+                "url_path": url_path,
+                "retries": retry_count,
+                "rl_rem": rl_rem_last,
+                "retry_after": retry_after_last,
+            }
+        )
     raise last_err or RuntimeError("HTTP failed")
 
 
@@ -360,6 +487,20 @@ class PolymarketClient:
         self.clob_limiter = RateLimiter(clob_rps if clob_rps is not None else env_clob_rps)
         self.last_snapshot_stats: Dict[str, Any] = {}
         self._backfill_cache: Dict[str, float] = {}
+        self._opener = build_opener()
+        self._http_local = threading.local()
+        try:
+            c = int(os.getenv("PS_BOOK_CONCURRENCY", "16") or 16)
+        except Exception:
+            c = 16
+        self.book_concurrency = max(1, min(64, c))
+
+    def _thread_opener(self):
+        opener = getattr(self._http_local, "opener", None)
+        if opener is None:
+            opener = build_opener()
+            self._http_local.opener = opener
+        return opener
 
     def fetch_market_detail(self, market_id: str) -> Optional[Dict[str, Any]]:
         try:
@@ -379,19 +520,45 @@ class PolymarketClient:
 
     def _fetch_market_rows(self) -> List[Dict[str, Any]]:
         url = f"{GAMMA_BASE}/markets"
-        data = _http_json(
-            "GET",
-            url,
-            params={
-                "closed": "false",
-                "limit": self.fetch_limit,
-                "offset": 0,
-                "order": self.order_by,
-                "ascending": "false",
-            },
-            policy=self.http_policy,
-            limiter=self.gamma_limiter,
+        logger.info(
+            "ORDERBOOK_PLAN rows=%s markets=%s chunk=%s conc=%s sample=%s",
+            self.fetch_limit,
+            "-",
+            "-",
+            self.book_concurrency,
+            "-",
         )
+        try:
+            data = _http_json(
+                "GET",
+                url,
+                params={
+                    "closed": "false",
+                    "limit": self.fetch_limit,
+                    "offset": 0,
+                    "order": self.order_by,
+                    "ascending": "false",
+                },
+                policy=self.http_policy,
+                limiter=self.gamma_limiter,
+            )
+        except URLError as e:
+            reason = getattr(e, "reason", None)
+            win_err = getattr(reason, "winerror", None) if reason is not None else None
+            err_no = win_err if isinstance(win_err, int) else _extract_errno(e)
+            if err_no == 10013:
+                err_type = type(reason).__name__ if reason is not None else type(e).__name__
+                logger.info(
+                    "ORDERBOOK_NET_ERR i=%s n=%s inflight=%s/%s url_path=%s errno=%s err_type=%s",
+                    "-",
+                    self.fetch_limit,
+                    "-",
+                    "-",
+                    urlparse(url).path or "/",
+                    err_no,
+                    err_type,
+                )
+            raise
         if isinstance(data, list):
             rows = [x for x in data if isinstance(x, dict)]
             for row in rows:
@@ -433,11 +600,28 @@ class PolymarketClient:
 
     def fetch_snapshots(self, market_rows: Optional[List[Dict[str, Any]]] = None) -> List[Snapshot]:
         # Query CLOB books only for universe-selected markets.
+        t_total0 = time.perf_counter()
+        req_ms = 0.0
+        read_ms = 0.0
+        json_ms = 0.0
+        calls_pages = 0
+        retry_count = 0
+        fetch_err_count = 0
+        status_last: Any = "?"
+        bytes_last: Any = "?"
+        encoding_last = "-"
+        url_path_last = "/book"
+        rl_rem_last: Any = "-"
+        retry_after_last: Any = "-"
+        inflight_current = 0
+        inflight_max = 0
+        inflight_lock = threading.Lock()
+        req_sum_ms = 0.0
+        durations_ms: List[float] = []
         now = datetime.now(timezone.utc)
-        markets = market_rows if market_rows is not None else self._fetch_universe_rows()
         snaps: List[Snapshot] = []
         stats = {
-            "markets": len(markets),
+            "markets": 0,
             "tokens": 0,
             "fetched_ok": 0,
             "fetched_err": 0,
@@ -457,64 +641,138 @@ class PolymarketClient:
         }
         if api_key:
             clob_headers["X-API-KEY"] = api_key
+        try:
+            book_max_pages = int(os.getenv("PS_BOOK_MAX_PAGES", "0") or 0)
+        except Exception:
+            book_max_pages = 0
+        logged_tasks_plan = False
+        def _log_tasks_plan(tasks_count: int, total_candidates_count: int) -> None:
+            nonlocal logged_tasks_plan
+            if logged_tasks_plan:
+                return
+            logger.info(
+                "BOOK_TASKS_PLAN conc=%s max_pages=%s tasks=%s total_candidates=%s",
+                self.book_concurrency,
+                book_max_pages,
+                tasks_count,
+                total_candidates_count,
+            )
+            logged_tasks_plan = True
+        try:
+            markets = market_rows if market_rows is not None else self._fetch_universe_rows()
+        except Exception:
+            _log_tasks_plan(0, 0)
+            raise
+        stats["markets"] = len(markets)
+        tasks: List[Tuple[str, str, str]] = []
         for m in markets:
             market_id = str(m.get("id") or m.get("marketId") or "")
             if not market_id:
                 continue
             tokens = m.get("tokens") or []
             for tok in tokens:
+                outcome = str(tok.get("outcome") or tok.get("name") or "")
+                token_id = (
+                    tok.get("token_id")
+                    or tok.get("tokenId")
+                    or tok.get("clobTokenId")
+                    or tok.get("clob_token_id")
+                    or tok.get("id")
+                )
+                if not outcome or token_id is None:
+                    if not outcome:
+                        stats["missing_outcome"] += 1
+                    if token_id is None:
+                        stats["missing_token"] += 1
+                    continue
+                stats["tokens"] += 1
+                tasks.append((market_id, outcome, str(token_id)))
+        total_candidates = len(tasks)
+        if book_max_pages > 0 and len(tasks) > book_max_pages:
+            tasks = tasks[:book_max_pages]
+            stats["tokens"] = len(tasks)
+        _log_tasks_plan(len(tasks), total_candidates)
+        t_req_phase0 = time.perf_counter()
+
+        def _fetch_one(task: Tuple[str, str, str]) -> Dict[str, Any]:
+            nonlocal inflight_current, inflight_max
+            market_id, outcome, token_id = task
+            trace: Dict[str, Any] = {}
+            t_one0 = time.perf_counter()
+            with inflight_lock:
+                inflight_current += 1
+                if inflight_current > inflight_max:
+                    inflight_max = inflight_current
+            try:
+                book = _http_json(
+                    "GET",
+                    f"{CLOB_BASE}/book",
+                    params={"token_id": token_id},
+                    policy=self.http_policy,
+                    limiter=self.clob_limiter if self.book_concurrency == 1 else None,
+                    headers=clob_headers,
+                    trace=trace,
+                    opener=(self._opener if self.book_concurrency == 1 else self._thread_opener()),
+                )
+            finally:
+                with inflight_lock:
+                    inflight_current -= 1
+            req_dur_ms = (time.perf_counter() - t_one0) * 1000.0
+            bid, ask, liq = _best_bid_ask(book or {})
+            mid = None
+            spread = None
+            if bid is not None and ask is not None:
+                mid = (bid + ask) / 2.0
+                spread = max(0.0, (ask - bid))
+            elif bid is not None:
+                mid = bid
+                spread = 0.0
+            elif ask is not None:
+                mid = ask
+                spread = 0.0
+            return {
+                "snapshot": Snapshot(
+                    ts=now,
+                    market_id=market_id,
+                    outcome=outcome,
+                    bid=bid,
+                    ask=ask,
+                    mid=mid,
+                    spread=spread,
+                    liquidity=liq,
+                ),
+                "trace": trace,
+                "market_id": market_id,
+                "token_id": token_id,
+                "req_dur_ms": req_dur_ms,
+            }
+
+        if self.book_concurrency <= 1:
+            iterator = tasks
+            for task in iterator:
+                calls_pages += 1
                 try:
-                    outcome = str(tok.get("outcome") or tok.get("name") or "")
-                    token_id = (
-                        tok.get("token_id")
-                        or tok.get("tokenId")
-                        or tok.get("clobTokenId")
-                        or tok.get("clob_token_id")
-                        or tok.get("id")
-                    )
-                    if not outcome or token_id is None:
-                        if not outcome:
-                            stats["missing_outcome"] += 1
-                        if token_id is None:
-                            stats["missing_token"] += 1
-                        continue
-                    stats["tokens"] += 1
-                    book = _http_json(
-                        "GET",
-                        f"{CLOB_BASE}/book",
-                        params={"token_id": str(token_id)},
-                        policy=self.http_policy,
-                        limiter=self.clob_limiter,
-                        headers=clob_headers,
-                    )
-                    bid, ask, liq = _best_bid_ask(book or {})
-                    mid = None
-                    spread = None
-                    if bid is not None and ask is not None:
-                        mid = (bid + ask) / 2.0
-                        spread = max(0.0, (ask - bid))
-                    elif bid is not None:
-                        mid = bid
-                        spread = 0.0
-                    elif ask is not None:
-                        mid = ask
-                        spread = 0.0
-                    snaps.append(
-                        Snapshot(
-                            ts=now,
-                            market_id=market_id,
-                            outcome=outcome,
-                            bid=bid,
-                            ask=ask,
-                            mid=mid,
-                            spread=spread,
-                            liquidity=liq,
-                        )
-                    )
+                    res = _fetch_one(task)
+                    tr = res.get("trace") or {}
+                    req_ms += float(tr.get("req_ms", 0.0) or 0.0)
+                    read_ms += float(tr.get("read_ms", 0.0) or 0.0)
+                    json_ms += float(tr.get("json_ms", 0.0) or 0.0)
+                    retry_count += int(tr.get("retries", 0) or 0)
+                    status_last = tr.get("status", status_last)
+                    bytes_last = tr.get("bytes", bytes_last)
+                    encoding_last = str(tr.get("encoding", encoding_last) or encoding_last)
+                    url_path_last = str(tr.get("url_path", url_path_last) or url_path_last)
+                    rl_rem_last = tr.get("rl_rem", rl_rem_last)
+                    retry_after_last = tr.get("retry_after", retry_after_last)
+                    dur_ms = float(res.get("req_dur_ms", 0.0) or 0.0)
+                    req_sum_ms += dur_ms
+                    durations_ms.append(dur_ms)
+                    snaps.append(res["snapshot"])
                     stats["fetched_ok"] += 1
                     stats["parsed"] += 1
                 except HTTPError as e:
                     stats["fetched_err"] += 1
+                    fetch_err_count += 1
                     if e.code == 403:
                         stats["http_403"] += 1
                     elif e.code == 429:
@@ -528,17 +786,103 @@ class PolymarketClient:
                         except Exception:
                             detail = ""
                         stats["error_samples"].append(
-                            {"market_id": market_id, "token_id": str(token_id), "status": e.code, "detail": detail[:200]}
+                            {"market_id": task[0], "token_id": task[2], "status": e.code, "detail": detail[:200]}
                         )
                     continue
                 except Exception as e:
                     stats["fetched_err"] += 1
                     stats["exceptions"] += 1
+                    fetch_err_count += 1
                     if len(stats["error_samples"]) < 3:
                         stats["error_samples"].append(
-                            {"market_id": market_id, "token_id": str(token_id), "status": "EXC", "detail": str(e)[:200]}
+                            {"market_id": task[0], "token_id": task[2], "status": "EXC", "detail": str(e)[:200]}
                         )
                     continue
+        else:
+            with ThreadPoolExecutor(max_workers=self.book_concurrency) as ex:
+                fut_map = {ex.submit(_fetch_one, task): task for task in tasks}
+                for fut in as_completed(fut_map):
+                    task = fut_map[fut]
+                    calls_pages += 1
+                    try:
+                        res = fut.result()
+                        tr = res.get("trace") or {}
+                        req_ms += float(tr.get("req_ms", 0.0) or 0.0)
+                        read_ms += float(tr.get("read_ms", 0.0) or 0.0)
+                        json_ms += float(tr.get("json_ms", 0.0) or 0.0)
+                        retry_count += int(tr.get("retries", 0) or 0)
+                        status_last = tr.get("status", status_last)
+                        bytes_last = tr.get("bytes", bytes_last)
+                        encoding_last = str(tr.get("encoding", encoding_last) or encoding_last)
+                        url_path_last = str(tr.get("url_path", url_path_last) or url_path_last)
+                        rl_rem_last = tr.get("rl_rem", rl_rem_last)
+                        retry_after_last = tr.get("retry_after", retry_after_last)
+                        dur_ms = float(res.get("req_dur_ms", 0.0) or 0.0)
+                        req_sum_ms += dur_ms
+                        durations_ms.append(dur_ms)
+                        snaps.append(res["snapshot"])
+                        stats["fetched_ok"] += 1
+                        stats["parsed"] += 1
+                    except HTTPError as e:
+                        stats["fetched_err"] += 1
+                        fetch_err_count += 1
+                        if e.code == 403:
+                            stats["http_403"] += 1
+                        elif e.code == 429:
+                            stats["http_429"] += 1
+                        else:
+                            stats["http_other"] += 1
+                        if len(stats["error_samples"]) < 3:
+                            detail = ""
+                            try:
+                                detail = e.read().decode("utf-8", errors="replace")
+                            except Exception:
+                                detail = ""
+                            stats["error_samples"].append(
+                                {"market_id": task[0], "token_id": task[2], "status": e.code, "detail": detail[:200]}
+                            )
+                        continue
+                    except Exception as e:
+                        stats["fetched_err"] += 1
+                        stats["exceptions"] += 1
+                        fetch_err_count += 1
+                        if len(stats["error_samples"]) < 3:
+                            stats["error_samples"].append(
+                                {"market_id": task[0], "token_id": task[2], "status": "EXC", "detail": str(e)[:200]}
+                            )
+                        continue
+        req_ms = (time.perf_counter() - t_req_phase0) * 1000.0
+        total_ms = (time.perf_counter() - t_total0) * 1000.0
+        req_avg_ms = (req_sum_ms / calls_pages) if calls_pages > 0 else 0.0
+        req_p95_ms = 0.0
+        if durations_ms:
+            ds = sorted(durations_ms)
+            idx = int(0.95 * (len(ds) - 1))
+            req_p95_ms = ds[idx]
+        logger.info(
+            "SNAPSHOTS_FETCH_PROFILE ms_total=%.0f ms_req=%.0f ms_read=%.0f ms_json=%.0f status=%s bytes=%s encoding=%s url=%s rl_rem=%s retry_after=%s calls_pages=%s",
+            total_ms,
+            req_ms,
+            read_ms,
+            json_ms,
+            status_last,
+            bytes_last,
+            encoding_last,
+            url_path_last,
+            rl_rem_last,
+            retry_after_last,
+            calls_pages,
+        )
+        logger.info(
+            "SNAPSHOTS_CONCURRENCY_PROFILE conc=%s calls_pages=%s inflight_max=%s total_ms=%.0f req_sum_ms=%.0f req_avg_ms=%.0f req_p95_ms=%.0f",
+            self.book_concurrency,
+            calls_pages,
+            inflight_max,
+            total_ms,
+            req_sum_ms,
+            req_avg_ms,
+            req_p95_ms,
+        )
         self.last_snapshot_stats = stats
         # Batch timestamp diagnostics: reveals if all snapshots share one ts or span a range
         if snaps:

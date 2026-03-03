@@ -20,6 +20,8 @@
     exposureGross: null,
     evidenceMode: "",
     evidenceMult: null,
+    freshnessState: null,
+    paperPipeline: null,
   };
   window.PS_TERMINAL_STATE = state;
 
@@ -59,6 +61,7 @@
   const agentPill = document.getElementById("agent-pill");
   const lagPill = document.getElementById("lag-pill");
   const lagSources = document.getElementById("lag-sources");
+  const terminalStateLine = document.querySelector("[data-terminal-state-line]");
   const agentStatusPill = document.getElementById("agent-status-pill");
   const agentModePill = document.getElementById("agent-mode-pill");
   const agentCadencePill = document.getElementById("agent-cadence-pill");
@@ -137,6 +140,24 @@
     const s = Math.max(0, Number(sec));
     if (s < 10) return `${s.toFixed(1)}s`;
     return `${Math.round(s)}s`;
+  }
+
+  function renderTerminalStateLine() {
+    if (!terminalStateLine) return;
+    const fresh = state.freshnessState || {};
+    const overall = String(fresh.overall || "—");
+    const dataObj = fresh.data || {};
+    const bookObj = fresh.book || {};
+    const dataAge = dataObj.age_s != null ? Number(dataObj.age_s) : (state.ingestAgeSec != null ? Number(state.ingestAgeSec) : null);
+    const bookAge = bookObj.age_s != null ? Number(bookObj.age_s) : (state.bookAgeDbSec != null ? Number(state.bookAgeDbSec) : null);
+    const dataState = String(dataObj.state || "—");
+    const bookState = String(bookObj.state || "—");
+    const pipe = state.paperPipeline || {};
+    const cand = Number(pipe.cand_count || 0);
+    const dec = Number(pipe.dec_count || 0);
+    const last = String(pipe.last || "—");
+    const text = `STATE ${overall} | DATA(${formatAgeCompact(dataAge)}/${dataState}) | BOOK(${formatBookAge(bookAge)}/${bookState}) | CAND ${cand} | DEC ${dec} | LAST ${last}`;
+    if (terminalStateLine.textContent !== text) terminalStateLine.textContent = text;
   }
 
   function formatUsdCompact(value) {
@@ -935,6 +956,8 @@
         const ingestTsRaw = data.last_data_ts || data.last_snapshot_ts || data.last_ingest_ts || "";
         setFreshness(data.last_snapshot_ts || data.last_ingest_ts || data.last_data_ts || "");
         state.ingestAgeSec = data.stale_age_s != null ? Number(data.stale_age_s) : null;
+        state.freshnessState = data.freshness && data.freshness.state ? data.freshness.state : null;
+        state.paperPipeline = data.paper_pipeline ? data.paper_pipeline : null;
         const ingestTsMs = parseTs(ingestTsRaw);
         if (ingestTsMs) {
           if (state.lastIngestSeenMs != null && ingestTsMs > state.lastIngestSeenMs) {
@@ -953,6 +976,7 @@
       healthErrors += 1;
     } finally {
       inflightHealth = false;
+      renderTerminalStateLine();
       renderRiskPanel();
       updateLagStatus();
     }

@@ -57,6 +57,15 @@
 }
 .terminal-exposure.warn { color: var(--terminal-yellow); border-color: rgba(212,168,67,0.3); background: var(--terminal-yellow-dim); }
 .terminal-exposure.bad { color: var(--terminal-red); border-color: rgba(201,102,102,0.3); background: var(--terminal-red-dim); }
+.terminal-state-line {
+  font-size: 10px;
+  color: var(--text-3);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  max-width: 560px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 .kill-switch {
   display: flex;
