@@ -4,8 +4,10 @@ import logging
 import time
 import os
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 from app.settings import Settings
 from db.repo import Repo
@@ -13,7 +15,7 @@ from dispatcher.bus import EventBus
 from dispatcher.events import Alert, MarketTick, Timer
 from dispatcher.scheduler import Scheduler
 from ingest.ingestor import Ingestor
-from ingest.polymarket_client import PolymarketClient, _extract_tokens_from_row
+from ingest.polymarket_client import GAMMA_BASE, PolymarketClient, _extract_tokens_from_row
 from ingest.orderbook_collector import OrderbookCollector
 from db.agent_provider import RepoAgentDataProvider
 
@@ -115,6 +117,12 @@ class MainLoop:
         self._stop = False
         self._ingest_failures = 0
         self._next_ingest_ts = 0.0
+        self._ingest_neterr_until = 0.0
+        try:
+            self._ingest_max_block_ms = float(os.getenv("PS_INGEST_MAX_BLOCK_MS", "0") or 0.0)
+        except Exception:
+            self._ingest_max_block_ms = 0.0
+        self._last_ingest_wall_ms = 0.0
         self._next_book_ts = 0.0
         self._book_failures = 0
         self._last_orderbook_log = 0.0
@@ -131,7 +139,26 @@ class MainLoop:
         self._last_stage_flags_log_ts = 0.0
         self._last_ts_parse_diag_log_ts = 0.0
         self._last_freshness_diverge_log_ts = 0.0
+        self._last_net_ping_ts = 0.0
+        try:
+            self._book_stale_sec = float(os.getenv("PS_BOOK_STALE_SEC", "0") or 0.0)
+        except Exception:
+            self._book_stale_sec = 0.0
+        try:
+            dev_mode = bool(getattr(self.settings, "dev_mode", False)) or (
+                str(os.getenv("PS_DEV", "0") or "0").strip().lower() not in {"0", "false", "no", ""}
+            )
+            default_book_target_limit = 20 if dev_mode else 30
+            self._book_target_limit = int(
+                os.getenv("PS_BOOK_TARGET_LIMIT", str(default_book_target_limit)) or default_book_target_limit
+            )
+        except Exception:
+            self._book_target_limit = 0
+        self._book_target_limit = max(0, int(self._book_target_limit))
+        self._book_last_fetch_mono: Dict[str, float] = {}
+        self._book_rr_cursor = 0
         self._db_path_logged = False
+        self._net_ping_enabled = str(os.getenv("PS_NET_PING_ENABLED", "0") or "0").strip() not in {"0", "false", "no"}
         self._telemetry: Dict[str, Any] = {
             "ingest_ok": 0,
             "ingest_err": 0,
@@ -180,7 +207,29 @@ class MainLoop:
         self._iter_freshness: Optional[Dict[str, Any]] = None
         self._freshness_prev_state: Dict[str, Optional[str]] = {"data": None, "book": None, "overall": None}
         self._iter_pipe: Dict[str, Any] = {"cand_count": 0, "dec_count": 0, "last": "HOLD/NO_CANDIDATES"}
-        self._paper_pipeline_ctx: Dict[str, Any] = {"last_signature": "", "run_id": run_id}
+        self._iter_reconcile_diag: Dict[str, Any] = {
+            "scheduled": 0,
+            "allowed": 0,
+            "skip_reason": "NOT_SCHEDULED",
+        }
+        self._iter_decision_diag: Dict[str, Any] = {
+            "scout_raw": 0,
+            "scout_kept_ids": set(),
+            "logic_pass": 0,
+            "logic_hold": 0,
+            "fast_scout_candidates": 0,
+            "slow_scout_candidates": 0,
+            "logic_reason_counts": {},
+            "paper_reason_counts": {},
+            "paper_action_counts": {},
+            "hold_reason_counts": {},
+        }
+        self._paper_pipeline_ctx: Dict[str, Any] = {
+            "last_signature": "",
+            "last_consumed_scout_key": "",
+            "last_consumed_opportunity_key": "",
+            "run_id": run_id,
+        }
         self._wal_ck_enabled = str(os.getenv("PS_WAL_CHECKPOINT_ENABLED", "1")).strip() != "0"
         try:
             self._wal_ck_every_s = max(1.0, float(os.getenv("PS_WAL_CHECKPOINT_EVERY_S", "60") or 60.0))
@@ -217,6 +266,181 @@ class MainLoop:
         if age_s is None:
             return "-"
         return f"{max(0.0, float(age_s)):.1f}s"
+
+    @staticmethod
+    def _diag_inc(counter: Dict[str, int], key: str) -> None:
+        k = str(key or "").strip() or "UNKNOWN"
+        counter[k] = int(counter.get(k, 0) or 0) + 1
+
+    @staticmethod
+    def _diag_top(counter: Dict[str, int], limit: int = 3) -> list[str]:
+        items = sorted(counter.items(), key=lambda kv: (-int(kv[1]), kv[0]))
+        return [f"{k}:{int(v)}" for k, v in items[: max(1, int(limit))]]
+
+    @staticmethod
+    def _diag_reason_from_candidate(signal: Any, cand: Any) -> str:
+        details = getattr(cand, "details", {}) or {}
+        if isinstance(details, dict):
+            for key in ("reason", "constraint_kind", "constraint", "why"):
+                raw = details.get(key)
+                if raw:
+                    return str(raw).strip()
+        action = str(getattr(cand, "action", "") or "").strip().upper()
+        if action:
+            return action
+        kind = str(getattr(signal, "kind", "") or "").strip().upper()
+        return kind or "UNKNOWN"
+
+    @staticmethod
+    def _diag_candidate_count(signals: list[Any]) -> int:
+        total = 0
+        for s in signals or []:
+            total += len(list(getattr(s, "candidates", None) or []))
+        return int(total)
+
+    def _record_signal_batch_diag(self, bucket: str, signals: list[Any]) -> None:
+        diag = self._iter_decision_diag
+        if bucket == "scout":
+            for s in signals or []:
+                cands = list(getattr(s, "candidates", None) or [])
+                diag["scout_raw"] = int(diag.get("scout_raw", 0) or 0) + len(cands)
+                for c in cands:
+                    mid = str(getattr(c, "market_id", "") or "").strip()
+                    if mid and mid.isdigit():
+                        diag["scout_kept_ids"].add(mid)
+            return
+        if bucket == "logic":
+            reason_counts = diag.get("logic_reason_counts", {})
+            hold_counts = diag.get("hold_reason_counts", {})
+            for s in signals or []:
+                for c in (getattr(s, "candidates", None) or []):
+                    action = str(getattr(c, "action", "") or "").strip().upper()
+                    reason = self._diag_reason_from_candidate(s, c)
+                    self._diag_inc(reason_counts, reason)
+                    if action in {"HOLD", "WAIT"}:
+                        diag["logic_hold"] = int(diag.get("logic_hold", 0) or 0) + 1
+                        self._diag_inc(hold_counts, reason)
+                    else:
+                        diag["logic_pass"] = int(diag.get("logic_pass", 0) or 0) + 1
+
+    def _count_live_cases_for_diag(self) -> int:
+        try:
+            rows = self.repo.list_cases(minutes_signals=30, minutes_snaps=10) or []
+            return int(len(rows))
+        except Exception:
+            return 0
+
+    def _emit_fast_agent_diag_summary(self) -> int:
+        diag = self._iter_decision_diag or {}
+        scout_kept = len(diag.get("scout_kept_ids", set()) or set())
+        paper_actions = diag.get("paper_action_counts", {}) or {}
+        live_cases = self._count_live_cases_for_diag()
+        log.info(
+            "FAST_AGENT_DIAG_SUMMARY live_cases=%s scout_raw=%s scout_kept=%s logic_pass=%s logic_hold=%s "
+            "paper_open=%s paper_hold=%s logic_reasons=%s paper_reasons=%s top_reasons=%s",
+            live_cases,
+            int(diag.get("scout_raw", 0) or 0),
+            scout_kept,
+            int(diag.get("logic_pass", 0) or 0),
+            int(diag.get("logic_hold", 0) or 0),
+            int(paper_actions.get("OPEN", 0) or 0),
+            int(paper_actions.get("HOLD", 0) or 0),
+            self._diag_top(diag.get("logic_reason_counts", {}) or {}, limit=3),
+            self._diag_top(diag.get("paper_reason_counts", {}) or {}, limit=3),
+            self._diag_top(diag.get("hold_reason_counts", {}) or {}, limit=5),
+        )
+        return int(live_cases)
+
+    def _emit_pipeline_obs(self, live_cases: int) -> None:
+        diag = self._iter_decision_diag or {}
+        pipe = self._iter_pipe or {}
+        rec = self._iter_reconcile_diag or {}
+        paper_candidate = 1 if int(pipe.get("cand_count", 0) or 0) > 0 else 0
+        paper_action_raw = str(pipe.get("paper_action", "") or "").strip().upper()
+        paper_action = paper_action_raw if paper_action_raw in {"OPEN", "HOLD", "CLOSE"} else "NONE"
+        reconcile_allowed = int(rec.get("allowed", 0) or 0)
+        reconcile_skip_reason = str(rec.get("skip_reason", "") or "").strip().upper() or "NONE"
+        log.info(
+            "PIPELINE_OBS fast_diag_scout_raw=%s fast_diag_logic_pass=%s paper_candidate=%s paper_action=%s "
+            "live_cases=%s candidate_origin_fast=%s fast_scout_candidates=%s candidate_origin_slow=%s "
+            "slow_scout_candidates=%s candidate_origin_paper=%s reconcile_allowed=%s reconcile_skip_reason=%s",
+            int(diag.get("scout_raw", 0) or 0),
+            int(diag.get("logic_pass", 0) or 0),
+            paper_candidate,
+            paper_action,
+            int(live_cases),
+            "fast_scout",
+            int(diag.get("fast_scout_candidates", 0) or 0),
+            "slow_scout",
+            int(diag.get("slow_scout_candidates", 0) or 0),
+            "db_latest_scout_signal",
+            reconcile_allowed,
+            reconcile_skip_reason,
+        )
+
+    def _emit_freshness_diag(self, freshness: Dict[str, Any]) -> None:
+        state_obj = freshness.get("state") or {}
+        data_obj = state_obj.get("data") or {}
+        book_obj = state_obj.get("book") or {}
+        overall = str(state_obj.get("overall") or "STOP").upper()
+        stale_reason = "OK" if overall == STATE_OK else f"FRESHNESS_{overall}"
+
+        pulse_data_age_s = self._age_sec(self._last_ingest_done_utc or "")
+        ingest_age_s = freshness.get("data_age_s")
+        market_ts_age_s = freshness.get("market_ts_age_s")
+        market_book_age_s = freshness.get("book_age_s")
+
+        blockers: list[tuple[int, float, str, str]] = []
+
+        def _pick(metric: str, st: str, age_s: Optional[float], warn_s: Optional[float], stop_s: Optional[float]) -> None:
+            s = str(st or "").upper()
+            if s not in {"WARN", "STOP"}:
+                return
+            age_txt = "-" if age_s is None else f"{float(age_s):.1f}"
+            warn_txt = "-" if warn_s is None else f"{float(warn_s):.1f}"
+            stop_txt = "-" if stop_s is None else f"{float(stop_s):.1f}"
+            if age_s is None:
+                over = 1e9
+                expr = f"{metric}:{s}(age=none warn={warn_txt} stop={stop_txt})"
+            else:
+                over = (float(age_s) - float(stop_s or 0.0)) if s == "STOP" else (float(age_s) - float(warn_s or 0.0))
+                expr = f"{metric}:{s}(age={age_txt} warn={warn_txt} stop={stop_txt})"
+            sev = 2 if s == "STOP" else 1
+            blockers.append((sev, over, metric, expr))
+
+        _pick(
+            "ingest_age",
+            str(data_obj.get("state") or ""),
+            data_obj.get("age_s"),
+            data_obj.get("warn_s"),
+            data_obj.get("stop_s"),
+        )
+        _pick(
+            "market_book_age",
+            str(book_obj.get("state") or ""),
+            book_obj.get("age_s"),
+            book_obj.get("warn_s"),
+            book_obj.get("stop_s"),
+        )
+        blockers.sort(key=lambda x: (-int(x[0]), -float(x[1]), x[2]))
+        winner = blockers[0][2] if blockers else "none"
+        all_blockers = [b[3] for b in blockers]
+        log.info(
+            "FRESHNESS_DIAG overall_state=%s stale_reason=%s pulse_data_age=%s ingest_age=%s market_ts_age=%s "
+            "market_book_age=%s warn_s=data:%s/book:%s stop_s=data:%s/book:%s winner=%s blockers=%s",
+            overall,
+            stale_reason,
+            self._fmt_age_s(pulse_data_age_s),
+            self._fmt_age_s(ingest_age_s),
+            self._fmt_age_s(market_ts_age_s),
+            self._fmt_age_s(market_book_age_s),
+            "-" if data_obj.get("warn_s") is None else f"{float(data_obj.get('warn_s')):.1f}",
+            "-" if book_obj.get("warn_s") is None else f"{float(book_obj.get('warn_s')):.1f}",
+            "-" if data_obj.get("stop_s") is None else f"{float(data_obj.get('stop_s')):.1f}",
+            "-" if book_obj.get("stop_s") is None else f"{float(book_obj.get('stop_s')):.1f}",
+            winner,
+            all_blockers,
+        )
 
     def _db_freshness_ages(self) -> Dict[str, Any]:
         data_age_s: Optional[float] = None
@@ -483,6 +707,20 @@ class MainLoop:
                 return int(code)
         except Exception:
             pass
+        return None
+
+    @staticmethod
+    def _extract_errno(exc: Exception) -> Optional[int]:
+        reason = getattr(exc, "reason", None)
+        for obj in (exc, reason, getattr(exc, "__cause__", None), getattr(reason, "__cause__", None) if reason is not None else None):
+            if obj is None:
+                continue
+            win_err = getattr(obj, "winerror", None)
+            if isinstance(win_err, int):
+                return win_err
+            err_no = getattr(obj, "errno", None)
+            if isinstance(err_no, int):
+                return err_no
         return None
 
     def _emit_loop_status(self, now: datetime, *, force: bool = False, freshness: Optional[Dict[str, Any]] = None) -> None:
@@ -959,6 +1197,12 @@ class MainLoop:
                 self._iter_db_write_signals_count += int(n_signals)
                 if n_signals:
                     self._iter_signals_buf.extend(signals)
+                    if bucket in {"scout", "logic"}:
+                        self._record_signal_batch_diag(bucket, signals)
+                    if bucket == "scout":
+                        self._iter_decision_diag["fast_scout_candidates"] = int(
+                            self._iter_decision_diag.get("fast_scout_candidates", 0) or 0
+                        ) + self._diag_candidate_count(signals)
             except Exception as e:
                 if bucket:
                     _mark(bucket, t_agent if "t_agent" in locals() else time.perf_counter())
@@ -1007,6 +1251,10 @@ class MainLoop:
                 self._iter_db_write_signals_count += int(n_signals)
                 if n_signals:
                     self._iter_signals_buf.extend(signals)
+                    if bucket == "scout":
+                        self._iter_decision_diag["slow_scout_candidates"] = int(
+                            self._iter_decision_diag.get("slow_scout_candidates", 0) or 0
+                        ) + self._diag_candidate_count(signals)
             except Exception as e:
                 if bucket:
                     _mark(bucket, t_agent if "t_agent" in locals() else time.perf_counter())
@@ -1036,6 +1284,13 @@ class MainLoop:
             if ev.purpose == "reconcile":
                 freshness = self._compute_iter_freshness()
                 overall_state = str((freshness.get("state") or {}).get("overall") or "STOP")
+                self._iter_reconcile_diag["scheduled"] = 1
+                if overall_state == STATE_OK:
+                    self._iter_reconcile_diag["allowed"] = 1
+                    self._iter_reconcile_diag["skip_reason"] = "NONE"
+                else:
+                    self._iter_reconcile_diag["allowed"] = 0
+                    self._iter_reconcile_diag["skip_reason"] = f"FRESHNESS_{overall_state}"
                 # Slow agents first: generate cross-market signals before decisions
                 if self.settings.enable_agents and overall_state == STATE_OK:
                     self._run_slow_agents(ctx)
@@ -1094,6 +1349,19 @@ class MainLoop:
             self._iter_errs = 0
             self._iter_freshness = None
             self._iter_pipe = {"cand_count": 0, "dec_count": 0, "last": "HOLD/NO_CANDIDATES"}
+            self._iter_reconcile_diag = {"scheduled": 0, "allowed": 0, "skip_reason": "NOT_SCHEDULED"}
+            self._iter_decision_diag = {
+                "scout_raw": 0,
+                "scout_kept_ids": set(),
+                "logic_pass": 0,
+                "logic_hold": 0,
+                "fast_scout_candidates": 0,
+                "slow_scout_candidates": 0,
+                "logic_reason_counts": {},
+                "paper_reason_counts": {},
+                "paper_action_counts": {},
+                "hold_reason_counts": {},
+            }
             self._iter_db_write_signals_count = 0
             self._iter_db_write_calls = 0
             self._iter_signals_buf.clear()
@@ -1119,12 +1387,39 @@ class MainLoop:
             ran_book = 0
             now = datetime.now(timezone.utc)
             do_poll, do_reconcile = self.scheduler.tick(now)
+            self._iter_reconcile_diag = {
+                "scheduled": int(bool(do_reconcile)),
+                "allowed": 0,
+                "skip_reason": "NONE" if bool(do_reconcile) else "NOT_SCHEDULED",
+            }
 
             mono = time.monotonic()
-            if do_poll and self.settings.enable_ingest and mono >= self._next_ingest_ts:
+            if self._net_ping_enabled and (mono - self._last_net_ping_ts) >= 60.0:
+                self._last_net_ping_ts = mono
+                t_ping0 = time.perf_counter()
+                try:
+                    req = Request(
+                        url=f"{GAMMA_BASE}/markets?closed=false&limit=1&offset=0",
+                        method="GET",
+                        headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"},
+                    )
+                    with urlopen(req, timeout=2) as resp:
+                        try:
+                            resp.read(1)
+                        except Exception:
+                            pass
+                    log.info("NET_PING ok=1 ms=%.0f", (time.perf_counter() - t_ping0) * 1000.0)
+                except Exception as e:
+                    err_no = self._extract_errno(e)
+                    reason = getattr(e, "reason", None)
+                    err_type = type(reason).__name__ if reason is not None else type(e).__name__
+                    log.info("NET_PING ok=0 errno=%s err_type=%s", err_no if err_no is not None else "-", err_type)
+            block_guard = self._ingest_max_block_ms > 0 and self._last_ingest_wall_ms > self._ingest_max_block_ms
+            if do_poll and self.settings.enable_ingest and mono >= self._next_ingest_ts and mono >= self._ingest_neterr_until and not block_guard:
                 t0 = time.perf_counter()
                 try:
                     print("INGEST TICK", now)
+                    log.info("INGEST_CALL iter=%s will_run=%s reason=%s", self._iter, 1, "RUN")
                     ran_ingest = 1
                     m_cnt, s_cnt = self.ingestor.ingest()
                     ingest_stats = getattr(getattr(self.ingestor, "client", None), "last_snapshot_stats", {}) or {}
@@ -1212,43 +1507,78 @@ class MainLoop:
                     for m in markets:
                         self.bus.publish(MarketTick(ts=now, market_id=m.market_id))
                 except Exception as e:
-                    self._ingest_failures += 1
-                    retry_in = min(30.0, 0.5 * (2 ** (self._ingest_failures - 1)))
-                    self._next_ingest_ts = time.monotonic() + retry_in
-                    self._record_stage_error("ingest", e, now)
-                    ingest_stats = getattr(getattr(self.ingestor, "client", None), "last_snapshot_stats", {}) or {}
-                    fetched_n = int(ingest_stats.get("fetched_ok", 0) or 0)
-                    parsed_n = int(ingest_stats.get("parsed", 0) or 0)
-                    inserted_n = int(ingest_stats.get("inserted", 0) or 0)
-                    http_status = self._extract_http_status(e)
-                    if (time.monotonic() - self._last_ingest_fail_log_ts) >= 5.0:
-                        self._last_ingest_fail_log_ts = time.monotonic()
-                        msg = str(e).replace("\n", " ").strip()
-                        if len(msg) > 160:
-                            msg = msg[:160]
-                        log.warning(
-                            "INGEST_FAIL exc=%s msg=%s http=%s fetched=%s parsed=%s inserted=%s",
-                            e.__class__.__name__,
-                            msg,
-                            http_status if http_status is not None else "-",
-                            fetched_n,
-                            parsed_n,
-                            inserted_n,
+                    err_no = self._extract_errno(e)
+                    net_kind = None
+                    net_code: Any = "-"
+                    if err_no in {10013, 10051, 11001, 11002, 11004}:
+                        net_kind = "errno"
+                        net_code = err_no
+                    elif isinstance(e, URLError):
+                        net_kind = "urlerror"
+                        net_code = "-"
+                    elif isinstance(e, HTTPError) and int(getattr(e, "code", 0) or 0) in {429, 500, 502, 503, 504}:
+                        net_kind = "http"
+                        net_code = int(getattr(e, "code", 0) or 0)
+                    if net_kind is not None:
+                        try:
+                            cooldown_s = float(os.getenv("PS_INGEST_NETERR_COOLDOWN_S", "60") or 60.0)
+                        except Exception:
+                            cooldown_s = 60.0
+                        cooldown_s = max(1.0, cooldown_s)
+                        self._ingest_neterr_until = time.monotonic() + cooldown_s
+                        ran_ingest = 0
+                        cooldown_until = self._ingest_neterr_until
+                        remaining = max(0.0, cooldown_until - time.monotonic())
+                        log.info(
+                            "INGEST_NETERR kind=%s code=%s cooldown_s=%s skip_for_s=%.1f",
+                            net_kind,
+                            net_code,
+                            cooldown_s,
+                            remaining,
                         )
-                    self.bus.publish(
-                        Alert(
-                            ts=now,
-                            severity="ERROR",
-                            code="INGEST_FAIL",
-                            message=f"{e} | retry in {retry_in:.1f}s",
+                    else:
+                        self._ingest_failures += 1
+                        retry_in = min(30.0, 0.5 * (2 ** (self._ingest_failures - 1)))
+                        self._next_ingest_ts = time.monotonic() + retry_in
+                        self._record_stage_error("ingest", e, now)
+                        ingest_stats = getattr(getattr(self.ingestor, "client", None), "last_snapshot_stats", {}) or {}
+                        fetched_n = int(ingest_stats.get("fetched_ok", 0) or 0)
+                        parsed_n = int(ingest_stats.get("parsed", 0) or 0)
+                        inserted_n = int(ingest_stats.get("inserted", 0) or 0)
+                        http_status = self._extract_http_status(e)
+                        if (time.monotonic() - self._last_ingest_fail_log_ts) >= 5.0:
+                            self._last_ingest_fail_log_ts = time.monotonic()
+                            msg = str(e).replace("\n", " ").strip()
+                            if len(msg) > 160:
+                                msg = msg[:160]
+                            log.warning(
+                                "INGEST_FAIL exc=%s msg=%s http=%s fetched=%s parsed=%s inserted=%s",
+                                e.__class__.__name__,
+                                msg,
+                                http_status if http_status is not None else "-",
+                                fetched_n,
+                                parsed_n,
+                                inserted_n,
+                            )
+                        self.bus.publish(
+                            Alert(
+                                ts=now,
+                                severity="ERROR",
+                                code="INGEST_FAIL",
+                                message=f"{e} | retry in {retry_in:.1f}s",
+                            )
                         )
-                    )
                 finally:
                     self._iter_stage_ms["ingest"] = (time.perf_counter() - t0) * 1000.0
+                    self._last_ingest_wall_ms = float(self._iter_stage_ms["ingest"])
                     log.info("INGEST_PHASES iter=%s call=%.0fms", self._iter, float(self._iter_stage_ms["ingest"]))
             else:
                 self._telemetry["skipped_ingest_guard"] = int(self._telemetry.get("skipped_ingest_guard", 0) or 0) + 1
-                if not do_poll:
+                if mono < self._ingest_neterr_until:
+                    reason = "NETERR_COOLDOWN"
+                elif block_guard:
+                    reason = "MAX_BLOCK_MS"
+                elif not do_poll:
                     reason = "SCHEDULER_NOT_POLL"
                 elif not self.settings.enable_ingest:
                     reason = "INGEST_DISABLED"
@@ -1261,13 +1591,25 @@ class MainLoop:
                     now_mono = time.monotonic()
                     self._last_ingest_skip_reason_log_ts[reason] = now_mono
                     self._last_ingest_skip_log_ts = now_mono
-                    log.info(
-                        "INGEST_SKIP reason=%s enable_ingest=%s do_poll=%s wait_s=%.1f",
-                        reason,
-                        bool(self.settings.enable_ingest),
-                        bool(do_poll),
-                        max(0.0, float(self._next_ingest_ts) - float(mono)),
-                    )
+                    if reason == "NETERR_COOLDOWN":
+                        log.info(
+                            "INGEST_SKIPPED reason=NETERR_COOLDOWN until_in_s=%.1f",
+                            max(0.0, float(self._ingest_neterr_until) - float(mono)),
+                        )
+                    elif reason == "MAX_BLOCK_MS":
+                        log.info(
+                            "INGEST_SKIPPED reason=MAX_BLOCK_MS last_ms=%.0f max_ms=%.0f",
+                            float(self._last_ingest_wall_ms),
+                            float(self._ingest_max_block_ms),
+                        )
+                    else:
+                        log.info(
+                            "INGEST_SKIP reason=%s enable_ingest=%s do_poll=%s wait_s=%.1f",
+                            reason,
+                            bool(self.settings.enable_ingest),
+                            bool(do_poll),
+                            max(0.0, float(self._next_ingest_ts) - float(mono)),
+                        )
 
             # Orderbook collector (separate cadence)
             if mono >= self._next_book_ts:
@@ -1282,6 +1624,25 @@ class MainLoop:
                         print("BOOK TICK", now)
                         ran_book = 1
                         active_ids, target_stats = self._active_orderbook_targets(top_n=30)
+                        selected_ids = list(active_ids or [])
+                        if self._book_stale_sec > 0 and selected_ids:
+                            selected_ids = [
+                                mid for mid in selected_ids
+                                if (mid not in self._book_last_fetch_mono)
+                                or ((mono - float(self._book_last_fetch_mono.get(mid, 0.0))) >= float(self._book_stale_sec))
+                            ]
+                        rr_cursor_before = int(self._book_rr_cursor or 0)
+                        targets_total = len(active_ids or [])
+                        if self._book_target_limit > 0 and len(selected_ids) > self._book_target_limit:
+                            n = len(selected_ids)
+                            start = rr_cursor_before % n
+                            take = int(self._book_target_limit)
+                            end = start + take
+                            if end <= n:
+                                selected_ids = selected_ids[start:end]
+                            else:
+                                selected_ids = selected_ids[start:] + selected_ids[: end - n]
+                            self._book_rr_cursor = (start + take) % n
                         if not active_ids:
                             self._telemetry["skipped_book_no_targets"] = int(
                                 self._telemetry.get("skipped_book_no_targets", 0) or 0
@@ -1297,7 +1658,20 @@ class MainLoop:
                                     int(sources.get("pinned", 0) or 0),
                                     live_cases_count,
                                 )
-                        stats = self.book_collector.collect(active_ids)
+                        book_conc = getattr(getattr(self.book_collector, "client", None), "book_concurrency", "-")
+                        sample_ids = ",".join(selected_ids[:3]) if selected_ids else "-"
+                        log.info(
+                            "BOOK_PLAN targets=%s selected=%s rr_cursor=%s stale_sec=%s conc=%s sample=%s",
+                            targets_total,
+                            len(selected_ids),
+                            rr_cursor_before,
+                            int(self._book_stale_sec) if self._book_stale_sec > 0 else 0,
+                            book_conc,
+                            sample_ids,
+                        )
+                        stats = self.book_collector.collect(selected_ids)
+                        for mid in selected_ids:
+                            self._book_last_fetch_mono[mid] = mono
                         stats["targets"] = target_stats
                         self._book_failures = 0
                         self._next_book_ts = mono + 3.0
@@ -1403,6 +1777,50 @@ class MainLoop:
                 repo=self.repo,
                 freshness_state=state_obj,
                 context=self._paper_pipeline_ctx,
+            )
+            paper_action = str(self._iter_pipe.get("paper_action", "") or "").strip().upper()
+            paper_reason = str(self._iter_pipe.get("paper_reason", "") or "").strip().upper()
+            paper_source = str(self._iter_pipe.get("paper_source", "") or "").strip() or "-"
+            dedup_sig = str(self._iter_pipe.get("dedup_signature", "") or "").strip() or "-"
+            matched_prev = str(self._iter_pipe.get("matched_prev_signature", "") or "").strip() or "-"
+            consumed_key = str(self._iter_pipe.get("consumed_key", "") or "").strip() or "-"
+            opportunity_key = str(self._iter_pipe.get("opportunity_key", "") or "").strip() or "-"
+            same_opportunity_as_prev = int(self._iter_pipe.get("same_opportunity_as_prev", 0) or 0)
+            skipped_as_same_opportunity = int(self._iter_pipe.get("skipped_as_same_opportunity", 0) or 0)
+            selected = int(self._iter_pipe.get("selected", 1 if int(self._iter_pipe.get("cand_count", 0) or 0) > 0 else 0) or 0)
+            skipped_as_stale = int(self._iter_pipe.get("skipped_as_stale", 0) or 0)
+            matched_prev_bool = str(
+                bool(
+                    matched_prev != "-"
+                    and dedup_sig != "-"
+                    and matched_prev == dedup_sig
+                )
+            ).lower()
+            paper_candidate = 1 if int(self._iter_pipe.get("cand_count", 0) or 0) > 0 else 0
+            paper_action_summary = paper_action if paper_action in {"OPEN", "HOLD", "CLOSE"} else "NONE"
+            if paper_action:
+                self._diag_inc(self._iter_decision_diag.get("paper_action_counts", {}), paper_action)
+            if paper_reason:
+                self._diag_inc(self._iter_decision_diag.get("paper_reason_counts", {}), paper_reason)
+            if paper_action == "HOLD" or paper_reason in {"DEDUP", "NO_DECISION"}:
+                self._diag_inc(self._iter_decision_diag.get("hold_reason_counts", {}), paper_reason or "HOLD")
+            log.info(
+                "PAPER_SUMMARY source=%s candidate_origin=%s candidate=%s selected=%s action=%s reason=%s "
+                "dedup_sig=%s matched_prev=%s skipped_as_stale=%s consumed_key=%s opportunity_key=%s "
+                "same_opportunity_as_prev=%s skipped_as_same_opportunity=%s",
+                paper_source,
+                "db_latest_scout_signal",
+                paper_candidate,
+                selected,
+                paper_action_summary,
+                paper_reason or "-",
+                dedup_sig,
+                matched_prev_bool,
+                skipped_as_stale,
+                consumed_key,
+                opportunity_key,
+                same_opportunity_as_prev,
+                skipped_as_same_opportunity,
             )
             self._iter_agent_timing["paper"] = self._iter_agent_timing.get("paper", 0.0) + (
                 (time.perf_counter() - t_paper) * 1000.0
@@ -1524,6 +1942,7 @@ class MainLoop:
                 ran_agent=ran_agent,
                 freshness=iter_freshness,
             )
+            self._emit_freshness_diag(iter_freshness)
             self._iter_stage_ms["ui"] = (time.perf_counter() - ui_t0) * 1000.0
             self._iter_stage_ms["total"] = (time.perf_counter() - iter_start) * 1000.0
             agent_stage_ms = float(self._iter_stage_ms.get("agent", 0.0))
@@ -1567,6 +1986,8 @@ class MainLoop:
                 known_sum,
                 ",".join(top_parts),
             )
+            live_cases = self._emit_fast_agent_diag_summary()
+            self._emit_pipeline_obs(live_cases)
             if db_calls == 1 and db_rows_ok > 0:
                 log.info(
                     "SIGNAL_FLUSH_TIMING iter=%s total=%.0fms exec=%.0fms rows=%s chunks=%s",

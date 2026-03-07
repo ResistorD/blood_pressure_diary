@@ -22,9 +22,23 @@ DEPRIORITIZE_MODE=ui
 DEPRIORITIZE_MIN_WEIGHT=0.05
 
 ## Run Web UI
-python -m app.main
+PS_DEV=1 python -m app.main   # DEV (authoritative dev flag)
+python -m app.main            # default mode
 ./scripts/run_web.sh (mac/linux)
 .\scripts\run_web.ps1 (windows)
+
+## Run Modes
+psrun-fast   — быстрый dev (ограничение ingest/book)
+psrun-full   — полный dev без ограничений
+psrun-prod   — поведение близкое к продакшену
+
+## Fast dev run
+Use one command with known-good fast dev settings:
+`./scripts/run_dev_fast.sh`
+
+Expected logs should include:
+- `SNAPSHOTS_PLAN ... planned=60 limit=60`
+- `BOOK_PLAN targets=20 ...`
 
 ## Run Pipeline / Loop
 python -m app.main
@@ -39,3 +53,17 @@ curl -X POST http://127.0.0.1:8000/agent/start -H "Content-Type: application/jso
 curl http://127.0.0.1:8000/agent/state
 curl http://127.0.0.1:8000/agent/events?limit=50
 curl -X POST http://127.0.0.1:8000/agent/stop
+
+## Dev: no-cache & static versioning
+Start in dev mode (enables no-cache headers for HTML and /static):
+`PS_DEV=1 python -u -m app.main`
+
+Authoritative dev flag across entrypoints: `PS_DEV=1`.
+
+Header checks (GET with headers; useful if HEAD returns 405 on HTML routes):
+1. `curl -sS -D - -o /dev/null http://127.0.0.1:8000/cases | grep -i cache`
+2. `curl -sS -D - -o /dev/null http://127.0.0.1:8000/static/ps_terminal.css | grep -i cache`
+3. `curl -sS http://127.0.0.1:8000/cases | grep -Eo '/static/[^\"]+\\?v=[^\"]+' | head`
+
+Quick full sanity:
+`PS_DEV=1 ./scripts/dev_sanity.sh`

@@ -267,7 +267,28 @@ body.is-paused .paused-banner { display: block; }
   background: rgba(0,0,0,0.2);
 }
 
-/* Titlebar layout override to prevent overlap */
+/* Desktop shell layout guard: keep sidebar/main out of titlebar row */
+@media (min-width: 901px) {
+  .app {
+    grid-template-columns: 210px 1fr;
+    grid-template-rows: var(--titlebar-h, 44px) minmax(0, 1fr);
+    min-height: 100vh;
+  }
+  .titlebar {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+  .sidebar {
+    grid-column: 1;
+    grid-row: 2;
+    min-height: 0;
+  }
+  main.main {
+    grid-column: 2;
+    grid-row: 2;
+    min-height: 0;
+  }
+}
 .titlebar {
   display: flex;
   align-items: center;

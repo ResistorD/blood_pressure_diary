@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 import os
+import time
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -18,7 +19,15 @@ from fastapi.templating import Jinja2Templates
 from utils.logging import get_logger, warn_exc
 
 router = APIRouter()
-templates = Jinja2Templates(directory="ui/templates")
+
+
+def _template_ctx(request: Request) -> Dict[str, str]:
+    if getattr(request.app.state, "dev_mode", False):
+        return {"static_v": str(int(time.time()))}
+    return {"static_v": str(getattr(request.app.state, "static_v", "dev"))}
+
+
+templates = Jinja2Templates(directory="ui/templates", context_processors=[_template_ctx])
 logger = get_logger("api.dashboard_v2")
 
 RU_STATUS = {

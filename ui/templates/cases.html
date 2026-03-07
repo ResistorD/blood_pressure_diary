@@ -9,16 +9,16 @@
 {% set page_title = "Возможности" %}
 {% block title %}Возможности — PolySyndicate{% endblock %}
 
-{% block content %}
-  {% set f = filters if filters is defined else {} %}
-  {% set p = pager if pager is defined else {} %}
-  {% set ns = namespace(ok=0, inv=0, bl=0) %}
-  {% for c in rows|default([]) %}
-    {% set st = (c.get("status") or "")|upper %}
-    {% if st == "OK" %}{% set ns.ok = ns.ok + 1 %}{% endif %}
-    {% if st == "INVESTIGATE" %}{% set ns.inv = ns.inv + 1 %}{% endif %}
-    {% if st == "BLOCKED" %}{% set ns.bl = ns.bl + 1 %}{% endif %}
-  {% endfor %}
+{% block content -%}
+  {%- set f = filters if filters is defined else {} -%}
+  {%- set p = pager if pager is defined else {} -%}
+  {%- set ns = namespace(ok=0, inv=0, bl=0) -%}
+  {%- for c in rows|default([]) -%}
+    {%- set st = (c.get("status") or "")|upper -%}
+    {%- if st == "OK" -%}{%- set ns.ok = ns.ok + 1 -%}{%- endif -%}
+    {%- if st == "INVESTIGATE" -%}{%- set ns.inv = ns.inv + 1 -%}{%- endif -%}
+    {%- if st == "BLOCKED" -%}{%- set ns.bl = ns.bl + 1 -%}{%- endif -%}
+  {%- endfor -%}
 
   {% set right = badge.badge("deprioritize: " ~ (deprioritize_active or 0), "muted") %}
   {{ page.page_header("Возможности", "Рынки с актуальными сигналами и причиной, почему кейс может быть tradeable.", right) }}

@@ -1,0 +1,22 @@
+codex_runner summary
+run_dir: /home/resis/src/polysyndicate-v2/codex_runs/2026-03-07_151520_codex_paths_refactor
+repo_root: /home/resis/src/polysyndicate-v2
+prompt_source: codex/prompts/next_task.txt
+prompt_copy: /home/resis/src/polysyndicate-v2/codex_runs/2026-03-07_151520_codex_paths_refactor/prompt.txt
+codex_mode: exec
+codex_exit_code: 0
+run_tests: 1
+py_compile: 1
+artifacts:
+- codex_stdout.txt
+- codex_stderr.txt
+- codex_last_message.txt (if produced)
+- git_status.txt
+- changed_files.txt
+- git_diff_stat.txt
+- git_diff.patch
+- pytest.txt
+- pytest_status.txt
+- py_compile.txt
+- py_compile_status.txt
+paste_hint: share summary.txt + git_diff_stat.txt + (optional) codex_last_message.txt

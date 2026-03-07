@@ -1,4 +1,5 @@
 :root {
+  --titlebar-h:   44px;
   --bg:           #252A2E;
   --bg-elevated:  #1f2327;
   --surface:      #2E3338;
@@ -7,6 +8,7 @@
   --surface-hover:#3e444a;
   --border:       rgba(255,255,255,0.11);
   --border-md:    rgba(255,255,255,0.20);
+  --border-muted: rgba(255,255,255,0.12);
 
   --text:         #F0EDE8;
   --text-2:       rgba(240,237,232,0.72);
@@ -45,6 +47,16 @@
   --font-ui:   'Geist', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: 'Geist Mono', 'SF Mono', monospace;
   --font-display: 'Geist', -apple-system, sans-serif;
+}
+
+html[data-theme="dark"] {
+  --titlebar-h:   44px;
+  --border-muted: rgba(255,255,255,0.12);
+}
+
+html[data-theme="light"] {
+  --titlebar-h:   44px;
+  --border-muted: rgba(0,0,0,0.14);
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }

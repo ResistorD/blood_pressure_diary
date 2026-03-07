@@ -1,0 +1,14 @@
+Updated.
+
+- [scripts/codex_runner/run_codex_task.sh](/home/resis/src/polysyndicate-v2/scripts/codex_runner/run_codex_task.sh):75  
+  `RUN_DIR` default changed from `codex_runs/...` to `codex/runs/...`.
+
+- [docs/codex_runner.md](/home/resis/src/polysyndicate-v2/docs/codex_runner.md)  
+  - Quick start prompt example updated to `codex/prompts/my_task.txt`.  
+  - Example command updated to `./scripts/codex_runner/run_codex_task.sh codex/prompts/my_task.txt`.  
+  - `--name` option text updated to `codex/runs/`.  
+  - Run directory structure updated to:
+    - `codex/prompts/`
+    - `codex/runs/YYYY-MM-DD_HHMMSS_<name>/`
+    - `codex/templates/`
+  - Backward-compat note added for manual legacy paths (`prompts/...`, `codex_runs/...`).

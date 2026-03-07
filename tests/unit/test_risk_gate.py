@@ -81,3 +81,48 @@ def test_risk_gate_auto_kill_switch(repo):
     assert v.allow is False
     assert v.code == "KILL"
     assert repo.get_bool_setting("kill_switch", default=False) is True
+
+
+def test_risk_gate_limit_market_already_open_is_reachable_when_auto_kill_disabled(repo):
+    _seed_market(repo, "m1", "g1")
+    repo.paper_buy(run_id="r", market_id="m1", outcome="YES", qty=1.0, price=10.0)
+
+    settings = _Settings(
+        RiskConfig(
+            max_open_positions=10,
+            max_notional_total=1000.0,
+            max_notional_per_group=1000.0,
+            max_notional_per_market=1000.0,
+            auto_kill_on_limit_breach=False,
+        )
+    )
+    gate = RiskGate(repo, settings)
+    v = gate.check_market("m1")
+    assert v.allow is False
+    assert v.code == "LIMIT"
+    assert v.kind == "LIMIT_MARKET_ALREADY_OPEN"
+
+
+def test_risk_gate_market_already_open_limit_is_masked_by_kill_switch_when_auto_kill_enabled(repo):
+    _seed_market(repo, "m1", "g1")
+    repo.paper_buy(run_id="r", market_id="m1", outcome="YES", qty=1.0, price=10.0)
+
+    settings = _Settings(
+        RiskConfig(
+            max_open_positions=10,
+            max_notional_total=1000.0,
+            max_notional_per_group=1000.0,
+            max_notional_per_market=1000.0,
+            auto_kill_on_limit_breach=True,
+        )
+    )
+    gate = RiskGate(repo, settings)
+    v = gate.check_market("m1")
+
+    assert v.allow is False
+    assert v.code == "KILL"
+    assert v.kind == "KILL_SWITCH"
+    assert repo.get_bool_setting("kill_switch", default=False) is True
+    reason = repo.get_setting("kill_switch_reason", "") or ""
+    assert str(reason).startswith("AUTO:")
+    assert "уже есть открытая paper-позиция по рынку" in str(reason)

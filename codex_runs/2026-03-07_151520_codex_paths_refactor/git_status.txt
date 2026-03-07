@@ -1,0 +1,115 @@
+ M .gitignore
+ M README_RUN.md
+ M agents/base.py
+ M agents/scout.py
+ M all_code.txt
+ M api/dashboard_v2.py
+ M api/http.py
+ M app/logging.py
+ M app/main.py
+ M app/risk_gate.py
+ M benchmarks/performance.py
+ M core/explain.py
+ M db/repo.py
+ M db/repository_modules.py
+ M decision/engine.py
+ M dispatcher/bus.py
+ M dispatcher/events.py
+ M dispatcher/loop.py
+ M dispatcher/paper_decision_pipeline.py
+ M dispatcher/scheduler.py
+ M domain/models.py
+ M ingest/ingestor.py
+ M ingest/polymarket_client.py
+ M scripts/run_web.ps1
+ M scripts/run_web.sh
+ M tests/test_decision_engine.py
+ M tests/unit/test_risk_gate.py
+ M ui/static/ps_dashboard_organic.css
+ M ui/static/ps_terminal.css
+ M ui/static/ps_terminal.js
+ M ui/templates/_base.html
+ M ui/templates/base.html
+ M ui/templates/cases.html
+ M ui/templates/cluster.html
+ M ui/templates/deprioritize.html
+ M ui/templates/signals.html
+?? .npmrc
+?? app/utils/
+?? codex/
+?? codex_runs/
+?? docs/
+?? package.json
+?? requirements-dev.txt
+?? scripts/cleanup_invalid_market_ids.py
+?? scripts/codex_runner/
+?? scripts/dev_sanity.sh
+?? scripts/diagnostics/
+?? scripts/run_dev_fast.sh
+?? scripts/run_modes/
+?? tests/unit/test_paper_decision_pipeline.py
+?? tests/unit/test_scout_opportunity_key.py
+
+On branch master
+Your branch is ahead of 'origin/master' by 1 commit.
+  (use "git push" to publish your local commits)
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   .gitignore
+	modified:   README_RUN.md
+	modified:   agents/base.py
+	modified:   agents/scout.py
+	modified:   all_code.txt
+	modified:   api/dashboard_v2.py
+	modified:   api/http.py
+	modified:   app/logging.py
+	modified:   app/main.py
+	modified:   app/risk_gate.py
+	modified:   benchmarks/performance.py
+	modified:   core/explain.py
+	modified:   db/repo.py
+	modified:   db/repository_modules.py
+	modified:   decision/engine.py
+	modified:   dispatcher/bus.py
+	modified:   dispatcher/events.py
+	modified:   dispatcher/loop.py
+	modified:   dispatcher/paper_decision_pipeline.py
+	modified:   dispatcher/scheduler.py
+	modified:   domain/models.py
+	modified:   ingest/ingestor.py
+	modified:   ingest/polymarket_client.py
+	modified:   scripts/run_web.ps1
+	modified:   scripts/run_web.sh
+	modified:   tests/test_decision_engine.py
+	modified:   tests/unit/test_risk_gate.py
+	modified:   ui/static/ps_dashboard_organic.css
+	modified:   ui/static/ps_terminal.css
+	modified:   ui/static/ps_terminal.js
+	modified:   ui/templates/_base.html
+	modified:   ui/templates/base.html
+	modified:   ui/templates/cases.html
+	modified:   ui/templates/cluster.html
+	modified:   ui/templates/deprioritize.html
+	modified:   ui/templates/signals.html
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	.npmrc
+	app/utils/
+	codex/
+	codex_runs/
+	docs/
+	package.json
+	requirements-dev.txt
+	scripts/cleanup_invalid_market_ids.py
+	scripts/codex_runner/
+	scripts/dev_sanity.sh
+	scripts/diagnostics/
+	scripts/run_dev_fast.sh
+	scripts/run_modes/
+	tests/unit/test_paper_decision_pipeline.py
+	tests/unit/test_scout_opportunity_key.py
+
+no changes added to commit (use "git add" and/or "git commit -a")

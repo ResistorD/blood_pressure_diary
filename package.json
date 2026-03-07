@@ -1,0 +1,23 @@
+{
+  "name": "polysyndicate-v2",
+  "version": "1.0.0",
+  "description": "Production-ready trading bot for prediction markets (Polymarket) with agent-based signal generation and automated decision making.",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ResistorD/blood_pressure_diary.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ResistorD/blood_pressure_diary/issues"
+  },
+  "homepage": "https://github.com/ResistorD/blood_pressure_diary#readme"
+}

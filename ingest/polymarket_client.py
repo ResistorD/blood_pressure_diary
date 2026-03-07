@@ -3,16 +3,19 @@ from __future__ import annotations
 import json
 import os
 import re
+import errno as errno_mod
+import socket
+import subprocess
 import threading
 import time
 from dataclasses import dataclass
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlparse
-from urllib.request import Request, urlopen, build_opener
+from urllib.request import Request, urlopen, build_opener, ProxyHandler
 
 from domain.models import Market, Snapshot
 
@@ -21,6 +24,30 @@ GAMMA_BASE = "https://gamma-api.polymarket.com"
 CLOB_BASE = "https://clob.polymarket.com"
 
 logger = logging.getLogger(__name__)
+
+
+def _read_winhttp_proxy() -> str:
+    try:
+        cp = subprocess.run(
+            ["netsh", "winhttp", "show", "proxy"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+        out = (cp.stdout or "").strip()
+        if not out:
+            return "-"
+        one = " ".join(out.split())
+        if "Direct access" in one:
+            return "DIRECT"
+        return one[:200]
+    except Exception:
+        return "-"
+
+
+def _env_proxy_value(name: str) -> str:
+    return (os.getenv(name) or os.getenv(name.lower()) or "").strip()
 
 
 @dataclass(frozen=True)
@@ -48,6 +75,31 @@ class RateLimiter:
                 time.sleep(self._next_allowed - now)
                 now = time.monotonic()
             self._next_allowed = max(self._next_allowed, now) + self._min_interval
+
+
+class BookTimeoutSoftSkip(Exception):
+    def __init__(self, exc: Exception):
+        super().__init__(str(exc))
+        self.original = exc
+
+
+def _is_timeout_error(exc: Exception) -> bool:
+    if isinstance(exc, (TimeoutError, socket.timeout)):
+        return True
+    reason = getattr(exc, "reason", None)
+    if isinstance(reason, (TimeoutError, socket.timeout)):
+        return True
+    for obj in (exc, reason, getattr(exc, "__cause__", None), getattr(reason, "__cause__", None) if reason is not None else None):
+        if obj is None:
+            continue
+        err_no = getattr(obj, "errno", None)
+        win_err = getattr(obj, "winerror", None)
+        if err_no in {errno_mod.ETIMEDOUT, 110} or win_err in {10060}:
+            return True
+        msg = str(obj).lower()
+        if "timed out" in msg or "timeout" in msg:
+            return True
+    return False
 
 
 def _parse_retry_after(exc: HTTPError) -> Optional[float]:
@@ -97,6 +149,8 @@ def _http_json(
     headers: Optional[Dict[str, str]] = None,
     trace: Optional[Dict[str, Any]] = None,
     opener: Any = None,
+    timeout_sec: Optional[float] = None,
+    fail_fast_book: bool = False,
 ) -> Any:
     p = policy or HttpPolicy()
     attempts = max(1, int(p.retries))
@@ -106,6 +160,7 @@ def _http_json(
     retry_count = 0
     status_last: Any = "?"
     bytes_last: Any = "?"
+    content_type_last = "-"
     encoding_last = "?"
     rl_rem_last: Any = "-"
     retry_after_last: Any = "-"
@@ -122,23 +177,24 @@ def _http_json(
         if limiter is not None:
             limiter.wait()
         t_req0 = time.perf_counter()
+        req_headers = {
+            "User-Agent": "curl/8.0",
+            "Accept": "application/json",
+            "Accept-Encoding": "gzip, deflate",
+            "Connection": "keep-alive",
+            **(headers or {}),
+        }
         try:
             req = Request(
                 url=url,
                 method=method,
-                headers={
-                    # Polymarket sometimes blocks "generic" clients; a simple UA helps avoid 403.
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                                  "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-                    "Accept": "application/json,text/plain,*/*",
-                    "Connection": "keep-alive",
-                    **(headers or {}),
-                },
+                headers=req_headers,
             )
+            eff_timeout = float(timeout_sec) if timeout_sec is not None else float(p.timeout_sec)
             if opener is not None:
-                resp_ctx = opener.open(req, timeout=p.timeout_sec)
+                resp_ctx = opener.open(req, timeout=eff_timeout)
             else:
-                resp_ctx = urlopen(req, timeout=p.timeout_sec)
+                resp_ctx = urlopen(req, timeout=eff_timeout)
             with resp_ctx as resp:
                 req_ms_acc += (time.perf_counter() - t_req0) * 1000.0
                 try:
@@ -146,6 +202,7 @@ def _http_json(
                 except Exception:
                     status_last = 200
                 try:
+                    content_type_last = str(resp.headers.get("Content-Type") or "-")
                     encoding_last = str(resp.headers.get("Content-Encoding") or "-")
                     rl_rem_last = str(resp.headers.get("x-ratelimit-remaining") or "-")
                     retry_after_last = str(resp.headers.get("retry-after") or "-")
@@ -159,8 +216,46 @@ def _http_json(
                 except Exception:
                     bytes_last = "?"
                 t_json0 = time.perf_counter()
-                raw = raw_b.decode("utf-8", errors="replace")
-                data = json.loads(raw)
+                import gzip
+                import zlib
+                ce = (str(encoding_last or "")).lower()
+                if "gzip" in ce or raw_b.startswith(b"\x1f\x8b"):
+                    raw_b = gzip.decompress(raw_b)
+                elif "deflate" in ce:
+                    try:
+                        raw_b = zlib.decompress(raw_b)
+                    except Exception:
+                        raw_b = zlib.decompress(raw_b, -zlib.MAX_WBITS)
+                text = raw_b.decode("utf-8")
+                try:
+                    data = json.loads(text)
+                except json.JSONDecodeError as e:
+                    call_name = "-"
+                    if isinstance(trace, dict):
+                        call_name = str(trace.get("call_name") or trace.get("call") or "-")
+                    status_sniff = str(status_last if status_last not in {None, "?", ""} else "-")
+                    ct_sniff = str(content_type_last or "-")
+                    ce_sniff = str(encoding_last or "-")
+                    try:
+                        head = text[:300]
+                    except Exception:
+                        head = repr(raw_b[:200])
+                    head = head.replace("\r", " ").replace("\n", " ").replace("\t", " ")
+                    if len(head) > 300:
+                        head = head[:300]
+                    logger.info(
+                        "HTTP_BODY_SNIFF call=%s url_path=%s status=%s ct=%s ce=%s bytes=%s head=%s",
+                        call_name,
+                        url_path,
+                        status_sniff,
+                        ct_sniff,
+                        ce_sniff,
+                        len(raw_b),
+                        head,
+                    )
+                    raise RuntimeError(
+                        f"Non-JSON response for {url_path}: status={status_sniff} ct={ct_sniff} ce={ce_sniff} head={head}"
+                    ) from e
                 json_ms_acc += (time.perf_counter() - t_json0) * 1000.0
                 if trace is not None:
                     trace.update(
@@ -185,6 +280,12 @@ def _http_json(
                 status_last = int(getattr(e, "code", None) or status_last)
             except Exception:
                 pass
+            if getattr(e, "code", None) == 403:
+                logger.info(
+                    "HTTP_403 url_path=%s ua=%s",
+                    url_path,
+                    req_headers.get("User-Agent", "-"),
+                )
             try:
                 encoding_last = str((e.headers or {}).get("Content-Encoding") or encoding_last)
                 rl_rem_last = str((e.headers or {}).get("x-ratelimit-remaining") or rl_rem_last)
@@ -202,16 +303,18 @@ def _http_json(
             )
             time.sleep(delay)
         except Exception as e:
+            if fail_fast_book and url_path == "/book" and _is_timeout_error(e):
+                raise BookTimeoutSoftSkip(e) from e
             last_err = e
             req_ms_acc += (time.perf_counter() - t_req0) * 1000.0
-            err_no = _extract_errno(e)
-            if isinstance(e, URLError) and err_no == 10013:
-                reason = getattr(e, "reason", None)
+            reason = getattr(e, "reason", None)
+            win_err = getattr(reason, "winerror", None) if reason is not None else None
+            err_no = win_err if isinstance(win_err, int) else _extract_errno(e)
+            if err_no == 10013:
                 err_type = type(reason).__name__ if reason is not None else type(e).__name__
                 logger.info(
-                    "NET_ERR_PROFILE call=%s url=%s url_path=%s err_type=%s errno=%s",
+                    "NET_ERR_PROFILE call=%s url_path=%s err_type=%s errno=%s",
                     _call_label_from_url_path(url_path),
-                    url,
                     url_path,
                     err_type,
                     err_no,
@@ -245,6 +348,11 @@ def _norm(s: str) -> str:
     s = re.sub(r"\s+", " ", s)
     s = re.sub(r"[^a-z0-9\-\s]", "", s)
     return s
+
+
+def is_valid_market_detail_id(market_id: str) -> bool:
+    mid = str(market_id or "").strip()
+    return bool(re.fullmatch(r"\d+", mid))
 
 
 def _bucket_close_time(close_time: Optional[str]) -> str:
@@ -487,8 +595,53 @@ class PolymarketClient:
         self.clob_limiter = RateLimiter(clob_rps if clob_rps is not None else env_clob_rps)
         self.last_snapshot_stats: Dict[str, Any] = {}
         self._backfill_cache: Dict[str, float] = {}
-        self._opener = build_opener()
+        self._snap_rr_cursor = 0
+        http_proxy = _env_proxy_value("HTTP_PROXY")
+        https_proxy = _env_proxy_value("HTTPS_PROXY")
+        winhttp_proxy = _read_winhttp_proxy()
+        proxy_map: Dict[str, str] = {}
+        if http_proxy:
+            proxy_map["http"] = http_proxy
+        if https_proxy:
+            proxy_map["https"] = https_proxy
+        # Best-effort fallback: if env proxy is not set and WinHTTP has a proxy, reuse it.
+        if not proxy_map and winhttp_proxy not in {"-", "DIRECT"}:
+            m_http = re.search(r"http=([^;\s]+)", winhttp_proxy, flags=re.IGNORECASE)
+            m_https = re.search(r"https=([^;\s]+)", winhttp_proxy, flags=re.IGNORECASE)
+            if m_http:
+                proxy_map["http"] = m_http.group(1)
+            if m_https:
+                proxy_map["https"] = m_https.group(1)
+            if not proxy_map:
+                m_host = re.search(r"Proxy Server\(s\)\s*:\s*([^\s;]+)", winhttp_proxy, flags=re.IGNORECASE)
+                if m_host:
+                    proxy_map["http"] = m_host.group(1)
+                    proxy_map["https"] = m_host.group(1)
+        self._proxy_handler = ProxyHandler(proxy_map) if proxy_map else ProxyHandler()
+        self._opener = build_opener(self._proxy_handler)
+        logger.info(
+            "PROXY_CFG http_proxy=%s https_proxy=%s winhttp_proxy=%s",
+            http_proxy or "-",
+            https_proxy or "-",
+            winhttp_proxy,
+        )
         self._http_local = threading.local()
+        try:
+            env_http_timeout = int(os.getenv("PS_HTTP_TIMEOUT_S", "10") or 10)
+        except Exception:
+            env_http_timeout = 10
+        self.http_policy = HttpPolicy(
+            timeout_sec=max(1, int(env_http_timeout)),
+            retries=self.http_policy.retries,
+            backoff_base_sec=self.http_policy.backoff_base_sec,
+            backoff_cap_sec=self.http_policy.backoff_cap_sec,
+        )
+        try:
+            self.book_req_timeout_sec = float(os.getenv("PS_BOOK_REQ_TIMEOUT_S", "7") or 7.0)
+        except Exception:
+            self.book_req_timeout_sec = 7.0
+        self.book_req_timeout_sec = max(1.0, float(self.book_req_timeout_sec))
+        self.book_fail_fast = str(os.getenv("PS_BOOK_FAIL_FAST", "1") or "1").strip() not in {"0", "false", "no"}
         try:
             c = int(os.getenv("PS_BOOK_CONCURRENCY", "16") or 16)
         except Exception:
@@ -498,7 +651,7 @@ class PolymarketClient:
     def _thread_opener(self):
         opener = getattr(self._http_local, "opener", None)
         if opener is None:
-            opener = build_opener()
+            opener = build_opener(self._proxy_handler)
             self._http_local.opener = opener
         return opener
 
@@ -514,7 +667,13 @@ class PolymarketClient:
                 if not data.get("tokens"):
                     data["tokens"] = _extract_tokens_from_row(data)
                 return data
-        except Exception:
+        except Exception as e:
+            logger.info(
+                "MARKET_DETAIL_FETCH_ERR market_id=%s err_type=%s err=%s",
+                market_id,
+                type(e).__name__,
+                str(e)[:200],
+            )
             return None
         return None
 
@@ -598,7 +757,11 @@ class PolymarketClient:
         markets, _ = self.fetch_universe_markets()
         return markets
 
-    def fetch_snapshots(self, market_rows: Optional[List[Dict[str, Any]]] = None) -> List[Snapshot]:
+    def fetch_snapshots(
+        self,
+        market_rows: Optional[List[Dict[str, Any]]] = None,
+        hot_market_ids: Optional[Set[str]] = None,
+    ) -> List[Snapshot]:
         # Query CLOB books only for universe-selected markets.
         t_total0 = time.perf_counter()
         req_ms = 0.0
@@ -613,6 +776,8 @@ class PolymarketClient:
         url_path_last = "/book"
         rl_rem_last: Any = "-"
         retry_after_last: Any = "-"
+        timeout_count = 0
+        soft_skipped_count = 0
         inflight_current = 0
         inflight_max = 0
         inflight_lock = threading.Lock()
@@ -645,26 +810,21 @@ class PolymarketClient:
             book_max_pages = int(os.getenv("PS_BOOK_MAX_PAGES", "0") or 0)
         except Exception:
             book_max_pages = 0
-        logged_tasks_plan = False
-        def _log_tasks_plan(tasks_count: int, total_candidates_count: int) -> None:
-            nonlocal logged_tasks_plan
-            if logged_tasks_plan:
-                return
-            logger.info(
-                "BOOK_TASKS_PLAN conc=%s max_pages=%s tasks=%s total_candidates=%s",
-                self.book_concurrency,
-                book_max_pages,
-                tasks_count,
-                total_candidates_count,
+        try:
+            dev_mode = str(os.getenv("PS_DEV", "0") or "0").strip().lower() not in {"0", "false", "no", ""}
+            default_snapshots_limit = 60 if dev_mode else 0
+            ingest_snapshots_limit = int(
+                os.getenv("PS_INGEST_SNAPSHOTS_LIMIT", str(default_snapshots_limit)) or default_snapshots_limit
             )
-            logged_tasks_plan = True
+        except Exception:
+            ingest_snapshots_limit = 0
+        ingest_snapshots_limit = max(0, int(ingest_snapshots_limit))
         try:
             markets = market_rows if market_rows is not None else self._fetch_universe_rows()
         except Exception:
-            _log_tasks_plan(0, 0)
             raise
         stats["markets"] = len(markets)
-        tasks: List[Tuple[str, str, str]] = []
+        all_tasks: List[Tuple[str, str, str]] = []
         for m in markets:
             market_id = str(m.get("id") or m.get("marketId") or "")
             if not market_id:
@@ -686,12 +846,45 @@ class PolymarketClient:
                         stats["missing_token"] += 1
                     continue
                 stats["tokens"] += 1
-                tasks.append((market_id, outcome, str(token_id)))
-        total_candidates = len(tasks)
-        if book_max_pages > 0 and len(tasks) > book_max_pages:
-            tasks = tasks[:book_max_pages]
+                all_tasks.append((market_id, outcome, str(token_id)))
+        hot_ids = {str(x) for x in (hot_market_ids or set()) if str(x)}
+        hot_tasks: List[Tuple[str, str, str]] = []
+        cold_tasks: List[Tuple[str, str, str]] = []
+        for task in all_tasks:
+            if task[0] in hot_ids:
+                hot_tasks.append(task)
+            else:
+                cold_tasks.append(task)
+        total_candidates = len(all_tasks)
+        limit = ingest_snapshots_limit if ingest_snapshots_limit > 0 else book_max_pages
+        cursor_before = int(getattr(self, "_snap_rr_cursor", 0) or 0)
+        tasks = all_tasks
+        hot_planned = hot_tasks
+        if limit > 0:
+            hot_planned = hot_tasks[:limit]
+            remaining = max(0, limit - len(hot_planned))
+            cold_planned: List[Tuple[str, str, str]] = []
+            cold_n = len(cold_tasks)
+            if remaining > 0 and cold_n > 0:
+                if cold_n <= remaining:
+                    cold_planned = cold_tasks
+                else:
+                    start = cursor_before % cold_n
+                    end = start + remaining
+                    if end <= cold_n:
+                        cold_planned = cold_tasks[start:end]
+                    else:
+                        cold_planned = cold_tasks[start:] + cold_tasks[: end - cold_n]
+                    self._snap_rr_cursor = (start + remaining) % cold_n
+            tasks = hot_planned + cold_planned
             stats["tokens"] = len(tasks)
-        _log_tasks_plan(len(tasks), total_candidates)
+        logger.info(
+            "SNAPSHOTS_PLAN total=%s planned=%s limit=%s cursor=%s",
+            total_candidates,
+            len(tasks),
+            (limit if limit > 0 else "none"),
+            cursor_before,
+        )
         t_req_phase0 = time.perf_counter()
 
         def _fetch_one(task: Tuple[str, str, str]) -> Dict[str, Any]:
@@ -704,16 +897,26 @@ class PolymarketClient:
                 if inflight_current > inflight_max:
                     inflight_max = inflight_current
             try:
-                book = _http_json(
-                    "GET",
-                    f"{CLOB_BASE}/book",
-                    params={"token_id": token_id},
-                    policy=self.http_policy,
-                    limiter=self.clob_limiter if self.book_concurrency == 1 else None,
-                    headers=clob_headers,
-                    trace=trace,
-                    opener=(self._opener if self.book_concurrency == 1 else self._thread_opener()),
-                )
+                try:
+                    book = _http_json(
+                        "GET",
+                        f"{CLOB_BASE}/book",
+                        params={"token_id": token_id},
+                        policy=self.http_policy,
+                        limiter=self.clob_limiter if self.book_concurrency == 1 else None,
+                        headers=clob_headers,
+                        trace=trace,
+                        opener=(self._opener if self.book_concurrency == 1 else self._thread_opener()),
+                        timeout_sec=self.book_req_timeout_sec,
+                        fail_fast_book=self.book_fail_fast,
+                    )
+                except BookTimeoutSoftSkip as e:
+                    return {
+                        "timeout": True,
+                        "market_id": market_id,
+                        "token_id": token_id,
+                        "detail": str(getattr(e, "original", e))[:200],
+                    }
             finally:
                 with inflight_lock:
                     inflight_current -= 1
@@ -753,6 +956,18 @@ class PolymarketClient:
                 calls_pages += 1
                 try:
                     res = _fetch_one(task)
+                    if res.get("timeout"):
+                        timeout_count += 1
+                        if self.book_fail_fast:
+                            soft_skipped_count += 1
+                        stats["fetched_err"] += 1
+                        stats["exceptions"] += 1
+                        fetch_err_count += 1
+                        if len(stats["error_samples"]) < 3:
+                            stats["error_samples"].append(
+                                {"market_id": task[0], "token_id": task[2], "status": "TIMEOUT", "detail": str(res.get("detail", ""))}
+                            )
+                        continue
                     tr = res.get("trace") or {}
                     req_ms += float(tr.get("req_ms", 0.0) or 0.0)
                     read_ms += float(tr.get("read_ms", 0.0) or 0.0)
@@ -806,6 +1021,18 @@ class PolymarketClient:
                     calls_pages += 1
                     try:
                         res = fut.result()
+                        if res.get("timeout"):
+                            timeout_count += 1
+                            if self.book_fail_fast:
+                                soft_skipped_count += 1
+                            stats["fetched_err"] += 1
+                            stats["exceptions"] += 1
+                            fetch_err_count += 1
+                            if len(stats["error_samples"]) < 3:
+                                stats["error_samples"].append(
+                                    {"market_id": task[0], "token_id": task[2], "status": "TIMEOUT", "detail": str(res.get("detail", ""))}
+                                )
+                            continue
                         tr = res.get("trace") or {}
                         req_ms += float(tr.get("req_ms", 0.0) or 0.0)
                         read_ms += float(tr.get("read_ms", 0.0) or 0.0)
@@ -853,6 +1080,14 @@ class PolymarketClient:
                         continue
         req_ms = (time.perf_counter() - t_req_phase0) * 1000.0
         total_ms = (time.perf_counter() - t_total0) * 1000.0
+        if timeout_count > 0 or not self.book_fail_fast:
+            logger.info(
+                "SNAPSHOTS_TIMEOUTS timeouts=%s soft_skipped=%s timeout_s=%s fail_fast=%s",
+                timeout_count,
+                soft_skipped_count,
+                int(self.book_req_timeout_sec),
+                1 if self.book_fail_fast else 0,
+            )
         req_avg_ms = (req_sum_ms / calls_pages) if calls_pages > 0 else 0.0
         req_p95_ms = 0.0
         if durations_ms:

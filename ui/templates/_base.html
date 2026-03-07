@@ -6,8 +6,8 @@
   <title>{% block title %}PolySyndicate{% endblock %}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link href="https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@300;400;500;600;700&family=Geist+Mono:wght@300;400;500&family=Geist:wght@300;400;500;600&display=swap" rel="stylesheet"/>
-  <link rel="stylesheet" href="/static/ps_dashboard_organic.css"/>
-  <link rel="stylesheet" href="/static/ps_terminal.css"/>
+  <link rel="stylesheet" href="/static/ps_dashboard_organic.css?v={{ static_v }}"/>
+  <link rel="stylesheet" href="/static/ps_terminal.css?v={{ static_v }}"/>
   {% block head_extra %}{% endblock %}
 </head>
 
@@ -168,7 +168,7 @@
     }
 
   </script>
-  <script src="/static/ps_terminal.js"></script>
+  <script src="/static/ps_terminal.js?v={{ static_v }}"></script>
   {% block scripts %}{% endblock %}
   <div id="global-hscroll" class="global-hscroll" aria-hidden="true">
     <div id="global-hscroll-inner" class="global-hscroll-inner"></div>

@@ -24,6 +24,7 @@ class Decision:
     status: str   # OK / INVESTIGATE / BLOCKED
     reason: str
     reason_json: str | None = None
+    risk_kind: str = "NONE"
 
 
 class DecisionEngineV0:
@@ -70,6 +71,269 @@ class DecisionEngineV0:
         self.thin_liquidity_factor = float(thin_liquidity_factor)
 
         self._risk_gate = risk_gate
+        self._case_obs_emit_every = 10
+        self._case_prev_position_state_by_market: dict[str, str] = {}
+        self._case_last_non_hold_action_by_market: dict[str, str] = {}
+        self._case_obs_counts = {
+            "total": 0,
+            "written": 0,
+            "dedup": 0,
+            "risk_block": 0,
+            "dedup_kind_NONE": 0,
+            "dedup_kind_MIN_INTERVAL": 0,
+            "dedup_kind_HOLD_SPAM": 0,
+            "dedup_kind_DUP_PARSE_ERROR": 0,
+        }
+        self._decision_quality_counts = {
+            "total": 0,
+            "same_decision": 0,
+            "position_changed": 0,
+            "flips": 0,
+            "noop": 0,
+            "writes": 0,
+            "dedup": 0,
+        }
+
+    @staticmethod
+    def _reason_code(reason: str) -> str:
+        txt = str(reason or "").strip()
+        if not txt:
+            return "-"
+        head = txt.split(":", 1)[0].strip()
+        if len(head) > 48:
+            head = head[:48]
+        return head.replace(" ", "_").upper() or "-"
+
+    @staticmethod
+    def _case_status_from_action(action: str) -> str:
+        a = str(action or "").strip().upper()
+        if a.startswith("PAPER_BUY"):
+            return "OPEN"
+        if a.startswith("PAPER_CLOSE"):
+            return "CLOSED"
+        if a == "HOLD":
+            return "HOLD"
+        return "NONE"
+
+    def _emit_case_lifecycle_summary(
+        self,
+        *,
+        run_id: str,
+        now: datetime,
+        d: Decision,
+        wrote: int,
+        dedup: int,
+        dedup_kind: str,
+        paused: bool,
+        has_yes: bool | None = None,
+        has_no: bool | None = None,
+        last_decision: tuple | None = None,
+    ) -> None:
+        case_id = str(d.market_id or "-")
+        open_sides = -1
+        position_state = "NA"
+        if has_yes is not None and has_no is not None:
+            open_sides = int(bool(has_yes)) + int(bool(has_no))
+            if open_sides <= 0:
+                position_state = "FLAT"
+            elif open_sides == 1:
+                position_state = "OPEN_SINGLE"
+            else:
+                position_state = "OPEN_BOTH"
+        decision_action = str(d.action or "").strip().upper() or "NONE"
+        log_reason = self._reason_code(str(d.reason or ""))
+        risk_block = int(str(d.status or "").strip().upper() == "BLOCKED")
+        raw_risk_kind = str(getattr(d, "risk_kind", "") or "").strip().upper()
+        risk_kind = raw_risk_kind if risk_block and raw_risk_kind else "NONE"
+        kill_kind = self._resolve_kill_kind(risk_kind)
+        last_action = str((last_decision[1] if last_decision else "") or "").strip().upper()
+        last_status = str((last_decision[2] if last_decision else "") or "").strip().upper()
+        last_reason = str((last_decision[3] if last_decision else "") or "")
+        same_as_previous_decision = int(
+            bool(
+                last_decision is not None
+                and last_action == decision_action
+                and last_status == (str(d.status or "").strip().upper() or "-")
+                and last_reason == str(d.reason or "")
+            )
+        )
+        prev_position_state = str(self._case_prev_position_state_by_market.get(case_id, "") or "")
+        position_changed = int(bool(prev_position_state) and prev_position_state != position_state)
+        prev_non_hold_action = str(self._case_last_non_hold_action_by_market.get(case_id, "") or "")
+        if not prev_non_hold_action and last_action and last_action != "HOLD":
+            prev_non_hold_action = last_action
+        action_flip = int(
+            bool(
+                self._action_polarity(prev_non_hold_action)
+                and self._action_polarity(decision_action)
+                and self._action_polarity(prev_non_hold_action) != self._action_polarity(decision_action)
+            )
+        )
+        exposure_changed = self._action_changes_exposure(decision_action, position_state)
+        noop_decision = int(not exposure_changed and position_changed == 0)
+        self._case_prev_position_state_by_market[case_id] = position_state
+        if decision_action and decision_action != "HOLD":
+            self._case_last_non_hold_action_by_market[case_id] = decision_action
+        logger.info(
+            "CASE_LIFECYCLE_SUMMARY ts=%s run_id=%s case_id=%s source_market=%s current_status=%s "
+            "decision_action=%s decision_reason=%s decision_status=%s dedup=%s risk_block=%s "
+            "risk_kind=%s kill_kind=%s dedup_kind=%s same_as_previous_decision=%s position_changed=%s action_flip=%s noop_decision=%s "
+            "open_sides=%s position_state=%s paused=%s written=%s",
+            now.isoformat(timespec="seconds"),
+            str(run_id or "-"),
+            case_id,
+            case_id,
+            self._case_status_from_action(decision_action),
+            decision_action,
+            log_reason,
+            str(d.status or "").strip().upper() or "-",
+            int(dedup),
+            int(risk_block),
+            risk_kind,
+            kill_kind,
+            str(dedup_kind or "NONE"),
+            int(same_as_previous_decision),
+            int(position_changed),
+            int(action_flip),
+            int(noop_decision),
+            int(open_sides),
+            position_state,
+            int(bool(paused)),
+            int(wrote),
+        )
+        self._case_obs_update_and_maybe_emit(
+            wrote=int(wrote),
+            dedup=int(dedup),
+            dedup_kind=str(dedup_kind or "NONE").strip().upper() or "NONE",
+            risk_block=int(risk_block),
+        )
+        self._decision_quality_update_and_maybe_emit(
+            same_decision=int(same_as_previous_decision),
+            position_changed=int(position_changed),
+            flips=int(action_flip),
+            noop=int(noop_decision),
+            writes=int(bool(wrote)),
+            dedup=int(bool(dedup)),
+        )
+
+    @staticmethod
+    def _action_polarity(action: str) -> str | None:
+        a = str(action or "").strip().upper()
+        if a in {"PAPER_BUY_BOTH", "PAPER_BUY_YES", "PAPER_BUY_NO", "BUY", "BUY_BOTH"}:
+            return "BUY"
+        if a in {"PAPER_CLOSE_BOTH", "PAPER_CLOSE_YES", "PAPER_CLOSE_NO", "SELL", "SELL_BOTH"}:
+            return "SELL"
+        return None
+
+    @staticmethod
+    def _action_changes_exposure(action: str, position_state: str) -> bool:
+        a = str(action or "").strip().upper()
+        ps = str(position_state or "").strip().upper()
+        if a == "HOLD":
+            return False
+        if a == "PAPER_BUY_BOTH":
+            return ps != "OPEN_BOTH"
+        if a == "PAPER_CLOSE_BOTH":
+            return ps != "FLAT"
+        if a in {"PAPER_BUY_YES", "PAPER_BUY_NO"}:
+            return ps in {"FLAT", "OPEN_SINGLE"}
+        if a in {"PAPER_CLOSE_YES", "PAPER_CLOSE_NO"}:
+            return ps in {"OPEN_SINGLE", "OPEN_BOTH"}
+        return False
+
+    def _resolve_kill_kind(self, risk_kind: str) -> str:
+        if str(risk_kind or "").strip().upper() != "KILL_SWITCH":
+            return "NONE"
+
+        reason = ""
+        try:
+            getter = getattr(self.repo, "get_setting", None)
+            if callable(getter):
+                reason = str(getter("kill_switch_reason", "") or "").strip()
+        except Exception:
+            reason = ""
+
+        up = str(reason or "").upper()
+        if not up.startswith("AUTO:"):
+            return "MANUAL"
+
+        tail = str(reason or "").split(":", 1)[1].strip() if ":" in str(reason or "") else ""
+        if tail == "слишком много открытых paper-позиций":
+            return "AUTO_LIMIT_MAX_OPEN_POSITIONS"
+        if tail == "исчерпан общий лимит капитала (paper)":
+            return "AUTO_LIMIT_MAX_NOTIONAL_TOTAL"
+        if tail.startswith("capital usage "):
+            return "AUTO_LIMIT_MAX_CAPITAL_USAGE_PCT"
+        if tail == "исчерпан лимит экспозиции по кластеру":
+            return "AUTO_LIMIT_MAX_NOTIONAL_PER_GROUP"
+        if tail == "уже есть открытая paper-позиция по рынку":
+            return "AUTO_LIMIT_MARKET_ALREADY_OPEN"
+        return "AUTO_OTHER"
+
+    def _case_obs_update_and_maybe_emit(
+        self,
+        *,
+        wrote: int,
+        dedup: int,
+        dedup_kind: str,
+        risk_block: int,
+    ) -> None:
+        c = self._case_obs_counts
+        c["total"] = int(c.get("total", 0) or 0) + 1
+        c["written"] = int(c.get("written", 0) or 0) + int(bool(wrote))
+        c["dedup"] = int(c.get("dedup", 0) or 0) + int(bool(dedup))
+        c["risk_block"] = int(c.get("risk_block", 0) or 0) + int(bool(risk_block))
+        kind = str(dedup_kind or "NONE").strip().upper() or "NONE"
+        key = f"dedup_kind_{kind}"
+        if key in c:
+            c[key] = int(c.get(key, 0) or 0) + 1
+        emit_every = max(1, int(getattr(self, "_case_obs_emit_every", 10) or 10))
+        if int(c.get("total", 0) or 0) % emit_every != 0:
+            return
+        logger.info(
+            "CASE_OBS_SUMMARY total=%s written=%s dedup=%s none=%s min_interval=%s hold_spam=%s "
+            "dup_parse_error=%s risk_block=%s",
+            int(c.get("total", 0) or 0),
+            int(c.get("written", 0) or 0),
+            int(c.get("dedup", 0) or 0),
+            int(c.get("dedup_kind_NONE", 0) or 0),
+            int(c.get("dedup_kind_MIN_INTERVAL", 0) or 0),
+            int(c.get("dedup_kind_HOLD_SPAM", 0) or 0),
+            int(c.get("dedup_kind_DUP_PARSE_ERROR", 0) or 0),
+            int(c.get("risk_block", 0) or 0),
+        )
+
+    def _decision_quality_update_and_maybe_emit(
+        self,
+        *,
+        same_decision: int,
+        position_changed: int,
+        flips: int,
+        noop: int,
+        writes: int,
+        dedup: int,
+    ) -> None:
+        c = self._decision_quality_counts
+        c["total"] = int(c.get("total", 0) or 0) + 1
+        c["same_decision"] = int(c.get("same_decision", 0) or 0) + int(bool(same_decision))
+        c["position_changed"] = int(c.get("position_changed", 0) or 0) + int(bool(position_changed))
+        c["flips"] = int(c.get("flips", 0) or 0) + int(bool(flips))
+        c["noop"] = int(c.get("noop", 0) or 0) + int(bool(noop))
+        c["writes"] = int(c.get("writes", 0) or 0) + int(bool(writes))
+        c["dedup"] = int(c.get("dedup", 0) or 0) + int(bool(dedup))
+        emit_every = max(1, int(getattr(self, "_case_obs_emit_every", 10) or 10))
+        if int(c.get("total", 0) or 0) % emit_every != 0:
+            return
+        logger.info(
+            "DECISION_QUALITY_SUMMARY total=%s same_decision=%s position_changed=%s flips=%s noop=%s writes=%s dedup=%s",
+            int(c.get("total", 0) or 0),
+            int(c.get("same_decision", 0) or 0),
+            int(c.get("position_changed", 0) or 0),
+            int(c.get("flips", 0) or 0),
+            int(c.get("noop", 0) or 0),
+            int(c.get("writes", 0) or 0),
+            int(c.get("dedup", 0) or 0),
+        )
 
     def _get_gate(self):
         """Create gate lazily so engine works even if gate/settings are not wired yet."""
@@ -164,6 +428,7 @@ class DecisionEngineV0:
                             action="HOLD",
                             status=getattr(verdict, "status", "BLOCKED") or "BLOCKED",
                             reason=f"{getattr(verdict, 'code', 'GATE')}: {getattr(verdict, 'reason', '')}".strip(),
+                            risk_kind=str(getattr(verdict, "kind", "NONE") or "NONE"),
                         )
                         written += self._maybe_write(run_id, now, d, paused=paused)
                         continue
@@ -377,11 +642,20 @@ class DecisionEngineV0:
                             reason_json=reason_json,
                         )
 
-            written += self._maybe_write(run_id, now, d, paused=paused)
+            written += self._maybe_write(run_id, now, d, paused=paused, has_yes=has_yes, has_no=has_no)
 
         return written
 
-    def _maybe_write(self, run_id: str, now: datetime, d: Decision, *, paused: bool) -> int:
+    def _maybe_write(
+        self,
+        run_id: str,
+        now: datetime,
+        d: Decision,
+        *,
+        paused: bool,
+        has_yes: bool | None = None,
+        has_no: bool | None = None,
+    ) -> int:
         last = self.repo.get_last_decision_v0(d.market_id)
         if last is not None:
             last_ts, last_action, last_status, last_reason, _last_reason_json = last
@@ -389,6 +663,18 @@ class DecisionEngineV0:
 
             # ✅ Anti-HOLD spam: если мы уже HOLD'или этот же кейс — не пишем повтор
             if same and d.action == "HOLD":
+                self._emit_case_lifecycle_summary(
+                    run_id=run_id,
+                    now=now,
+                    d=d,
+                    wrote=0,
+                    dedup=1,
+                    dedup_kind="HOLD_SPAM",
+                    paused=paused,
+                    has_yes=has_yes,
+                    has_no=has_no,
+                    last_decision=last,
+                )
                 return 0
 
             # ✅ Для остальных действий: не пишем слишком часто один и тот же результат.
@@ -396,8 +682,32 @@ class DecisionEngineV0:
                 try:
                     t = datetime.fromisoformat(last_ts)
                     if (now - t) < timedelta(seconds=self.min_emit_interval_sec):
+                        self._emit_case_lifecycle_summary(
+                            run_id=run_id,
+                            now=now,
+                            d=d,
+                            wrote=0,
+                            dedup=1,
+                            dedup_kind="MIN_INTERVAL",
+                            paused=paused,
+                            has_yes=has_yes,
+                            has_no=has_no,
+                            last_decision=last,
+                        )
                         return 0
                 except Exception:
+                    self._emit_case_lifecycle_summary(
+                        run_id=run_id,
+                        now=now,
+                        d=d,
+                        wrote=0,
+                        dedup=1,
+                        dedup_kind="DUP_PARSE_ERROR",
+                        paused=paused,
+                        has_yes=has_yes,
+                        has_no=has_no,
+                        last_decision=last,
+                    )
                     return 0
 
         payload = json.dumps(
@@ -426,5 +736,17 @@ class DecisionEngineV0:
             reason=d.reason,
             reason_json=getattr(d, 'reason_json', None),
             payload_json=payload,
+        )
+        self._emit_case_lifecycle_summary(
+            run_id=run_id,
+            now=now,
+            d=d,
+            wrote=1,
+            dedup=0,
+            dedup_kind="NONE",
+            paused=paused,
+            has_yes=has_yes,
+            has_no=has_no,
+            last_decision=last,
         )
         return 1

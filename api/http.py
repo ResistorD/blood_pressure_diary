@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from execution.reconcile import reconcile_paper
+from app.utils.static_version import get_static_version
 from utils.logging import warn_exc
 from utils.orderbook_math import calc_book_warnings, calc_depth, calc_preview_warnings, calc_vwap_fill, calc_max_safe_size
 
@@ -34,6 +35,12 @@ _last_lag_log_ts = 0.0
 GUARD_SPREAD_MAX = 8.0
 GUARD_DEPTH_MIN_USD = 500.0
 GUARD_BOOK_AGE_MAX = 20.0
+STATIC_V = get_static_version()
+
+
+def _is_dev_mode() -> bool:
+    v = (os.getenv("PS_DEV") or "0").strip().lower()
+    return v in {"1", "true", "yes", "on"}
 
 
 def _record_price(market_id: str, mid: float, ts: float | None = None) -> None:
@@ -128,9 +135,29 @@ def create_app(*, settings, repo, bus) -> FastAPI:
     app.state.repo = repo
     app.state.bus = bus
     app.state.exec_stats = {"samples": []}
+    app.state.dev_mode = bool(getattr(settings, "dev_mode", False)) or _is_dev_mode()
+    app.state.static_v = STATIC_V
 
-    templates = Jinja2Templates(directory="ui/templates")
+    def _template_ctx(request: Request) -> Dict[str, str]:
+        if getattr(request.app.state, "dev_mode", False):
+            return {"static_v": str(int(time.time()))}
+        return {"static_v": str(getattr(request.app.state, "static_v", STATIC_V))}
+
+    templates = Jinja2Templates(directory="ui/templates", context_processors=[_template_ctx])
     app.mount("/static", StaticFiles(directory="ui/static"), name="static")
+
+    if app.state.dev_mode:
+        @app.middleware("http")
+        async def _dev_no_cache(request: Request, call_next):
+            response = await call_next(request)
+            content_type = (response.headers.get("content-type") or "").lower()
+            is_html = "text/html" in content_type
+            is_static = request.url.path.startswith("/static/")
+            if is_html or is_static:
+                response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+                response.headers["Pragma"] = "no-cache"
+                response.headers["Expires"] = "0"
+            return response
 
     # Mount v2 dashboard API if available
     if dashboard_v2_router is not None:
@@ -807,6 +834,7 @@ def create_app(*, settings, repo, bus) -> FastAPI:
 
     @app.get("/opportunities", response_class=HTMLResponse)
     @app.get("/cases", response_class=HTMLResponse)
+    @app.head("/cases", response_class=HTMLResponse)
     def cases(request: Request):
         r = _repo(request)
         deprioritize_active = 0

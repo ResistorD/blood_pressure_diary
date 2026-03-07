@@ -19,10 +19,8 @@ from utils.logging import get_logger
 
 logger = get_logger("app.main")
 
-
 def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
-
 
 def _git_hash() -> str:
     return os.getenv("GIT_HASH", "")
@@ -37,7 +35,6 @@ def build_executor(settings: Settings):
     if mode == "live":
         return ExecutorPolymarketCLOB()
     return None
-
 
 @dataclass
 class DispatcherHandle:
@@ -102,8 +99,6 @@ def _pick_dispatcher_target(loop_mod: ModuleType, settings: Any, repo: Any, bus:
         "or a class with run_forever()."
     )
 
-
-
 def _resolve_db_path(settings: Settings) -> str:
     """Resolve DB path reliably across different working directories.
 
@@ -159,7 +154,6 @@ def _resolve_db_path(settings: Settings) -> str:
 
     # fallback: create in project root (not in whatever random cwd)
     return str((project_root / "polysyndicate.db").resolve())
-
 
 def main() -> None:
     settings = load_settings()
@@ -235,7 +229,6 @@ def main() -> None:
         port=int(getattr(settings, "port", 8000)),
         log_level=getattr(settings, "log_level", "info"),
     )
-
 
 if __name__ == "__main__":
     main()

@@ -20,9 +20,12 @@ _invalid_signal_count = 0
 def _valid_market_id(market_id: str | None) -> bool:
     if not market_id:
         return True
-    if os.getenv("PS_DEMO") == "1":
-        return True
-    return str(market_id).isdigit()
+    mid = str(market_id).strip()
+    if not mid:
+        return False
+    # Accept stable non-empty string ids; actual legitimacy is enforced by
+    # _market_exists for scoped signals in non-demo mode.
+    return True
 
 
 def _market_exists(repo: Any, market_id: str) -> bool:
@@ -126,11 +129,10 @@ class MarketRepository:
                 row,
             )
 
-        if hasattr(self._repo, "enqueue_write"):
-            self._repo.enqueue_write(_op)
-        else:
-            with self._repo.conn() as con:
-                _op(con)
+        # Markets are parent rows for multiple FK-constrained paths (e.g. snapshots/signals).
+        # Persist synchronously so immediate read-after-write and dependent writes are safe.
+        with self._repo.conn() as con:
+            _op(con)
 
     def list_markets_by_group(self, group_key: str, limit: int = 200):
         lim = int(limit) if limit is not None else 200
@@ -617,16 +619,6 @@ class SignalRepository:
     def list_recent_signals(self, limit: int = 200):
         lim = int(limit) if limit is not None else 100
         with self._repo.conn() as con:
-            if os.getenv("PS_DEMO") != "1":
-                return con.execute(
-                    """
-                    SELECT ts, agent_id, kind, scope_market_id, explain_short
-                    FROM signals
-                    WHERE scope_market_id IS NULL OR scope_market_id GLOB '[0-9]*'
-                    ORDER BY ts DESC LIMIT ?
-                    """,
-                    (lim,),
-                ).fetchall()
             return con.execute(
                 """
                 SELECT ts, agent_id, kind, scope_market_id, explain_short
@@ -655,8 +647,6 @@ class SignalRepository:
     ):
         where = []
         params: List[Any] = []
-        if os.getenv("PS_DEMO") != "1":
-            where.append("(scope_market_id IS NULL OR scope_market_id GLOB '[0-9]*')")
         if agent:
             where.append("agent_id = ?")
             params.append(agent)
@@ -702,8 +692,6 @@ class SignalRepository:
     ) -> int:
         where = []
         params: List[Any] = []
-        if os.getenv("PS_DEMO") != "1":
-            where.append("(scope_market_id IS NULL OR scope_market_id GLOB '[0-9]*')")
         if agent:
             where.append("agent_id = ?")
             params.append(agent)

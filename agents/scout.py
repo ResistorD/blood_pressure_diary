@@ -51,6 +51,31 @@ def _levenshtein_ratio(s1: str, s2: str) -> float:
     return 1.0 - (current[m] / max_len) if max_len > 0 else 0.0
 
 
+def _norm_part(value: str | None) -> str:
+    return str(value or "").strip().lower()
+
+
+def build_scout_opportunity_key(
+    *,
+    kind: SignalKind,
+    market_a_id: str,
+    market_b_id: str,
+    group_key: str | None,
+    pair_type: str | None,
+) -> str:
+    """Stable logical identity for a scout pair opportunity.
+
+    The key intentionally excludes time-varying/noisy values (timestamps, scores,
+    explain text) and uses canonical market-id ordering so A/B and B/A map to
+    the same logical opportunity.
+    """
+    mids = sorted([_norm_part(market_a_id), _norm_part(market_b_id)])
+    kind_v = _norm_part(kind.value if hasattr(kind, "value") else str(kind))
+    gk_v = _norm_part(group_key)
+    pt_v = _norm_part(pair_type)
+    return f"scout|kind:{kind_v}|mids:{mids[0]},{mids[1]}|group:{gk_v}|ptype:{pt_v}"
+
+
 class ScoutAgent(EnhancedAgent):
     """Enhanced market similarity detector.
     
@@ -177,6 +202,13 @@ class ScoutAgent(EnhancedAgent):
         
         # Determine pair type
         pair_type = self._classify_pair_type(market_a, market_b)
+        opportunity_key = build_scout_opportunity_key(
+            kind=SignalKind.PAIR_ARB,
+            market_a_id=market_a.market_id,
+            market_b_id=market_b.market_id,
+            group_key=(market_a.group_key or group_key),
+            pair_type=pair_type,
+        )
         
         # Create candidate actions
         candidates = [
@@ -211,6 +243,7 @@ class ScoutAgent(EnhancedAgent):
             },
             claim={
                 "type": "market_pair",
+                "opportunity_key": opportunity_key,
                 "pair_type": pair_type,
                 "market_a": {
                     "id": market_a.market_id,

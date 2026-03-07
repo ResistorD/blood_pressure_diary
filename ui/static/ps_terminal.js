@@ -86,10 +86,11 @@
   const EXPLAIN_MIN_EDGE_PCT = 1.5;
   const GUARD_HOLD_MS = 800;
   const AGENT_POLL_MS = 5000;
-  const MICRO_EDGE_TTL = 10000;
+  const MICRO_EDGE_TTL = 30000;
   const MICRO_EDGE_MAX = 4;
-  const EXPLAIN_TTL = 15000;
+  const EXPLAIN_TTL = 30000;
   const EXPLAIN_MAX = 4;
+  const MICRO_TTL = 30000;
   const EDGE_LABEL_SPREAD_TIGHT = 0.5;
   const EDGE_LABEL_SPREAD_WIDE = 2.0;
   const EDGE_LABEL_DEPTH_DEEP = 2000;
@@ -3405,6 +3406,7 @@
   }
 
   const microCache = new Map();
+  const microInflight = new Map();
   let microEl = null;
   let microOpenId = null;
 
@@ -3543,13 +3545,26 @@
     if (!marketId) return null;
     const cached = microCache.get(marketId);
     const now = Date.now();
-    if (cached && (now - cached.ts) < 2000) return cached.data;
+    if (cached && (now - cached.ts) < MICRO_TTL) return cached.data;
+    if (microInflight.has(marketId)) return microInflight.get(marketId);
+    const req = (async () => {
+      try {
+        const resp = await fetch(`/market/micro?market_id=${encodeURIComponent(marketId)}`, { cache: "no-store" });
+        const data = await resp.json().catch(() => null);
+        if (!resp.ok || !data) return null;
+        const ts = Date.now();
+        microCache.set(marketId, { ts, data });
+        microEdgeCache.set(marketId, { ts, data });
+        return data;
+      } catch (e) {
+        return null;
+      } finally {
+        microInflight.delete(marketId);
+      }
+    })();
+    microInflight.set(marketId, req);
     try {
-      const resp = await fetch(`/market/micro?market_id=${encodeURIComponent(marketId)}`, { cache: "no-store" });
-      const data = await resp.json().catch(() => null);
-      if (!resp.ok || !data) return null;
-      microCache.set(marketId, { ts: now, data });
-      return data;
+      return await req;
     } catch (e) {
       return null;
     }
@@ -4123,14 +4138,10 @@
     const marketId = panel.getAttribute("data-market-id");
     if (!marketId) return;
     try {
-      const resp = await fetch(`/market/micro?market_id=${encodeURIComponent(marketId)}`, { cache: "no-store" });
-      if (!resp.ok) {
+      const data = await fetchMicro(marketId);
+      if (!data) {
         microErrors += 1;
         return;
-      }
-      const data = await resp.json();
-      if (marketId) {
-        microCache.set(marketId, { ts: Date.now(), data });
       }
       const fmt = (v, d = 3) => (v == null ? "—" : Number(v).toFixed(d));
       const fmtUsd = (v) => (v == null ? "—" : `$${Number(v).toFixed(0)}`);

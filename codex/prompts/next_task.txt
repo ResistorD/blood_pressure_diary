@@ -1,0 +1,37 @@
+TASK: Align codex runner with new /codex directory structure.
+
+CONTEXT:
+Repository contains automation scripts:
+- scripts/codex_runner/run_codex_task.sh
+- scripts/codex_runner/collect_artifacts.sh
+- docs/codex_runner.md
+
+We migrated to new structure:
+
+  codex/
+    prompts/      ← prompt files
+    runs/         ← run outputs
+    templates/    ← prompt templates
+
+GOAL:
+Adjust runner + docs so that:
+
+1) Default prompt path examples point to codex/prompts/
+2) Default run output directory becomes codex/runs/ instead of codex_runs/
+3) All docs reflect the new structure
+4) Backward compatibility preserved if someone still uses old paths
+
+CONSTRAINTS:
+- Do not change runner logic
+- Do not change codex CLI invocation
+- Modify only path defaults and documentation
+- Keep scripts POSIX-compatible
+
+ACCEPTANCE:
+- Running existing commands still works
+- New runs land in codex/runs/
+- Docs show correct tree
+- Patch minimal and clean
+
+OUTPUT:
+Normal code patch + updated docs. No extra explanations.

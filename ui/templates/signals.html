@@ -8,16 +8,16 @@
 {% set page_title = "Сигналы" %}
 {% block title %}Сигналы — PolySyndicate{% endblock %}
 
-{% block content %}
-  {% set f = filters if filters is defined else {} %}
-  {% set p = pager if pager is defined else {} %}
-  {% set ns = namespace(total=(rows|default([]))|length, pair=0, impl=0, anom=0) %}
-  {% for r in rows|default([]) %}
-    {% set k = (r[2] or '')|upper %}
-    {% if k == 'PAIR_ARB' %}{% set ns.pair = ns.pair + 1 %}{% endif %}
-    {% if k == 'IMPLICATION' %}{% set ns.impl = ns.impl + 1 %}{% endif %}
-    {% if k == 'ANOMALY' %}{% set ns.anom = ns.anom + 1 %}{% endif %}
-  {% endfor %}
+{% block content -%}
+  {%- set f = filters if filters is defined else {} -%}
+  {%- set p = pager if pager is defined else {} -%}
+  {%- set ns = namespace(total=(rows|default([]))|length, pair=0, impl=0, anom=0) -%}
+  {%- for r in rows|default([]) -%}
+    {%- set k = (r[2] or '')|upper -%}
+    {%- if k == 'PAIR_ARB' -%}{%- set ns.pair = ns.pair + 1 -%}{%- endif -%}
+    {%- if k == 'IMPLICATION' -%}{%- set ns.impl = ns.impl + 1 -%}{%- endif -%}
+    {%- if k == 'ANOMALY' -%}{%- set ns.anom = ns.anom + 1 -%}{%- endif -%}
+  {%- endfor -%}
 
   {{ page.page_header("Сигналы", "Слой наблюдения: что именно система заметила в рынке до принятия решения.") }}
 

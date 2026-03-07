@@ -1141,46 +1141,22 @@ class Repo:
             message: str,
             payload: Dict[str, Any] | None = None,
     ) -> None:
-        if not self._events_schema_ready:
-            self.ensure_events_schema()
-            self._events_schema_ready = True
-        row = (
-            _dt_to_str(ts),
-            level,
-            component,
-            message,
-            json.dumps(payload or {}, ensure_ascii=False),
+        # Event APIs are expected to be visible immediately to direct SQL readers.
+        self.events.log_event(
+            ts=ts,
+            level=level,
+            component=component,
+            message=message,
+            payload=payload,
         )
-        def _op(con: sqlite3.Connection) -> None:
-            con.execute(
-                "INSERT INTO events_log(ts, level, component, message, payload_json) VALUES (?,?,?,?,?)",
-                row,
-            )
-        self.enqueue_write(_op)
+        self._events_schema_ready = True
 
     def log_events_batch(self, events: List[Dict[str, Any]]) -> int:
         if not events:
             return 0
-        if not self._events_schema_ready:
-            self.ensure_events_schema()
-            self._events_schema_ready = True
-        rows = [
-            (
-                _dt_to_str(e.get("ts")),
-                str(e.get("level", "INFO")),
-                str(e.get("component", "app")),
-                str(e.get("message", "")),
-                json.dumps(e.get("payload") or {}, ensure_ascii=False),
-            )
-            for e in events
-        ]
-        def _op(con: sqlite3.Connection) -> None:
-            con.executemany(
-                "INSERT INTO events_log(ts, level, component, message, payload_json) VALUES (?,?,?,?,?)",
-                rows,
-            )
-        self.enqueue_write(_op)
-        return len(rows)
+        written = self.events.log_events_batch(events)
+        self._events_schema_ready = True
+        return int(written)
 
     # ---------------------------
     # settings

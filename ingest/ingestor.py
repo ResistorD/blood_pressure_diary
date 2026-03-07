@@ -8,7 +8,11 @@ import os
 
 from db.repo import Repo
 from domain.models import Market, Snapshot
-from .polymarket_client import PolymarketClient, _extract_tokens_from_row
+from .polymarket_client import (
+    PolymarketClient,
+    _extract_tokens_from_row,
+    is_valid_market_detail_id,
+)
 
 
 class Ingestor:
@@ -28,6 +32,27 @@ class Ingestor:
         return True
 
     def ingest(self) -> Tuple[int, int]:
+        self.logger.info("INGEST_TICK_START")
+
+        def _best_errno(exc: Exception):
+            reason = getattr(exc, "reason", None)
+            for obj in (exc, reason, getattr(exc, "__cause__", None), getattr(reason, "__cause__", None) if reason is not None else None):
+                if obj is None:
+                    continue
+                win_err = getattr(obj, "winerror", None)
+                if isinstance(win_err, int):
+                    return win_err
+                err_no = getattr(obj, "errno", None)
+                if isinstance(err_no, int):
+                    return err_no
+            return None
+
+        def _best_err_type(exc: Exception) -> str:
+            reason = getattr(exc, "reason", None)
+            if reason is not None:
+                return type(reason).__name__
+            return type(exc).__name__
+
         t_total0 = time.perf_counter()
         fetch_ms = 0.0
         parse_ms = 0.0
@@ -66,11 +91,26 @@ class Ingestor:
             backfill_ids = []
 
         attempted = 0
+        skipped = 0
         ok = 0
         err = 0
         sample = []
+        skipped_sample = []
+        err_sample = []
+        invalid_logged: set[str] = set()
         now_mono = time.monotonic()
         for mid in backfill_ids:
+            mid = str(mid or "").strip()
+            if not mid:
+                continue
+            if not is_valid_market_detail_id(mid):
+                skipped += 1
+                if mid not in invalid_logged:
+                    self.logger.info("SKIP_MARKET_DETAIL_INVALID_ID market_id=%s", mid)
+                    invalid_logged.add(mid)
+                if len(skipped_sample) < 5:
+                    skipped_sample.append(mid)
+                continue
             last = self.client._backfill_cache.get(mid)
             if last and now_mono - last < BACKFILL_TTL_SEC:
                 continue
@@ -86,6 +126,8 @@ class Ingestor:
             fetch_market_detail_ms += dt_ms
             if not detail:
                 err += 1
+                if len(err_sample) < 5:
+                    err_sample.append({"market_id": mid, "reason": "empty_or_fetch_error"})
                 continue
             try:
                 raw_json = json.dumps(detail, ensure_ascii=False)
@@ -97,23 +139,36 @@ class Ingestor:
                     )
                 db_ms += (time.perf_counter() - t_db0) * 1000.0
                 ok += 1
-            except Exception:
+            except Exception as e:
                 err += 1
-        if attempted:
+                if len(err_sample) < 5:
+                    err_sample.append(
+                        {"market_id": mid, "reason": f"db_update:{type(e).__name__}:{str(e)[:120]}"}
+                    )
+        if backfill_ids:
             self.logger.info(
-                "backfill raw_json: candidates=%s attempted=%s ok=%s err=%s sample=%s",
+                "backfill raw_json: candidates=%s attempted=%s skipped=%s ok=%s err=%s sample=%s skipped_sample=%s err_sample=%s",
                 len(backfill_ids),
                 attempted,
+                skipped,
                 ok,
                 err,
                 sample,
+                skipped_sample,
+                err_sample,
             )
 
         t_f0 = time.perf_counter()
         calls_universe_markets += 1
         try:
             markets, market_rows = self.client.fetch_universe_markets()
-        except Exception:
+        except Exception as e:
+            self.logger.info(
+                "INGEST_TICK_FAIL where=%s err_type=%s errno=%s",
+                "fetch_universe_markets",
+                _best_err_type(e),
+                _best_errno(e),
+            )
             self.logger.info(
                 "INGEST_DEGRADED neterr=%s max_snaps=%s snaps_before=%s snaps_after=%s",
                 0,
@@ -176,7 +231,13 @@ class Ingestor:
         calls_snapshots += 1
         try:
             snaps = self.client.fetch_snapshots(market_rows=rows)
-        except Exception:
+        except Exception as e:
+            self.logger.info(
+                "INGEST_TICK_FAIL where=%s err_type=%s errno=%s",
+                "fetch_snapshots",
+                _best_err_type(e),
+                _best_errno(e),
+            )
             self.logger.info(
                 "INGEST_DEGRADED neterr=%s max_snaps=%s snaps_before=%s snaps_after=%s",
                 0,

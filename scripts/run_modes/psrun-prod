@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -e
+cd "$(dirname "$0")/../.."
+
+[ -f .venv/bin/activate ] && source .venv/bin/activate
+
+export PS_DEV=0
+export PS_API_HOST=127.0.0.1
+export PS_API_PORT=8000
+unset PS_INGEST_SNAPSHOTS_LIMIT
+unset PS_BOOK_TARGET_LIMIT
+
+exec python -u -m app.main
