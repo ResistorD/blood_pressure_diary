@@ -115,6 +115,15 @@ class DecisionEngineV0:
             return "HOLD"
         return "NONE"
 
+    @staticmethod
+    def _resolve_freshness_gate(reason: str) -> str:
+        up = str(reason or "").strip().upper()
+        if "FRESHNESS_WARN_OPEN_BLOCKED" in up:
+            return "OPEN_BLOCKED_WARN"
+        if "FRESHNESS_STOP_HALTED" in up or "FRESHNESS_STOP" in up:
+            return "HALTED_STOP"
+        return "NONE"
+
     def _emit_case_lifecycle_summary(
         self,
         *,
@@ -146,6 +155,7 @@ class DecisionEngineV0:
         raw_risk_kind = str(getattr(d, "risk_kind", "") or "").strip().upper()
         risk_kind = raw_risk_kind if risk_block and raw_risk_kind else "NONE"
         kill_kind = self._resolve_kill_kind(risk_kind)
+        freshness_gate = self._resolve_freshness_gate(str(d.reason or ""))
         last_action = str((last_decision[1] if last_decision else "") or "").strip().upper()
         last_status = str((last_decision[2] if last_decision else "") or "").strip().upper()
         last_reason = str((last_decision[3] if last_decision else "") or "")
@@ -177,7 +187,7 @@ class DecisionEngineV0:
         logger.info(
             "CASE_LIFECYCLE_SUMMARY ts=%s run_id=%s case_id=%s source_market=%s current_status=%s "
             "decision_action=%s decision_reason=%s decision_status=%s dedup=%s risk_block=%s "
-            "risk_kind=%s kill_kind=%s dedup_kind=%s same_as_previous_decision=%s position_changed=%s action_flip=%s noop_decision=%s "
+            "risk_kind=%s kill_kind=%s freshness_gate=%s dedup_kind=%s same_as_previous_decision=%s position_changed=%s action_flip=%s noop_decision=%s "
             "open_sides=%s position_state=%s paused=%s written=%s",
             now.isoformat(timespec="seconds"),
             str(run_id or "-"),
@@ -191,6 +201,7 @@ class DecisionEngineV0:
             int(risk_block),
             risk_kind,
             kill_kind,
+            freshness_gate,
             str(dedup_kind or "NONE"),
             int(same_as_previous_decision),
             int(position_changed),

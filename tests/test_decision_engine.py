@@ -65,6 +65,7 @@ def test_case_lifecycle_summary_emitted_for_write_and_dedup(caplog):
     lines = [r.getMessage() for r in caplog.records if "CASE_LIFECYCLE_SUMMARY" in r.getMessage()]
     assert len(lines) >= 2
     assert any("risk_kind=NONE" in line and "kill_kind=NONE" in line for line in lines)
+    assert any("freshness_gate=NONE" in line for line in lines)
     assert any("dedup=0" in line and "dedup_kind=NONE" in line and "written=1" in line for line in lines)
     assert any("dedup=1" in line and "dedup_kind=HOLD_SPAM" in line and "written=0" in line for line in lines)
     assert any("same_as_previous_decision=0" in line and "noop_decision=1" in line for line in lines)
@@ -164,3 +165,30 @@ def test_case_lifecycle_summary_kill_kind_auto_limit_market_already_open(caplog)
     assert wrote == 1
     lines = [r.getMessage() for r in caplog.records if "CASE_LIFECYCLE_SUMMARY" in r.getMessage()]
     assert any("risk_kind=KILL_SWITCH" in line and "kill_kind=AUTO_LIMIT_MARKET_ALREADY_OPEN" in line for line in lines)
+
+
+def test_case_lifecycle_summary_freshness_gate_open_blocked_warn(caplog):
+    repo = _FakeRepo()
+    engine = DecisionEngineV0(repo, min_emit_interval_sec=120)
+    engine._case_obs_emit_every = 1
+    now = datetime(2026, 3, 6, 12, 9, 0, tzinfo=timezone.utc)
+    decision = Decision(
+        market_id="m-fresh",
+        action="HOLD",
+        status="OK",
+        reason="FRESHNESS_WARN_OPEN_BLOCKED",
+    )
+
+    with caplog.at_level(logging.INFO, logger="decision.engine"):
+        wrote = engine._maybe_write(
+            run_id="run-fresh",
+            now=now,
+            d=decision,
+            paused=False,
+            has_yes=False,
+            has_no=False,
+        )
+
+    assert wrote == 1
+    lines = [r.getMessage() for r in caplog.records if "CASE_LIFECYCLE_SUMMARY" in r.getMessage()]
+    assert any("freshness_gate=OPEN_BLOCKED_WARN" in line for line in lines)

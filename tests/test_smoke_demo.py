@@ -28,7 +28,9 @@ def test_smoke_pages(client: TestClient):
         r = client.get(url)
         assert r.status_code == 200, (url, r.status_code, r.text[:200])
 
-def test_mode_switch(client: TestClient):
+def test_mode_switch(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "test-admin-token")
+    headers = {"x-admin-token": "test-admin-token"}
     for mode in ["DEMO", "DRY_RUN", "LIVE"]:
-        r = client.post("/control/mode", data={"mode": mode})
+        r = client.post("/control/mode", data={"mode": mode}, headers=headers)
         assert r.status_code in (200, 302, 303), (mode, r.status_code, r.text[:200])

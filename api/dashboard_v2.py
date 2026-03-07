@@ -38,6 +38,52 @@ RU_STATUS = {
 }
 
 
+def _build_system_status(repo) -> Dict[str, Any]:
+    fr = getattr(repo, "_runtime_freshness_state", None)
+    rp = getattr(repo, "_runtime_pipeline_stats", None)
+    rr = getattr(repo, "_runtime_reconcile_diag", None)
+    fr = fr if isinstance(fr, dict) else {}
+    rp = rp if isinstance(rp, dict) else {}
+    rr = rr if isinstance(rr, dict) else {}
+
+    overall = str(fr.get("overall") or "STOP").strip().upper()
+    decision_mode = str(rp.get("decision_mode") or rr.get("decision_mode") or "").strip().upper()
+    if not decision_mode:
+        decision_mode = "FULL" if overall == "OK" else ("SAFE" if overall == "WARN" else "HALTED")
+
+    reconcile_scheduled = int(rr.get("scheduled", 0) or 0)
+    reconcile_allowed = int(rr.get("allowed", 0) or 0)
+    reconcile_skip_reason = str(rr.get("skip_reason") or "NOT_SCHEDULED").strip().upper()
+    if reconcile_scheduled == 0:
+        reconcile_state = "NOT_SCHEDULED"
+    elif reconcile_allowed == 1:
+        reconcile_state = "ALLOWED"
+    else:
+        reconcile_state = "BLOCKED"
+
+    open_blocked = int(rp.get("open_blocked_by_freshness", rr.get("open_blocked_by_freshness", 0)) or 0)
+    opens_state = "BLOCKED_BY_FRESHNESS" if open_blocked else "ALLOWED"
+
+    paper_last = str(rp.get("last") or "—")
+    paper_cand = int(rp.get("cand_count", 0) or 0)
+    paper_dec = int(rp.get("dec_count", 0) or 0)
+    freshness_reason = str(rp.get("freshness_reason") or "NONE").strip().upper() or "NONE"
+
+    return {
+        "freshness": f"FRESHNESS_{overall}",
+        "decision_mode": decision_mode,
+        "reconcile_state": reconcile_state,
+        "reconcile_allowed": reconcile_allowed,
+        "reconcile_skip_reason": reconcile_skip_reason,
+        "open_blocked_by_freshness": open_blocked,
+        "opens_state": opens_state,
+        "paper_last": paper_last,
+        "paper_candidate": paper_cand,
+        "paper_decision": paper_dec,
+        "freshness_reason": freshness_reason,
+    }
+
+
 def get_repo(request: Request):
     """Dependency: repo из app.state (см. api/http.py:create_app)."""
     return request.app.state.repo
@@ -268,6 +314,7 @@ async def dashboard_v2_page(request: Request, repo=Depends(get_repo)):
     market_worst = []
     market_worst_winrate = []
     quality_coverage = {}
+    system_status = _build_system_status(repo)
     try:
         quality_by_action = repo.get_quality_breakdown("action")
     except Exception:
@@ -313,6 +360,7 @@ async def dashboard_v2_page(request: Request, repo=Depends(get_repo)):
         {
             "request": request,
             "updated_ts": updated_ts,
+            "system_status": system_status,
             "recent_activity": recent,
             "quality_by_action": quality_by_action,
             "quality_by_agent": quality_by_agent,

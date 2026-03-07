@@ -43,6 +43,131 @@ def _is_dev_mode() -> bool:
     return v in {"1", "true", "yes", "on"}
 
 
+def _resolve_kill_kind_from_reason(kill_switch_reason: str) -> str:
+    up = str(kill_switch_reason or "").strip().upper()
+    if not up.startswith("AUTO:"):
+        return "MANUAL" if up else "NONE"
+    tail = str(kill_switch_reason or "").split(":", 1)[1].strip() if ":" in str(kill_switch_reason or "") else ""
+    if tail == "слишком много открытых paper-позиций":
+        return "AUTO_LIMIT_MAX_OPEN_POSITIONS"
+    if tail == "исчерпан общий лимит капитала (paper)":
+        return "AUTO_LIMIT_MAX_NOTIONAL_TOTAL"
+    if tail.startswith("capital usage "):
+        return "AUTO_LIMIT_MAX_CAPITAL_USAGE_PCT"
+    if tail == "исчерпан лимит экспозиции по кластеру":
+        return "AUTO_LIMIT_MAX_NOTIONAL_PER_GROUP"
+    if tail == "уже есть открытая paper-позиция по рынку":
+        return "AUTO_LIMIT_MARKET_ALREADY_OPEN"
+    return "AUTO_OTHER"
+
+
+def _infer_risk_kind_from_decision(reason: str, status: str) -> str:
+    st = str(status or "").strip().upper()
+    if st != "BLOCKED":
+        return "NONE"
+    txt = str(reason or "").strip()
+    up = txt.upper()
+    if up.startswith("KILL:"):
+        return "KILL_SWITCH"
+    if up.startswith("RISK:"):
+        return "RISK_CONSTRAINT_SIGNAL"
+    if up.startswith("DATA:"):
+        return "QUALITY_ALERT_SIGNAL"
+    if up.startswith("LIMIT:"):
+        low = txt.lower()
+        if "по рынку" in low:
+            return "LIMIT_MARKET_ALREADY_OPEN"
+        if "по кластеру" in low:
+            return "LIMIT_MAX_NOTIONAL_PER_GROUP"
+        if "открытых paper-позиций" in low:
+            return "LIMIT_MAX_OPEN_POSITIONS"
+        if "общий лимит капитала" in low:
+            return "LIMIT_MAX_NOTIONAL_TOTAL"
+        if "capital usage" in low:
+            return "LIMIT_MAX_CAPITAL_USAGE_PCT"
+    return "NONE"
+
+
+def _infer_freshness_gate(reason: str) -> str:
+    up = str(reason or "").strip().upper()
+    if "FRESHNESS_WARN_OPEN_BLOCKED" in up:
+        return "OPEN_BLOCKED_WARN"
+    if "FRESHNESS_STOP_HALTED" in up or "FRESHNESS_STOP" in up:
+        return "HALTED_STOP"
+    return "NONE"
+
+
+def build_case_decision_why(
+    latest_decision: Dict[str, Any] | None,
+    runtime_pipe: Dict[str, Any] | None,
+    kill_switch_reason: str = "",
+) -> Dict[str, Any]:
+    ld = latest_decision or {}
+    rp = runtime_pipe or {}
+    decision_status = str(ld.get("status") or "—").strip().upper() or "—"
+    decision_reason = str(ld.get("reason") or "").strip() or "—"
+    risk_kind = _infer_risk_kind_from_decision(decision_reason, decision_status)
+    kill_kind = "NONE"
+    if risk_kind == "KILL_SWITCH":
+        kill_kind = _resolve_kill_kind_from_reason(kill_switch_reason)
+    freshness_reason = str(rp.get("freshness_reason") or "").strip().upper()
+    if not freshness_reason or freshness_reason == "NONE":
+        if "FRESHNESS_WARN_OPEN_BLOCKED" in decision_reason.upper():
+            freshness_reason = "FRESHNESS_WARN_OPEN_BLOCKED"
+        elif "FRESHNESS_STOP" in decision_reason.upper():
+            freshness_reason = "FRESHNESS_STOP_HALTED"
+        else:
+            freshness_reason = "NONE"
+    decision_mode = str(rp.get("decision_mode") or "").strip().upper()
+    if not decision_mode:
+        if freshness_reason == "FRESHNESS_WARN_OPEN_BLOCKED":
+            decision_mode = "SAFE"
+        elif freshness_reason == "FRESHNESS_STOP_HALTED":
+            decision_mode = "HALTED"
+        else:
+            decision_mode = "FULL"
+    open_blocked_by_freshness = int(rp.get("open_blocked_by_freshness", 0) or 0)
+    freshness_gate = _infer_freshness_gate(decision_reason)
+    return {
+        "decision_status": decision_status,
+        "decision_reason": decision_reason,
+        "risk_kind": risk_kind,
+        "kill_kind": kill_kind,
+        "freshness_gate": freshness_gate,
+        "freshness_reason": freshness_reason,
+        "decision_mode": decision_mode,
+        "open_blocked_by_freshness": open_blocked_by_freshness,
+    }
+
+
+def build_case_reason_summary(decision_why: Dict[str, Any] | None, fallback_reason: str = "") -> Dict[str, str]:
+    w = decision_why or {}
+    kill_kind = str(w.get("kill_kind") or "NONE").strip().upper()
+    risk_kind = str(w.get("risk_kind") or "NONE").strip().upper()
+    freshness_gate = str(w.get("freshness_gate") or "NONE").strip().upper()
+    freshness_reason = str(w.get("freshness_reason") or "NONE").strip().upper()
+    decision_status = str(w.get("decision_status") or "").strip().upper()
+    decision_reason = str(w.get("decision_reason") or "").strip()
+
+    if kill_kind and kill_kind != "NONE":
+        return {"primary": "KILL", "secondary": kill_kind, "kind": "danger", "secondary_kind": "muted"}
+    if risk_kind and risk_kind != "NONE":
+        return {"primary": "RISK", "secondary": risk_kind, "kind": "warning", "secondary_kind": "muted"}
+    if (freshness_gate and freshness_gate != "NONE") or (freshness_reason and freshness_reason != "NONE"):
+        secondary = freshness_gate if freshness_gate != "NONE" else freshness_reason
+        return {"primary": "FRESHNESS", "secondary": secondary, "kind": "warning", "secondary_kind": "muted"}
+    if decision_status == "BLOCKED":
+        code = decision_reason.split(":", 1)[0].strip().upper() if decision_reason else "BLOCKED"
+        return {"primary": "BLOCKED", "secondary": code or "BLOCKED", "kind": "danger", "secondary_kind": "muted"}
+    if decision_reason:
+        code = decision_reason.split(":", 1)[0].strip().upper() or "NORMAL"
+        return {"primary": "NORMAL", "secondary": code, "kind": "success", "secondary_kind": "muted"}
+    if fallback_reason:
+        code = str(fallback_reason).split(":", 1)[0].strip().upper() or "NORMAL"
+        return {"primary": "NORMAL", "secondary": code, "kind": "success", "secondary_kind": "muted"}
+    return {"primary": "NORMAL", "secondary": "—", "kind": "success", "secondary_kind": "muted"}
+
+
 def _record_price(market_id: str, mid: float, ts: float | None = None) -> None:
     if not market_id or mid is None:
         return
@@ -604,6 +729,38 @@ def create_app(*, settings, repo, bus) -> FastAPI:
         mon = month_map.get(now.strftime("%b"), now.strftime("%b"))
         updated_ts = f"{now.strftime('%d')} {mon} {now.strftime('%Y')} · {now.strftime('%H:%M:%S')}"
         boot: Dict[str, Any] = {"kpis": {}, "counts": {}, "markets": [], "signals": [], "signals_recent": []}
+        runtime_freshness = getattr(r, "_runtime_freshness_state", None)
+        runtime_pipe = getattr(r, "_runtime_pipeline_stats", None)
+        runtime_reconcile = getattr(r, "_runtime_reconcile_diag", None)
+        rf = runtime_freshness if isinstance(runtime_freshness, dict) else {}
+        rp = runtime_pipe if isinstance(runtime_pipe, dict) else {}
+        rr = runtime_reconcile if isinstance(runtime_reconcile, dict) else {}
+        freshness_overall = str(rf.get("overall") or "STOP").strip().upper()
+        decision_mode = str(rp.get("decision_mode") or rr.get("decision_mode") or "").strip().upper()
+        if not decision_mode:
+            decision_mode = "FULL" if freshness_overall == "OK" else ("SAFE" if freshness_overall == "WARN" else "HALTED")
+        reconcile_scheduled = int(rr.get("scheduled", 0) or 0)
+        reconcile_allowed = int(rr.get("allowed", 0) or 0)
+        reconcile_skip_reason = str(rr.get("skip_reason") or "NOT_SCHEDULED").strip().upper()
+        reconcile_state = (
+            "NOT_SCHEDULED"
+            if reconcile_scheduled == 0
+            else ("ALLOWED" if reconcile_allowed == 1 else "BLOCKED")
+        )
+        open_blocked = int(rp.get("open_blocked_by_freshness", rr.get("open_blocked_by_freshness", 0)) or 0)
+        system_status = {
+            "freshness": f"FRESHNESS_{freshness_overall}",
+            "decision_mode": decision_mode,
+            "reconcile_state": reconcile_state,
+            "reconcile_allowed": reconcile_allowed,
+            "reconcile_skip_reason": reconcile_skip_reason,
+            "open_blocked_by_freshness": open_blocked,
+            "opens_state": "BLOCKED_BY_FRESHNESS" if open_blocked else "ALLOWED",
+            "paper_last": str(rp.get("last") or "—"),
+            "paper_candidate": int(rp.get("cand_count", 0) or 0),
+            "paper_decision": int(rp.get("dec_count", 0) or 0),
+            "freshness_reason": str(rp.get("freshness_reason") or "NONE").strip().upper() or "NONE",
+        }
         try:
             # KPIs
             markets_count = _safe(lambda: getattr(r, "count_markets")(), 0)
@@ -712,6 +869,7 @@ def create_app(*, settings, repo, bus) -> FastAPI:
                 "request": request,
                 "boot": boot,
                 "updated_ts": updated_ts,
+                "system_status": system_status,
                 **build_nav_context(
                     request,
                     "overview",
@@ -969,6 +1127,30 @@ def create_app(*, settings, repo, bus) -> FastAPI:
         total = len(rows)
         start = (page - 1) * size
         rows = rows[start:start + size]
+        kill_switch_reason = ""
+        try:
+            kill_switch_reason = str(getattr(r, "get_setting")("kill_switch_reason", "") or "")
+        except Exception:
+            kill_switch_reason = ""
+        for c in rows:
+            mid = str(c.get("market_id") or "").strip()
+            latest_decision = None
+            if mid and hasattr(r, "get_latest_decision_v0_row"):
+                try:
+                    latest_decision = r.get_latest_decision_v0_row(mid)
+                except Exception:
+                    latest_decision = None
+            decision_why = build_case_decision_why(
+                latest_decision if isinstance(latest_decision, dict) else None,
+                None,
+                kill_switch_reason=kill_switch_reason,
+            )
+            reason_summary = build_case_reason_summary(decision_why, fallback_reason=str(c.get("reason") or ""))
+            c["decision_why"] = decision_why
+            c["reason_primary"] = str(reason_summary.get("primary") or "NORMAL")
+            c["reason_secondary"] = str(reason_summary.get("secondary") or "—")
+            c["reason_kind"] = str(reason_summary.get("kind") or "muted")
+            c["reason_secondary_kind"] = str(reason_summary.get("secondary_kind") or "muted")
         pager = _build_pager(request, total=total, page=page, size=size)
         return templates.TemplateResponse(
             "cases.html",
@@ -1267,6 +1449,12 @@ def create_app(*, settings, repo, bus) -> FastAPI:
     def case_details(request: Request, market_id: str):
         r = _repo(request)
         d: Dict[str, Any] = {"market_id": market_id}
+        runtime_pipe = getattr(r, "_runtime_pipeline_stats", None)
+        kill_switch_reason = ""
+        try:
+            kill_switch_reason = str(getattr(r, "get_setting")("kill_switch_reason", "") or "")
+        except Exception:
+            kill_switch_reason = ""
         try:
             d = r.get_case_details(market_id)
         except Exception:
@@ -1305,6 +1493,24 @@ def create_app(*, settings, repo, bus) -> FastAPI:
                 d["neighbors"] = (cd.get("neighbors") or [])[:12]
         except Exception:
             warn_exc(logger, "case_details: neighbors load failed", market_id=market_id)
+        try:
+            d["decision_why"] = build_case_decision_why(
+                d.get("latest_decision") if isinstance(d, dict) else None,
+                runtime_pipe if isinstance(runtime_pipe, dict) else None,
+                kill_switch_reason=kill_switch_reason,
+            )
+        except Exception:
+            warn_exc(logger, "case_details: decision_why build failed", market_id=market_id)
+            d["decision_why"] = {
+                "decision_status": "—",
+                "decision_reason": "—",
+                "risk_kind": "NONE",
+                "kill_kind": "NONE",
+                "freshness_gate": "NONE",
+                "freshness_reason": "NONE",
+                "decision_mode": "FULL",
+                "open_blocked_by_freshness": 0,
+            }
 
         return templates.TemplateResponse(
             "case_details.html",
@@ -1517,7 +1723,7 @@ def create_app(*, settings, repo, bus) -> FastAPI:
         )
 
     # ---------- Paper controls (UI) ----------
-    @app.post("/cases/{market_id}/paper/buy")
+    @app.post("/cases/{market_id}/paper/buy", dependencies=[Depends(_require_admin_token)])
     def case_paper_buy(request: Request, market_id: str):
         wants_json = (request.headers.get("accept") or "").lower().find("application/json") >= 0
         r = _repo(request)
@@ -1577,7 +1783,7 @@ def create_app(*, settings, repo, bus) -> FastAPI:
         _reconcile_now(r)
         return "ok"
 
-    @app.post("/cases/{market_id}/paper/close")
+    @app.post("/cases/{market_id}/paper/close", dependencies=[Depends(_require_admin_token)])
     def case_paper_close(request: Request, market_id: str):
         wants_json = (request.headers.get("accept") or "").lower().find("application/json") >= 0
         r = _repo(request)
@@ -1635,7 +1841,7 @@ def create_app(*, settings, repo, bus) -> FastAPI:
         _reconcile_now(r)
         return "ok"
 
-    @app.post("/paper/action")
+    @app.post("/paper/action", dependencies=[Depends(_require_admin_token)])
     async def paper_action(request: Request):
         start_ts = time.perf_counter()
         r = _repo(request)
@@ -1759,7 +1965,7 @@ def create_app(*, settings, repo, bus) -> FastAPI:
             "as_of": _health_state(r).get("last_data_ts") or datetime.now(timezone.utc).isoformat(timespec="seconds"),
         }
 
-    @app.post("/paper/batch")
+    @app.post("/paper/batch", dependencies=[Depends(_require_admin_token)])
     async def paper_batch(request: Request):
         start_ts = time.perf_counter()
         r = _repo(request)
@@ -1840,7 +2046,7 @@ def create_app(*, settings, repo, bus) -> FastAPI:
             "as_of": _health_state(r).get("last_data_ts") or datetime.now(timezone.utc).isoformat(timespec="seconds"),
         }
 
-    @app.post("/paper/close_all")
+    @app.post("/paper/close_all", dependencies=[Depends(_require_admin_token)])
     async def paper_close_all(request: Request):
         start_ts = time.perf_counter()
         r = _repo(request)
@@ -1926,7 +2132,7 @@ def create_app(*, settings, repo, bus) -> FastAPI:
             "as_of": _health_state(r).get("last_data_ts") or datetime.now(timezone.utc).isoformat(timespec="seconds"),
         }
 
-    @app.post("/paper/unwind")
+    @app.post("/paper/unwind", dependencies=[Depends(_require_admin_token)])
     async def paper_unwind(request: Request):
         start_ts = time.perf_counter()
         r = _repo(request)
@@ -2417,6 +2623,9 @@ def create_app(*, settings, repo, bus) -> FastAPI:
                 "cand_count": int(runtime_pipe.get("cand_count", 0) or 0),
                 "dec_count": int(runtime_pipe.get("dec_count", 0) or 0),
                 "last": str(runtime_pipe.get("last") or ""),
+                "decision_mode": str(runtime_pipe.get("decision_mode") or ""),
+                "open_blocked_by_freshness": int(runtime_pipe.get("open_blocked_by_freshness", 0) or 0),
+                "freshness_reason": str(runtime_pipe.get("freshness_reason") or ""),
             }
         state["paused"] = _safe(lambda: getattr(r, "is_paused")(), False) if hasattr(r, "is_paused") else False
         state["paused_at"] = _safe(lambda: getattr(r, "get_setting_updated_at")("paused"), "")
@@ -2447,7 +2656,7 @@ def create_app(*, settings, repo, bus) -> FastAPI:
         agent = get_auto_paper_agent()
         return {"ok": True, "events": agent.get_events(limit=limit)}
 
-    @app.post("/agent/start")
+    @app.post("/agent/start", dependencies=[Depends(_require_admin_token)])
     async def agent_start(request: Request):
         agent = get_auto_paper_agent()
         try:
@@ -2466,13 +2675,13 @@ def create_app(*, settings, repo, bus) -> FastAPI:
         )
         return {"ok": True, "state": state}
 
-    @app.post("/agent/stop")
+    @app.post("/agent/stop", dependencies=[Depends(_require_admin_token)])
     def agent_stop(request: Request):
         agent = get_auto_paper_agent()
         state = agent.stop()
         return {"ok": True, "state": state}
 
-    @app.post("/agent/config")
+    @app.post("/agent/config", dependencies=[Depends(_require_admin_token)])
     async def agent_config(request: Request):
         agent = get_auto_paper_agent()
         try:

@@ -28,12 +28,18 @@ from dispatcher.contract import Dispatcher
 from agents.auto_paper_agent import get_auto_paper_agent
 from dispatcher.freshness import (
     STATE_OK,
+    STATE_STOP,
+    STATE_WARN,
     compute_state as compute_freshness_state,
     max_severity as freshness_max_severity,
 )
 from dispatcher.paper_decision_pipeline import run_paper_pipeline
 
 log = logging.getLogger("dispatcher.loop")
+
+DECISION_MODE_FULL = "FULL"
+DECISION_MODE_SAFE = "SAFE"
+DECISION_MODE_HALTED = "HALTED"
 
 
 def _try_import_optional_agents():
@@ -211,6 +217,8 @@ class MainLoop:
             "scheduled": 0,
             "allowed": 0,
             "skip_reason": "NOT_SCHEDULED",
+            "decision_mode": DECISION_MODE_HALTED,
+            "open_blocked_by_freshness": 0,
         }
         self._iter_decision_diag: Dict[str, Any] = {
             "scout_raw": 0,
@@ -360,10 +368,15 @@ class MainLoop:
         paper_action = paper_action_raw if paper_action_raw in {"OPEN", "HOLD", "CLOSE"} else "NONE"
         reconcile_allowed = int(rec.get("allowed", 0) or 0)
         reconcile_skip_reason = str(rec.get("skip_reason", "") or "").strip().upper() or "NONE"
+        decision_mode = str(rec.get("decision_mode", DECISION_MODE_HALTED) or DECISION_MODE_HALTED).strip().upper()
+        open_blocked_by_freshness = int(rec.get("open_blocked_by_freshness", 0) or 0)
+        freshness_obj = self._compute_iter_freshness().get("state") or {}
+        freshness_overall = str(freshness_obj.get("overall") or STATE_STOP).strip().upper()
         log.info(
             "PIPELINE_OBS fast_diag_scout_raw=%s fast_diag_logic_pass=%s paper_candidate=%s paper_action=%s "
             "live_cases=%s candidate_origin_fast=%s fast_scout_candidates=%s candidate_origin_slow=%s "
-            "slow_scout_candidates=%s candidate_origin_paper=%s reconcile_allowed=%s reconcile_skip_reason=%s",
+            "slow_scout_candidates=%s candidate_origin_paper=%s reconcile_allowed=%s reconcile_skip_reason=%s "
+            "freshness=FRESHNESS_%s decision_mode=%s open_blocked_by_freshness=%s",
             int(diag.get("scout_raw", 0) or 0),
             int(diag.get("logic_pass", 0) or 0),
             paper_candidate,
@@ -376,7 +389,36 @@ class MainLoop:
             "db_latest_scout_signal",
             reconcile_allowed,
             reconcile_skip_reason,
+            freshness_overall,
+            decision_mode,
+            open_blocked_by_freshness,
         )
+
+    @staticmethod
+    def _decision_mode_from_freshness(overall_state: str) -> str:
+        st = str(overall_state or STATE_STOP).strip().upper()
+        if st == STATE_OK:
+            return DECISION_MODE_FULL
+        if st == STATE_WARN:
+            return DECISION_MODE_SAFE
+        return DECISION_MODE_HALTED
+
+    @staticmethod
+    def _apply_paper_action_freshness_gate(pipe: Dict[str, Any], decision_mode: str) -> tuple[Dict[str, Any], int]:
+        mode = str(decision_mode or DECISION_MODE_HALTED).strip().upper()
+        out = dict(pipe or {})
+        out["freshness_reason"] = "NONE"
+        if mode != DECISION_MODE_SAFE:
+            return out, 0
+        action = str(out.get("paper_action", "") or "").strip().upper()
+        if action != "OPEN":
+            return out, 0
+        out["paper_action"] = "HOLD"
+        out["paper_reason"] = "FRESHNESS_WARN_OPEN_BLOCKED"
+        out["last"] = "HOLD/FRESHNESS_WARN_OPEN_BLOCKED"
+        out["dec_count"] = 0
+        out["freshness_reason"] = "FRESHNESS_WARN_OPEN_BLOCKED"
+        return out, 1
 
     def _emit_freshness_diag(self, freshness: Dict[str, Any]) -> None:
         state_obj = freshness.get("state") or {}
@@ -1284,17 +1326,25 @@ class MainLoop:
             if ev.purpose == "reconcile":
                 freshness = self._compute_iter_freshness()
                 overall_state = str((freshness.get("state") or {}).get("overall") or "STOP")
+                decision_mode = self._decision_mode_from_freshness(overall_state)
                 self._iter_reconcile_diag["scheduled"] = 1
-                if overall_state == STATE_OK:
+                self._iter_reconcile_diag["decision_mode"] = decision_mode
+                if decision_mode in {DECISION_MODE_FULL, DECISION_MODE_SAFE}:
                     self._iter_reconcile_diag["allowed"] = 1
                     self._iter_reconcile_diag["skip_reason"] = "NONE"
                 else:
                     self._iter_reconcile_diag["allowed"] = 0
                     self._iter_reconcile_diag["skip_reason"] = f"FRESHNESS_{overall_state}"
                 # Slow agents first: generate cross-market signals before decisions
-                if self.settings.enable_agents and overall_state == STATE_OK:
+                if self.settings.enable_agents and decision_mode in {DECISION_MODE_FULL, DECISION_MODE_SAFE}:
                     self._run_slow_agents(ctx)
-                if overall_state != STATE_OK:
+                if decision_mode == DECISION_MODE_HALTED:
+                    log.info(
+                        "CASE_LIFECYCLE_SKIP_SUMMARY ts=%s run_id=%s freshness_reason=FRESHNESS_STOP_HALTED "
+                        "decision_mode=HALTED written=0",
+                        now.isoformat(timespec="seconds"),
+                        str(self.run_id or "-"),
+                    )
                     return
                 t0 = time.perf_counter()
                 n = self.decision_engine.reconcile(self.run_id)
@@ -1349,7 +1399,13 @@ class MainLoop:
             self._iter_errs = 0
             self._iter_freshness = None
             self._iter_pipe = {"cand_count": 0, "dec_count": 0, "last": "HOLD/NO_CANDIDATES"}
-            self._iter_reconcile_diag = {"scheduled": 0, "allowed": 0, "skip_reason": "NOT_SCHEDULED"}
+            self._iter_reconcile_diag = {
+                "scheduled": 0,
+                "allowed": 0,
+                "skip_reason": "NOT_SCHEDULED",
+                "decision_mode": DECISION_MODE_HALTED,
+                "open_blocked_by_freshness": 0,
+            }
             self._iter_decision_diag = {
                 "scout_raw": 0,
                 "scout_kept_ids": set(),
@@ -1391,6 +1447,8 @@ class MainLoop:
                 "scheduled": int(bool(do_reconcile)),
                 "allowed": 0,
                 "skip_reason": "NONE" if bool(do_reconcile) else "NOT_SCHEDULED",
+                "decision_mode": DECISION_MODE_HALTED,
+                "open_blocked_by_freshness": 0,
             }
 
             mono = time.monotonic()
@@ -1771,15 +1829,56 @@ class MainLoop:
             iter_freshness = self._compute_iter_freshness()
             state_obj = iter_freshness.get("state") or {}
             overall_state = str(state_obj.get("overall") or "STOP")
+            decision_mode = self._decision_mode_from_freshness(overall_state)
+            self._iter_reconcile_diag["decision_mode"] = decision_mode
+            self._iter_reconcile_diag["open_blocked_by_freshness"] = 0
             self._paper_pipeline_ctx["now"] = now
             t_paper = time.perf_counter()
-            self._iter_pipe = run_paper_pipeline(
-                repo=self.repo,
-                freshness_state=state_obj,
-                context=self._paper_pipeline_ctx,
+            if decision_mode == DECISION_MODE_HALTED:
+                self._iter_pipe = {
+                    "cand_count": 0,
+                    "dec_count": 0,
+                    "last": "ABORT/FRESHNESS_STOP",
+                    "paper_action": "ABORT",
+                    "paper_reason": "FRESHNESS_STOP",
+                    "freshness_reason": "FRESHNESS_STOP_HALTED",
+                    "paper_source": "freshness.overall_stop.halted_mode",
+                    "dedup_signature": "",
+                    "matched_prev_signature": "",
+                    "selected": 0,
+                    "skipped_as_stale": 0,
+                    "consumed_key": "",
+                    "opportunity_key": "",
+                    "same_opportunity_as_prev": 0,
+                    "skipped_as_same_opportunity": 0,
+                }
+                log.info("DECISION_SAFE_MODE freshness=FRESHNESS_STOP decision_mode=HALTED")
+            else:
+                effective_freshness_state = dict(state_obj)
+                if decision_mode == DECISION_MODE_SAFE:
+                    # Evaluate candidates, then block OPEN at loop level.
+                    effective_freshness_state["overall"] = STATE_OK
+                raw_pipe = run_paper_pipeline(
+                    repo=self.repo,
+                    freshness_state=effective_freshness_state,
+                    context=self._paper_pipeline_ctx,
+                )
+                gated_pipe, open_blocked = self._apply_paper_action_freshness_gate(raw_pipe, decision_mode)
+                self._iter_pipe = gated_pipe
+                self._iter_reconcile_diag["open_blocked_by_freshness"] = int(open_blocked)
+                if decision_mode == DECISION_MODE_SAFE:
+                    log.info(
+                        "DECISION_SAFE_MODE freshness=FRESHNESS_WARN decision_mode=SAFE open_blocked_by_freshness=%s",
+                        int(open_blocked),
+                    )
+            self._iter_pipe["decision_mode"] = str(decision_mode or DECISION_MODE_HALTED).upper()
+            self._iter_pipe["open_blocked_by_freshness"] = int(
+                self._iter_reconcile_diag.get("open_blocked_by_freshness", 0) or 0
             )
+            self._iter_pipe["freshness_reason"] = str(self._iter_pipe.get("freshness_reason", "NONE") or "NONE").upper()
             paper_action = str(self._iter_pipe.get("paper_action", "") or "").strip().upper()
             paper_reason = str(self._iter_pipe.get("paper_reason", "") or "").strip().upper()
+            freshness_reason = str(self._iter_pipe.get("freshness_reason", "NONE") or "NONE").strip().upper()
             paper_source = str(self._iter_pipe.get("paper_source", "") or "").strip() or "-"
             dedup_sig = str(self._iter_pipe.get("dedup_signature", "") or "").strip() or "-"
             matched_prev = str(self._iter_pipe.get("matched_prev_signature", "") or "").strip() or "-"
@@ -1807,7 +1906,7 @@ class MainLoop:
             log.info(
                 "PAPER_SUMMARY source=%s candidate_origin=%s candidate=%s selected=%s action=%s reason=%s "
                 "dedup_sig=%s matched_prev=%s skipped_as_stale=%s consumed_key=%s opportunity_key=%s "
-                "same_opportunity_as_prev=%s skipped_as_same_opportunity=%s",
+                "same_opportunity_as_prev=%s skipped_as_same_opportunity=%s freshness_reason=%s decision_mode=%s",
                 paper_source,
                 "db_latest_scout_signal",
                 paper_candidate,
@@ -1821,13 +1920,16 @@ class MainLoop:
                 opportunity_key,
                 same_opportunity_as_prev,
                 skipped_as_same_opportunity,
+                freshness_reason,
+                str(decision_mode or DECISION_MODE_HALTED).upper(),
             )
             self._iter_agent_timing["paper"] = self._iter_agent_timing.get("paper", 0.0) + (
                 (time.perf_counter() - t_paper) * 1000.0
             )
             setattr(self.repo, "_runtime_freshness_state", state_obj)
             setattr(self.repo, "_runtime_pipeline_stats", dict(self._iter_pipe))
-            if overall_state == STATE_OK:
+            setattr(self.repo, "_runtime_reconcile_diag", dict(self._iter_reconcile_diag))
+            if decision_mode == DECISION_MODE_FULL:
                 try:
                     self._auto_agent.maybe_tick(repo=self.repo, run_id=self.run_id, now=now)
                 except Exception as e:

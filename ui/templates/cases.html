@@ -107,6 +107,10 @@
         {% set prio = c.get("prio", 1.0) %}
         {% set prio_reason = c.get("prio_reason", "") %}
         {% set prio_matched = c.get("prio_matched", 0) %}
+        {% set reason_primary = c.get("reason_primary", "NORMAL") %}
+        {% set reason_secondary = c.get("reason_secondary", "—") %}
+        {% set reason_kind = c.get("reason_kind", "muted") %}
+        {% set reason_secondary_kind = c.get("reason_secondary_kind", "muted") %}
         <tr data-weight="{{ '%.2f'|format(prio or 1.0) }}" data-case-id="{{ market_id }}"{% if market_id %} data-href="/cases/{{ market_id | urlencode }}"{% endif %}>
           <td class="mono nowrap"><span class="ellipsis" title="{{ group_key if group_key else '' }}">{{ group_key if group_key else "—" }}</span></td>
           <td class="ellipsis" title="{{ (title if title else market_id) if market_id else '—' }}">
@@ -132,7 +136,13 @@
           <td class="mono nowrap"><span data-case-sum-mid>{{ fnum(sum_mid, 3) if sum_mid is not none and sum_mid != "" else "—" }}</span></td>
           <td class="mono nowrap"><span data-case-spread>{{ fnum(spread * 100, 2) ~ "%" if spread is not none and spread != "" else "—" }}</span></td>
           <td class="mono nowrap"><span data-case-liq>{{ fnum(liq, 0) if liq is not none and liq != "" else "—" }}</span></td>
-          <td class="muted ellipsis" title="{{ why }}">{{ why }}</td>
+          <td class="muted ellipsis" title="{{ why }}">
+            <div>{{ why }}</div>
+            <div class="nowrap" style="margin-top:4px;">
+              {{ badge.badge(reason_primary, reason_kind) }}
+              {{ badge.badge(reason_secondary, reason_secondary_kind) }}
+            </div>
+          </td>
           <td class="muted ellipsis" title="{{ hint }}">
             <span>{{ hint }}</span>
             <div class="edge-line mono" data-edge-line>—</div>

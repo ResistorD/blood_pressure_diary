@@ -19,6 +19,7 @@
   {% set recent_activity = recent_activity if recent_activity is defined else (boot.recent_activity if boot.recent_activity is defined else []) %}
   {% set positions_recent = boot.positions_recent if boot.positions_recent is defined else [] %}
   {% set coverage = boot.quality_coverage if boot.quality_coverage is defined else (quality_coverage if quality_coverage is defined else {}) %}
+  {% set sys = system_status if system_status is defined and system_status else {} %}
 
   {% set header_actions = "<div class='search-box'><span style='font-size:12px'>⌕</span><input type='text' placeholder='Поиск рынка...'/><span style='font-size:10px;font-family:var(--font-mono);background:var(--surface-lg);padding:1px 5px;border-radius:4px;color:var(--text-3)'>⌘K</span></div>" ~
     "<a class='btn btn-default btn-sm' href='/dashboard-v2'>⟳ Обновить</a>" ~
@@ -48,6 +49,55 @@
     {"label":"Сигналов 24ч","value":"<span id='kpi-signals'>" ~ (k.get('signals_24h', 0)) ~ "</span>","subvalue":"<span class='kpi-delta down'>↓</span><span>vs вчера</span>","icon":"⚡"}
   ] %}
   {{ kpi.kpi_grid(kpi_items) }}
+
+  {% call panel.panel("System status", "Операторский статус decision/reconcile/freshness") %}
+    {% set fr = sys.get("freshness", "FRESHNESS_STOP") %}
+    {% set dm = sys.get("decision_mode", "HALTED") %}
+    {% set rs = sys.get("reconcile_state", "NOT_SCHEDULED") %}
+    {% set rr = sys.get("reconcile_skip_reason", "NOT_SCHEDULED") %}
+    {% set ob = sys.get("open_blocked_by_freshness", 0) %}
+    {% set opens = sys.get("opens_state", "ALLOWED") %}
+    {% set pr = sys.get("paper_last", "—") %}
+    {% set pc = sys.get("paper_candidate", 0) %}
+    {% set pd = sys.get("paper_decision", 0) %}
+    {% set fres_reason = sys.get("freshness_reason", "NONE") %}
+    <div class="micro-panel">
+      <div class="micro-row">
+        <div class="micro-label">Freshness</div>
+        <div class="micro-value mono">
+          {{ badge.badge(fr, "success" if fr == "FRESHNESS_OK" else ("warning" if fr == "FRESHNESS_WARN" else "danger")) }}
+        </div>
+      </div>
+      <div class="micro-row">
+        <div class="micro-label">Decision mode</div>
+        <div class="micro-value mono">
+          {{ badge.badge(dm, "success" if dm == "FULL" else ("warning" if dm == "SAFE" else "danger")) }}
+        </div>
+      </div>
+      <div class="micro-row">
+        <div class="micro-label">Reconcile</div>
+        <div class="micro-value mono">
+          {{ badge.badge(rs, "success" if rs == "ALLOWED" else ("warning" if rs == "NOT_SCHEDULED" else "danger")) }}
+          <span class="muted">reason={{ rr }}</span>
+        </div>
+      </div>
+      <div class="micro-row">
+        <div class="micro-label">Opens</div>
+        <div class="micro-value mono">
+          {{ badge.badge(opens, "warning" if ob else "success") }}
+          <span class="muted">freshness_block={{ ob }}</span>
+        </div>
+      </div>
+      <div class="micro-row">
+        <div class="micro-label">Paper</div>
+        <div class="micro-value mono">last={{ pr }} · cand={{ pc }} · dec={{ pd }}</div>
+      </div>
+      <div class="micro-row">
+        <div class="micro-label">Freshness reason</div>
+        <div class="micro-value mono">{{ fres_reason }}</div>
+      </div>
+    </div>
+  {% endcall %}
 
   <div class="grid-3-2">
     {% set pnl_tabs = "<div class='tab-row'><div class='tab active'>7d</div><div class='tab'>30d</div><div class='tab'>All</div></div>" %}

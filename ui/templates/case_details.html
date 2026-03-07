@@ -13,6 +13,7 @@
   {% set market_id = (m.market_id if m and m.market_id is defined else d.market_id) %}
   {% set market_title = (m.title if m and m.title else (m.slug if m and m.slug else market_id)) %}
   {% set latest_decision = d.latest_decision if d and d.latest_decision is defined else None %}
+  {% set decision_why = d.decision_why if d and d.decision_why is defined else {} %}
   {% set decision_outcome = d.decision_outcome if d and d.decision_outcome is defined else None %}
   {% set status = (latest_decision.status if latest_decision and latest_decision.status is defined else (d.status if d and d.status is defined else "—")) %}
   {% set sigs = d.sigs if d and d.sigs is defined else [] %}
@@ -125,6 +126,39 @@
       </tr>
     {% endset %}
     {{ tbl.table(head, body, dense=true) }}
+  {% endcall %}
+
+  {% call panel.panel("Почему это решение") %}
+    <div class="micro-panel">
+      <div class="micro-row">
+        <div class="micro-label">Status</div>
+        <div class="micro-value mono">{{ decision_why.get("decision_status", "—") }}</div>
+      </div>
+      <div class="micro-row">
+        <div class="micro-label">Reason</div>
+        <div class="micro-value mono">{{ decision_why.get("decision_reason", "—") }}</div>
+      </div>
+      <div class="micro-row">
+        <div class="micro-label">Risk</div>
+        <div class="micro-value mono">{{ decision_why.get("risk_kind", "NONE") }}</div>
+      </div>
+      <div class="micro-row">
+        <div class="micro-label">Kill source</div>
+        <div class="micro-value mono">{{ decision_why.get("kill_kind", "NONE") }}</div>
+      </div>
+      <div class="micro-row">
+        <div class="micro-label">Freshness</div>
+        <div class="micro-value mono">
+          gate={{ decision_why.get("freshness_gate", "NONE") }} · reason={{ decision_why.get("freshness_reason", "NONE") }}
+        </div>
+      </div>
+      <div class="micro-row">
+        <div class="micro-label">Decision mode</div>
+        <div class="micro-value mono">
+          {{ decision_why.get("decision_mode", "FULL") }} · open_blocked={{ decision_why.get("open_blocked_by_freshness", 0) }}
+        </div>
+      </div>
+    </div>
   {% endcall %}
 
   {% call panel.panel("Outcome") %}
