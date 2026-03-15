@@ -112,6 +112,14 @@ class AgentContext:
             return list(self.repo.list_open_positions())
         return []
 
+    def get_latest_orderbook(self, market_id: str) -> Dict[str, Any]:
+        """Get latest orderbook snapshot for market."""
+        if self.data_provider is not None and hasattr(self.data_provider, "get_latest_orderbook"):
+            return dict(self.data_provider.get_latest_orderbook(market_id) or {})
+        if hasattr(self.repo, "get_latest_orderbook_snapshot"):
+            return dict(self.repo.get_latest_orderbook_snapshot(market_id) or {})
+        return {}
+
 
 class AgentDataProvider(Protocol):
     """Narrow interface used by agents instead of full Repo."""
@@ -123,6 +131,9 @@ class AgentDataProvider(Protocol):
         ...
 
     def list_open_positions(self) -> List[Dict[str, Any]]:
+        ...
+
+    def get_latest_orderbook(self, market_id: str) -> Dict[str, Any]:
         ...
 
 

@@ -18,6 +18,7 @@ class HealthStatus(str, Enum):
 
 class SignalKind(str, Enum):
     PAIR_ARB = "PAIR_ARB"
+    MARKET_MAKING = "MARKET_MAKING"
     HEDGE = "HEDGE"
     IMPLICATION = "IMPLICATION"
     ANOMALY = "ANOMALY"

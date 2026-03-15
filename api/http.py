@@ -16,6 +16,11 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from execution.reconcile import reconcile_paper
+from app.runtime_config import (
+    admin_token_configured,
+    resolve_admin_token,
+    validate_runtime_settings,
+)
 from app.utils.static_version import get_static_version
 from utils.logging import warn_exc
 from utils.orderbook_math import calc_book_warnings, calc_depth, calc_preview_warnings, calc_vwap_fill, calc_max_safe_size
@@ -41,6 +46,276 @@ STATIC_V = get_static_version()
 def _is_dev_mode() -> bool:
     v = (os.getenv("PS_DEV") or "0").strip().lower()
     return v in {"1", "true", "yes", "on"}
+
+
+def _paper_fixed_notional_value() -> float:
+    raw = os.getenv("PS_PAPER_FIXED_NOTIONAL", os.getenv("PAPER_FIXED_NOTIONAL", "10.0"))
+    try:
+        val = float(raw)
+    except Exception:
+        val = 10.0
+    if val <= 0:
+        return 0.0
+    return float(val)
+
+
+def _request_prefers_json(request: Request) -> bool:
+    accept = str(request.headers.get("accept") or "").lower()
+    if "application/json" in accept and "text/html" not in accept:
+        return True
+    return False
+
+
+def _runtime_executor_attached(app: Any) -> bool:
+    runtime_executor = getattr(app.state, "executor", None)
+    loop_obj = getattr(app.state, "dispatcher_loop", None)
+    loop_executor = getattr(loop_obj, "executor", None) if loop_obj is not None else None
+    return bool(runtime_executor is not None and loop_executor is not None)
+
+
+def _build_live_preflight(
+    *,
+    settings: Any,
+    execution_mode_raw: str,
+    executor_present: bool,
+    admin_token_raw: str,
+    paper_fixed_notional: float,
+    private_key_configured: Optional[bool] = None,
+    polymarket_key_configured: Optional[bool] = None,
+    api_url_configured: Optional[bool] = None,
+    execution_enabled: Optional[bool] = None,
+    dry_run: Optional[bool] = None,
+) -> Dict[str, Any]:
+    diagnostics = validate_runtime_settings(
+        settings,
+        execution_mode_raw=execution_mode_raw,
+        paper_fixed_notional=float(paper_fixed_notional or 0.0),
+    )
+    trading_identity = dict(diagnostics.get("trading_identity", {}))
+    live_executor = bool(executor_present)
+    live_requirements = dict(diagnostics.get("live_requirements", {}))
+    credential_bootstrap = dict(diagnostics.get("live_credential_bootstrap", {}))
+    stage0_limits = dict(diagnostics.get("stage0_limits", {}))
+    live_missing = []
+
+    if execution_enabled is not None:
+        live_requirements["execution_enabled"] = bool(execution_enabled)
+    if dry_run is not None:
+        live_requirements["dry_run"] = bool(dry_run)
+    if private_key_configured is not None:
+        live_requirements["private_key_configured"] = bool(private_key_configured)
+    if polymarket_key_configured is not None:
+        live_requirements["polymarket_key_configured"] = bool(polymarket_key_configured)
+    if api_url_configured is not None:
+        live_requirements["api_url_configured"] = bool(api_url_configured)
+    if private_key_configured is not None:
+        credential_bootstrap["private_key_configured"] = bool(private_key_configured)
+    if polymarket_key_configured is not None:
+        credential_bootstrap["polymarket_key_configured"] = bool(polymarket_key_configured)
+    if api_url_configured is not None:
+        credential_bootstrap["api_url_configured"] = bool(api_url_configured)
+
+    execution_mode_live_stage0 = bool(live_requirements.get("execution_mode_live_stage0"))
+    execution_enabled_v = bool(live_requirements.get("execution_enabled"))
+    private_key_cfg = bool(live_requirements.get("private_key_configured"))
+    polymarket_key_cfg = bool(live_requirements.get("polymarket_key_configured"))
+    api_url_cfg = bool(live_requirements.get("api_url_configured"))
+    overrides_applied = any(v is not None for v in (private_key_configured, polymarket_key_configured, api_url_configured))
+    if overrides_applied:
+        credential_bootstrap_success = bool(private_key_cfg and polymarket_key_cfg and api_url_cfg)
+        credential_bootstrap["success"] = credential_bootstrap_success
+        credential_bootstrap["attempted"] = True
+        credential_bootstrap["mode"] = "override"
+        credential_bootstrap["safe_error"] = ""
+        credential_bootstrap["missing"] = []
+    else:
+        credential_bootstrap_success = bool(
+            credential_bootstrap.get(
+                "success",
+                private_key_cfg and polymarket_key_cfg and api_url_cfg,
+            )
+        )
+    live_requirements["credential_bootstrap_attempted"] = bool(credential_bootstrap.get("attempted", True))
+    live_requirements["credential_bootstrap_success"] = credential_bootstrap_success
+    live_requirements["credential_bootstrap_mode"] = str(credential_bootstrap.get("mode") or "none")
+    live_requirements["credential_bootstrap_error"] = str(credential_bootstrap.get("safe_error") or "")
+    dry_run_v = bool(live_requirements.get("dry_run"))
+    max_notional_per_order = float(stage0_limits.get("max_notional_per_order", 0.0) or 0.0)
+    max_total_notional = float(stage0_limits.get("max_total_notional", 0.0) or 0.0)
+    max_orders_per_day = int(getattr(settings, "live_max_orders_per_day", 0) or 0)
+
+    mode_raw = str(execution_mode_raw or "paper").strip().lower()
+    execution_mode = "LIVE_STAGE0" if mode_raw == "live_stage0" else "PAPER"
+    admin_token_protected = bool(str(admin_token_raw or "").strip()) if admin_token_raw is not None else bool(
+        diagnostics.get("admin_token_configured")
+    )
+    executor_buildable = bool(
+        execution_mode_live_stage0
+        and execution_enabled_v
+        and private_key_cfg
+        and api_url_cfg
+        and credential_bootstrap_success
+        and not dry_run_v
+        and max_notional_per_order > 0.0
+        and max_orders_per_day > 0
+        and max_total_notional > 0.0
+        and float(paper_fixed_notional or 0.0) > 0.0
+    )
+    live_requirements["executor_buildable"] = executor_buildable
+    if not execution_mode_live_stage0:
+        live_missing.append("EXECUTION_MODE_NOT_LIVE_STAGE0")
+    if not execution_enabled_v:
+        live_missing.append("ENABLE_EXECUTION")
+    if not private_key_cfg:
+        live_missing.append("PRIVATE_KEY")
+    if not api_url_cfg:
+        live_missing.append("POLYMARKET_API_URL")
+    for item in credential_bootstrap.get("missing", []) or []:
+        if item not in live_missing:
+            live_missing.append(item)
+    if dry_run_v:
+        live_missing.append("LIVE_DRY_RUN_DISABLED_REQUIRED")
+    if max_notional_per_order <= 0.0:
+        live_missing.append("LIVE_MAX_NOTIONAL")
+    if max_orders_per_day <= 0:
+        live_missing.append("LIVE_MAX_ORDERS_PER_DAY")
+    if max_total_notional <= 0.0:
+        live_missing.append("RISK_MAX_NOTIONAL_TOTAL")
+    if float(paper_fixed_notional or 0.0) <= 0.0:
+        live_missing.append("PAPER_FIXED_NOTIONAL")
+    ready_for_live = bool(
+        execution_mode == "LIVE_STAGE0"
+        and live_executor
+        and admin_token_protected
+        and executor_buildable
+        and max_notional_per_order > 0.0
+        and max_total_notional > 0.0
+        and float(paper_fixed_notional or 0.0) > 0.0
+    )
+    live_not_ready_reason = "OK" if ready_for_live else ",".join(live_missing[:6])
+    return {
+        "config_profile": diagnostics.get("profile", "dev"),
+        "config_validation_ok": bool(diagnostics.get("ok")),
+        "config_warnings": diagnostics.get("warnings", []),
+        "config_errors": diagnostics.get("errors", []),
+        "execution_mode": execution_mode,
+        "live_executor": live_executor,
+        "admin_token_protected": admin_token_protected,
+        "stage0_limits": stage0_limits,
+        "live_credential_bootstrap": credential_bootstrap,
+        "trading_identity": trading_identity,
+        "signer_address": str(trading_identity.get("signer_address") or ""),
+        "effective_funder_address": str(trading_identity.get("effective_funder_address") or ""),
+        "live_requirements": live_requirements,
+        "live_missing": live_missing,
+        "live_not_ready_reason": live_not_ready_reason,
+        "ready_for_live": ready_for_live,
+    }
+
+
+def _apply_live_limits(
+    *,
+    settings: Any,
+    repo: Any,
+    live_max_notional: float,
+    max_total_notional: float,
+    paper_fixed_notional: float,
+) -> Dict[str, Any]:
+    live_v = max(0.0, float(live_max_notional or 0.0))
+    total_v = max(0.0, float(max_total_notional or 0.0))
+    paper_v = max(0.0, float(paper_fixed_notional or 0.0))
+
+    try:
+        setattr(settings, "live_max_notional", live_v)
+    except Exception:
+        pass
+    try:
+        risk_cfg = getattr(settings, "risk", None)
+        if risk_cfg is not None:
+            setattr(risk_cfg, "max_notional_total", total_v)
+    except Exception:
+        pass
+    # paper sizing in current runtime is env-driven (read at execution time).
+    os.environ["PS_PAPER_FIXED_NOTIONAL"] = str(paper_v)
+
+    try:
+        if hasattr(repo, "set_setting"):
+            repo.set_setting("live_max_notional", str(live_v))
+            repo.set_setting("risk_max_notional_total", str(total_v))
+            repo.set_setting("paper_fixed_notional", str(paper_v))
+    except Exception:
+        pass
+
+    return {
+        "live_max_notional": live_v,
+        "max_total_notional": total_v,
+        "paper_fixed_notional": paper_v,
+        "restart_required": False,
+    }
+
+
+def _apply_execution_mode_switch(*, app: Any, repo: Any, new_mode_raw: str) -> Dict[str, Any]:
+    new_mode = str(new_mode_raw or "paper").strip().lower()
+    if new_mode not in {"paper", "live_stage0"}:
+        new_mode = "paper"
+    loop_obj = getattr(app.state, "dispatcher_loop", None)
+    try:
+        setattr(app.state, "execution_mode", new_mode)
+    except Exception:
+        pass
+    try:
+        if hasattr(app.state, "settings"):
+            setattr(app.state.settings, "execution_mode", new_mode)
+    except Exception:
+        pass
+    try:
+        if hasattr(repo, "set_setting"):
+            repo.set_setting("execution_mode", new_mode)
+        setattr(repo, "_runtime_execution_mode", new_mode)
+    except Exception:
+        pass
+
+    if new_mode == "paper":
+        try:
+            app.state.executor = None
+        except Exception:
+            pass
+        if loop_obj is not None:
+            try:
+                setattr(loop_obj, "executor", None)
+            except Exception:
+                logger.warning("failed to detach executor from dispatcher loop", exc_info=True)
+    else:
+        built_executor = None
+        try:
+            from app.main import build_executor
+            built_executor = build_executor(app.state.settings)
+            app.state.executor = built_executor
+        except Exception:
+            # keep explicit: mode changed, executor may require restart/env
+            logger.warning("failed to build live executor on mode switch", exc_info=True)
+            built_executor = None
+            app.state.executor = None
+        if loop_obj is not None:
+            try:
+                setattr(loop_obj, "executor", built_executor)
+            except Exception:
+                logger.warning("failed to attach executor to dispatcher loop", exc_info=True)
+                app.state.executor = None
+                try:
+                    setattr(loop_obj, "executor", None)
+                except Exception:
+                    logger.warning("failed to reset dispatcher loop executor after attach error", exc_info=True)
+
+    runtime_executor = getattr(app.state, "executor", None)
+    loop_executor = getattr(loop_obj, "executor", None) if loop_obj is not None else None
+    live_executor_ready = bool(runtime_executor is not None and loop_executor is not None)
+    restart_required = bool(new_mode == "live_stage0" and not live_executor_ready)
+    return {
+        "execution_mode": "LIVE_STAGE0" if new_mode == "live_stage0" else "PAPER",
+        "live_executor": live_executor_ready,
+        "restart_required": restart_required,
+    }
 
 
 def _resolve_kill_kind_from_reason(kill_switch_reason: str) -> str:
@@ -192,6 +467,35 @@ def _get_price_ago(market_id: str, seconds: int = 60) -> float | None:
     return None
 
 
+def _load_orderbook(r, market_id: str) -> Dict[str, Any] | None:
+    if hasattr(r, "get_latest_orderbook_snapshot"):
+        try:
+            return r.get_latest_orderbook_snapshot(market_id)
+        except Exception:
+            return None
+    return None
+
+
+def _parse_levels(raw: str | None) -> List[Dict[str, float]]:
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+    except Exception:
+        return []
+    out = []
+    for x in data or []:
+        try:
+            px = float(x.get("price"))
+            sz = float(x.get("size"))
+            if sz <= 0:
+                continue
+            out.append({"price": px, "size": sz})
+        except Exception:
+            continue
+    return out
+
+
 def _micro_guard_ok(r, market_id: str) -> bool:
     book = _load_orderbook(r, market_id)
     if not book:
@@ -262,6 +566,11 @@ def create_app(*, settings, repo, bus) -> FastAPI:
     app.state.exec_stats = {"samples": []}
     app.state.dev_mode = bool(getattr(settings, "dev_mode", False)) or _is_dev_mode()
     app.state.static_v = STATIC_V
+    app.state.execution_mode = str(getattr(settings, "execution_mode", "paper") or "paper").strip().lower()
+    try:
+        setattr(repo, "_runtime_execution_mode", app.state.execution_mode)
+    except Exception:
+        pass
 
     def _template_ctx(request: Request) -> Dict[str, str]:
         if getattr(request.app.state, "dev_mode", False):
@@ -492,7 +801,7 @@ def create_app(*, settings, repo, bus) -> FastAPI:
             auth = (request.headers.get("authorization") or "").strip()
             if auth.lower().startswith("bearer "):
                 token = auth.split(" ", 1)[1].strip()
-        expected = (os.getenv("ADMIN_TOKEN") or "").strip()
+        expected = resolve_admin_token(getattr(request.app.state, "settings", None))
         if not expected:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -632,33 +941,6 @@ def create_app(*, settings, repo, bus) -> FastAPI:
             p95 = _pct(95)
         return {"exec_rtt_ms_p50": p50, "exec_rtt_ms_p95": p95, "errors_1m": errors}
 
-    def _load_orderbook(r, market_id: str) -> Dict[str, Any] | None:
-        if hasattr(r, "get_latest_orderbook_snapshot"):
-            try:
-                return r.get_latest_orderbook_snapshot(market_id)
-            except Exception:
-                return None
-        return None
-
-    def _parse_levels(raw: str | None) -> List[Dict[str, float]]:
-        if not raw:
-            return []
-        try:
-            data = json.loads(raw)
-        except Exception:
-            return []
-        out = []
-        for x in data or []:
-            try:
-                px = float(x.get("price"))
-                sz = float(x.get("size"))
-                if sz <= 0:
-                    continue
-                out.append({"price": px, "size": sz})
-            except Exception:
-                continue
-        return out
-
     BOOK_STALE_SEC = 15.0
     RISK_MAX_SLIP_BPS = 150.0  # sync with UI GUARD_MAX_SLIP_BPS
 
@@ -691,7 +973,7 @@ def create_app(*, settings, repo, bus) -> FastAPI:
     @app.get("/deprioritize", response_class=HTMLResponse)
     def deprioritize_rules(request: Request):
         r = _repo(request)
-        if (os.getenv("ADMIN_TOKEN") or "").strip():
+        if admin_token_configured(getattr(request.app.state, "settings", None)):
             _require_admin_token(request)
         rules = _safe(lambda: getattr(r, "get_deprioritize_rules")(), [])
         deprioritize_mode = (getattr(request.app.state.settings, "deprioritize_mode", "ui") or "ui")
@@ -748,8 +1030,10 @@ def create_app(*, settings, repo, bus) -> FastAPI:
             else ("ALLOWED" if reconcile_allowed == 1 else "BLOCKED")
         )
         open_blocked = int(rp.get("open_blocked_by_freshness", rr.get("open_blocked_by_freshness", 0)) or 0)
+        execution_mode = str(getattr(request.app.state, "execution_mode", "paper") or "paper").strip().lower()
         system_status = {
             "freshness": f"FRESHNESS_{freshness_overall}",
+            "execution_mode": execution_mode,
             "decision_mode": decision_mode,
             "reconcile_state": reconcile_state,
             "reconcile_allowed": reconcile_allowed,
@@ -2551,8 +2835,101 @@ def create_app(*, settings, repo, bus) -> FastAPI:
             "paused": _safe(lambda: getattr(r, "is_paused")(), False) if hasattr(r, "is_paused") else False,
             "paused_at": _safe(lambda: getattr(r, "get_setting_updated_at")("paused"), ""),
             "mode": str(getattr(request.app.state.settings, "mode", "")).lower(),
+            "execution_mode": str(getattr(request.app.state, "execution_mode", "paper") or "paper").lower(),
             "server_ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         }
+
+    @app.get("/control/live", response_class=HTMLResponse)
+    def control_live(request: Request):
+        r = _repo(request)
+        settings = getattr(request.app.state, "settings", None)
+        paper_fixed_notional = _paper_fixed_notional_value()
+        preflight = _build_live_preflight(
+            settings=settings,
+            execution_mode_raw=str(getattr(request.app.state, "execution_mode", "paper") or "paper"),
+            executor_present=_runtime_executor_attached(request.app),
+            admin_token_raw=resolve_admin_token(settings),
+            paper_fixed_notional=float(paper_fixed_notional or 0.0),
+        )
+        admin_token = resolve_admin_token(settings)
+        if not admin_token:
+            if _request_prefers_json(request):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="ADMIN_TOKEN is not configured",
+                )
+            return templates.TemplateResponse(
+                "control_live_locked.html",
+                {
+                    "request": request,
+                    "lock_reason": "ADMIN_TOKEN is not configured",
+                    "lock_hint": "Set ADMIN_TOKEN and restart the app.",
+                    "preflight": preflight,
+                    **build_nav_context(request, "overview"),
+                },
+                status_code=503,
+            )
+        _require_admin_token(request)
+        risk_cfg = getattr(settings, "risk", None)
+        limits = {
+            "max_notional_per_order": float(getattr(settings, "live_max_notional", 0.0) or 0.0),
+            "max_total_notional": float(getattr(risk_cfg, "max_notional_total", 0.0) or 0.0),
+            "paper_fixed_notional": float(paper_fixed_notional or 0.0),
+        }
+        flash = (request.query_params.get("flash", "") or "").strip()
+        return templates.TemplateResponse(
+            "control_live.html",
+            {
+                "request": request,
+                "preflight": preflight,
+                "limits": limits,
+                "flash": flash,
+                **build_nav_context(request, "overview"),
+            },
+        )
+
+    @app.post("/control/live/save", dependencies=[Depends(_require_admin_token)])
+    async def control_live_save(request: Request):
+        r = _repo(request)
+        settings = getattr(request.app.state, "settings", None)
+        from urllib.parse import parse_qs
+        body = (await request.body()).decode("utf-8", errors="ignore")
+        form = parse_qs(body)
+        def _pick(name: str, default: str = "0") -> str:
+            return str((form.get(name, [default])[0]) or default)
+        try:
+            live_max_notional = float(_pick("max_notional_per_order", "0"))
+        except Exception:
+            live_max_notional = 0.0
+        try:
+            max_total_notional = float(_pick("max_total_notional", "0"))
+        except Exception:
+            max_total_notional = 0.0
+        try:
+            paper_fixed_notional = float(_pick("paper_fixed_notional", "0"))
+        except Exception:
+            paper_fixed_notional = 0.0
+        _apply_live_limits(
+            settings=settings,
+            repo=r,
+            live_max_notional=live_max_notional,
+            max_total_notional=max_total_notional,
+            paper_fixed_notional=paper_fixed_notional,
+        )
+        return RedirectResponse(url="/control/live?flash=limits_saved", status_code=303)
+
+    @app.post("/control/live/mode", dependencies=[Depends(_require_admin_token)])
+    async def control_live_mode(request: Request):
+        r = _repo(request)
+        from urllib.parse import parse_qs
+        body = (await request.body()).decode("utf-8", errors="ignore")
+        form = parse_qs(body)
+        raw_mode = str((form.get("execution_mode", ["paper"])[0]) or "paper")
+        out = _apply_execution_mode_switch(app=request.app, repo=r, new_mode_raw=raw_mode)
+        flash = "mode_switched"
+        if bool(out.get("restart_required")):
+            flash = "mode_switched_restart_required"
+        return RedirectResponse(url=f"/control/live?flash={quote_plus(flash)}", status_code=303)
 
     @app.get("/health/ping")
     def health_ping():
@@ -2629,6 +3006,7 @@ def create_app(*, settings, repo, bus) -> FastAPI:
             }
         state["paused"] = _safe(lambda: getattr(r, "is_paused")(), False) if hasattr(r, "is_paused") else False
         state["paused_at"] = _safe(lambda: getattr(r, "get_setting_updated_at")("paused"), "")
+        state["execution_mode"] = str(getattr(request.app.state, "execution_mode", "paper") or "paper").lower()
         state["markets_count"] = markets_count
         state["tokens_count"] = tokens_count
         state["issues"] = issues
@@ -2642,6 +3020,17 @@ def create_app(*, settings, repo, bus) -> FastAPI:
             state["table_used"] = table_used
             state["column_used"] = column_used
         return state
+
+    @app.get("/health/preflight")
+    def health_preflight(request: Request):
+        settings = getattr(request.app.state, "settings", None)
+        return _build_live_preflight(
+            settings=settings,
+            execution_mode_raw=str(getattr(request.app.state, "execution_mode", "paper") or "paper"),
+            executor_present=_runtime_executor_attached(request.app),
+            admin_token_raw=resolve_admin_token(settings),
+            paper_fixed_notional=float(_paper_fixed_notional_value() or 0.0),
+        )
 
     # ---------- Auto Paper Agent (backend runtime) ----------
     @app.get("/agent/state")

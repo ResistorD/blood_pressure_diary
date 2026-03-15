@@ -7,6 +7,7 @@ pip install -r requirements.txt
 
 ## Configure
 copy .env.example to .env
+APP_ENV=dev
 ADMIN_TOKEN=your_secret_token
 TAKER_FEE_RATE=0.02
 SLIPPAGE_RATE=0.0
@@ -14,6 +15,8 @@ DISPATCHER_TICK_SEC=2.0
 DB_FLUSH_SEC=10.0
 DEPRIORITIZE_MODE=ui
 DEPRIORITIZE_MIN_WEIGHT=0.05
+
+Runtime profile docs: `docs/runtime_config_profiles.md`
 
 ## Settings
 Source of truth: `app/settings.py` (`Settings` = `RuntimeSettings`).

@@ -43,6 +43,8 @@ def test_all_mutating_operator_routes_are_admin_guarded(tmp_path: Path) -> None:
         "/control/pause",
         "/control/resume",
         "/control/mode",
+        "/control/live/save",
+        "/control/live/mode",
     }
 
     for route in app.routes:

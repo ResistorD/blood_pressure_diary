@@ -52,6 +52,7 @@
 
   {% call panel.panel("System status", "Операторский статус decision/reconcile/freshness") %}
     {% set fr = sys.get("freshness", "FRESHNESS_STOP") %}
+    {% set exm = (sys.get("execution_mode", "paper")|string|upper) %}
     {% set dm = sys.get("decision_mode", "HALTED") %}
     {% set rs = sys.get("reconcile_state", "NOT_SCHEDULED") %}
     {% set rr = sys.get("reconcile_skip_reason", "NOT_SCHEDULED") %}
@@ -61,40 +62,50 @@
     {% set pc = sys.get("paper_candidate", 0) %}
     {% set pd = sys.get("paper_decision", 0) %}
     {% set fres_reason = sys.get("freshness_reason", "NONE") %}
-    <div class="micro-panel">
-      <div class="micro-row">
-        <div class="micro-label">Freshness</div>
-        <div class="micro-value mono">
-          {{ badge.badge(fr, "success" if fr == "FRESHNESS_OK" else ("warning" if fr == "FRESHNESS_WARN" else "danger")) }}
+    <div class="status-tiles">
+      <div class="status-tile">
+        <div class="status-label">Execution</div>
+        <div class="mono">
+          {{ badge.badge(exm, "success" if exm == "LIVE_STAGE0" else "warning") }}
+          {% if exm == "LIVE_STAGE0" %}
+            {{ badge.badge("STAGE-0 SAFE LIMITS ACTIVE", "info") }}
+          {% endif %}
         </div>
       </div>
-      <div class="micro-row">
-        <div class="micro-label">Decision mode</div>
-        <div class="micro-value mono">
-          {{ badge.badge(dm, "success" if dm == "FULL" else ("warning" if dm == "SAFE" else "danger")) }}
+      <div class="status-tile">
+        <div class="status-label">Freshness</div>
+        <div class="mono">{{ badge.badge(fr, "success" if fr == "FRESHNESS_OK" else ("warning" if fr == "FRESHNESS_WARN" else "danger")) }}</div>
+        <div class="status-secondary">{{ fres_reason }}</div>
+      </div>
+      <div class="status-tile">
+        <div class="status-label">Decision Mode</div>
+        <div class="mono">{{ badge.badge(dm, "success" if dm == "FULL" else ("warning" if dm == "SAFE" else "danger")) }}</div>
+        <div class="status-secondary">pipeline mode</div>
+      </div>
+      <div class="status-tile">
+        <div class="status-label">Reconcile</div>
+        <div class="mono">{{ badge.badge(rs, "success" if rs == "ALLOWED" else ("warning" if rs == "NOT_SCHEDULED" else "danger")) }}</div>
+        <div class="status-secondary">reason={{ rr }}</div>
+      </div>
+      <div class="status-tile">
+        <div class="status-label">Opens</div>
+        <div class="mono">{{ badge.badge(opens, "warning" if ob else "success") }}</div>
+        <div class="status-secondary">freshness_block={{ ob }}</div>
+      </div>
+      <div class="status-tile">
+        <div class="status-label">Paper</div>
+        <div class="mono ellipsis">last={{ pr }}</div>
+        <div class="status-secondary">cand={{ pc }} · dec={{ pd }}</div>
+      </div>
+      <div class="status-tile">
+        <div class="status-label">Controls</div>
+        <div class="mono"><a id="live-controls-link" class="btn btn-primary btn-sm" href="/control/live">Live Controls</a></div>
+        <div class="status-secondary">stage-0 operator panel</div>
+        <div class="status-secondary" style="margin-top:6px;display:flex;gap:6px;align-items:center">
+          <input id="dashboard-admin-token-input" class="input mono" type="password" autocomplete="off" placeholder="ADMIN_TOKEN" style="max-width:220px" />
+          <button id="dashboard-admin-token-save" class="btn btn-default btn-sm" type="button">Save token</button>
         </div>
-      </div>
-      <div class="micro-row">
-        <div class="micro-label">Reconcile</div>
-        <div class="micro-value mono">
-          {{ badge.badge(rs, "success" if rs == "ALLOWED" else ("warning" if rs == "NOT_SCHEDULED" else "danger")) }}
-          <span class="muted">reason={{ rr }}</span>
-        </div>
-      </div>
-      <div class="micro-row">
-        <div class="micro-label">Opens</div>
-        <div class="micro-value mono">
-          {{ badge.badge(opens, "warning" if ob else "success") }}
-          <span class="muted">freshness_block={{ ob }}</span>
-        </div>
-      </div>
-      <div class="micro-row">
-        <div class="micro-label">Paper</div>
-        <div class="micro-value mono">last={{ pr }} · cand={{ pc }} · dec={{ pd }}</div>
-      </div>
-      <div class="micro-row">
-        <div class="micro-label">Freshness reason</div>
-        <div class="micro-value mono">{{ fres_reason }}</div>
+        <div id="live-controls-error" class="status-secondary" style="display:none;color:var(--red)"></div>
       </div>
     </div>
   {% endcall %}
@@ -410,6 +421,48 @@ async function refreshPnlChart() {
 }
 
 window.addEventListener('load', () => {
+  const liveLink = document.getElementById('live-controls-link');
+  const liveErr = document.getElementById('live-controls-error');
+  const tokenInput = document.getElementById('dashboard-admin-token-input');
+  const tokenSaveBtn = document.getElementById('dashboard-admin-token-save');
+  if (liveLink && typeof window.psAdminTokenLoad === 'function') {
+    const showErr = (msg, isError = true) => {
+      if (!liveErr) return;
+      liveErr.textContent = String(msg || '').trim();
+      liveErr.style.display = liveErr.textContent ? 'block' : 'none';
+      liveErr.style.color = isError ? 'var(--red)' : 'var(--green)';
+    };
+    if (tokenInput) {
+      tokenInput.value = window.psAdminTokenLoad();
+    }
+    if (tokenSaveBtn && tokenInput) {
+      tokenSaveBtn.addEventListener('click', () => {
+        const token = String(tokenInput.value || '').trim();
+        if (!token) {
+          showErr('Token is empty. Enter ADMIN_TOKEN and save.', true);
+          tokenInput.focus();
+          return;
+        }
+        const saved = window.psAdminTokenSave(token);
+        tokenInput.value = saved;
+        showErr('Token saved in this browser.', false);
+      });
+    }
+    liveLink.addEventListener('click', async (ev) => {
+      ev.preventDefault();
+      const token = window.psAdminTokenLoad();
+      if (!token) {
+        showErr('Admin token is missing. Open Live Controls and enter ADMIN_TOKEN.', true);
+        window.location.href = '/control/live';
+        return;
+      }
+      showErr('', false);
+      const ok = await window.psOpenControlLive('/control/live');
+      if (!ok) {
+        showErr(window.psAdminTokenLastError() || 'Failed to open Live Controls.', true);
+      }
+    });
+  }
   refreshPnlChart();
   setInterval(refreshPnlChart, 30000);
   window.addEventListener('resize', refreshPnlChart);

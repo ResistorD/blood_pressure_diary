@@ -1,0 +1,183 @@
+{% extends "_base.html" %}
+{% import "components/_page_header.html" as page %}
+{% import "components/_panel.html" as panel %}
+{% import "components/_badge.html" as badge %}
+{% set page_title = "Stage-0 Live Controls" %}
+{% block title %}Stage-0 Live Controls — PolySyndicate{% endblock %}
+
+{% block content %}
+  {% set p = preflight if preflight is defined and preflight else {} %}
+  {% set l = limits if limits is defined and limits else {} %}
+  {% set exm = p.get("execution_mode", "PAPER") %}
+  {% set ready = p.get("ready_for_live", false) %}
+  {% set live_exec = p.get("live_executor", false) %}
+  {% set admin_ok = p.get("admin_token_protected", false) %}
+  {% set stage = p.get("stage0_limits", {}) %}
+  {% set req = p.get("live_requirements", {}) %}
+  {% set miss = p.get("live_missing", []) %}
+  {% set not_ready_reason = p.get("live_not_ready_reason", "") %}
+
+  {{ page.page_header("Stage-0 Live Controls", "Минимальная панель режима исполнения и лимитов Stage-0", "") }}
+
+  {% if flash %}
+    <div class="flash-banner">
+      <span class="flash-text mono">{{ flash }}</span>
+    </div>
+  {% endif %}
+
+  {% call panel.panel("Access", "Admin protection and access status") %}
+    <div class="status-tiles">
+      <div class="status-tile">
+        <div class="status-label">Access</div>
+        <div class="mono">{{ badge.badge("UNLOCKED", "success") }}</div>
+        <div class="status-secondary">admin token verified</div>
+      </div>
+      <div class="status-tile">
+        <div class="status-label">Admin Token</div>
+        <div class="mono">{{ badge.badge("CONFIGURED" if admin_ok else "MISSING", "success" if admin_ok else "danger") }}</div>
+        <div class="status-secondary">local operator protection</div>
+      </div>
+    </div>
+    <form id="live-admin-token-form" class="micro-panel" style="margin-top:12px; gap:10px">
+      <div class="micro-row">
+        <div class="micro-label">Browser token</div>
+        <div class="micro-value mono" style="display:flex; gap:8px; align-items:center">
+          <input id="live-admin-token-input" class="input mono" type="password" autocomplete="off" placeholder="Stored in localStorage" />
+          <button class="btn btn-default btn-sm" type="submit">Save token</button>
+          <button id="live-admin-token-clear" class="btn btn-default btn-sm" type="button">Clear</button>
+        </div>
+      </div>
+      <div id="live-admin-token-status" class="status-secondary" style="display:none"></div>
+    </form>
+  {% endcall %}
+
+  {% call panel.panel("Execution", "Current Stage-0 execution state") %}
+    <div class="status-tiles">
+      <div class="status-tile">
+        <div class="status-label">Execution Mode</div>
+        <div class="mono">
+          {{ badge.badge(exm, "success" if exm == "LIVE_STAGE0" else "warning") }}
+          {% if exm == "LIVE_STAGE0" %}
+            {{ badge.badge("STAGE-0 SAFE LIMITS ACTIVE", "info") }}
+          {% endif %}
+        </div>
+      </div>
+      <div class="status-tile">
+        <div class="status-label">Live Executor</div>
+        <div class="mono">{{ badge.badge("ON" if live_exec else "OFF", "success" if live_exec else "warning") }}</div>
+      </div>
+      <div class="status-tile">
+        <div class="status-label">Ready For Live</div>
+        <div class="mono">{{ badge.badge("READY" if ready else "NOT_READY", "success" if ready else "danger") }}</div>
+      </div>
+    </div>
+  {% endcall %}
+
+  {% call panel.panel("Live executor requirements", "Readable configured/missing checklist") %}
+    <div class="status-tiles requirements-grid">
+      <div class="status-tile"><div class="status-label">Execution mode (EXECUTION_MODE=live_stage0)</div><div class="mono">{{ badge.badge("YES" if req.get("execution_mode_live_stage0") else "NO", "success" if req.get("execution_mode_live_stage0") else "warning") }}</div></div>
+      <div class="status-tile"><div class="status-label">Execution enabled (PS_ENABLE_EXECUTION)</div><div class="mono">{{ badge.badge("YES" if req.get("execution_enabled") else "NO", "success" if req.get("execution_enabled") else "warning") }}</div></div>
+      <div class="status-tile"><div class="status-label">Private key (PRIVATE_KEY)</div><div class="mono">{{ badge.badge("YES" if req.get("private_key_configured") else "NO", "success" if req.get("private_key_configured") else "danger") }}</div></div>
+      <div class="status-tile"><div class="status-label">Polymarket key (POLYMARKET_KEY)</div><div class="mono">{{ badge.badge("YES" if req.get("polymarket_key_configured") else "NO", "success" if req.get("polymarket_key_configured") else "danger") }}</div></div>
+      <div class="status-tile"><div class="status-label">API URL (POLYMARKET_API_URL)</div><div class="mono">{{ badge.badge("YES" if req.get("api_url_configured") else "NO", "success" if req.get("api_url_configured") else "warning") }}</div></div>
+      <div class="status-tile"><div class="status-label">Dry run (LIVE_DRY_RUN must be OFF)</div><div class="mono">{{ badge.badge("ON" if req.get("dry_run") else "OFF", "warning" if req.get("dry_run") else "success") }}</div></div>
+      <div class="status-tile"><div class="status-label">Credential bootstrap</div><div class="mono">{{ badge.badge("OK" if req.get("credential_bootstrap_success") else "FAILED", "success" if req.get("credential_bootstrap_success") else "danger") }}</div></div>
+      <div class="status-tile"><div class="status-label">Executor buildable</div><div class="mono">{{ badge.badge("YES" if req.get("executor_buildable") else "NO", "success" if req.get("executor_buildable") else "danger") }}</div></div>
+    </div>
+    <div class="requirements-tail">
+      <div class="tail-row"><span class="mono">CREDENTIAL_BOOTSTRAP_MODE:</span> {{ req.get("credential_bootstrap_mode", "none") }}</div>
+      <div class="tail-row"><span class="mono">CREDENTIAL_ACCOUNT:</span> {{ req.get("credential_account_type", "EOA") }} (sig={{ req.get("credential_signature_type", 0) }}, chain={{ req.get("credential_chain_id", 137) }}, funder={{ "YES" if req.get("credential_funder_configured") else "NO" }})</div>
+      <div class="tail-row"><span class="mono">CREDENTIAL_BOOTSTRAP_ERROR:</span> {{ req.get("credential_bootstrap_error", "") or "NONE" }}</div>
+      <div class="tail-row"><span class="mono">LIVE_MISSING:</span> {{ (miss|join(", ")) if miss else "NONE" }}</div>
+      <div class="tail-row"><span class="mono">LIVE_NOT_READY_REASON:</span> {{ not_ready_reason or "OK" }}</div>
+    </div>
+  {% endcall %}
+
+  {% call panel.panel("Limits", "Редактируемые Stage-0 лимиты") %}
+    <form method="post" action="/control/live/save" class="micro-panel" style="gap:10px">
+      <div class="micro-row">
+        <div class="micro-label">max_notional_per_order</div>
+        <div class="micro-value mono">
+          <input class="input mono" name="max_notional_per_order" type="number" min="0" step="0.01" value="{{ l.get('max_notional_per_order', stage.get('max_notional_per_order', 0.0)) }}" />
+        </div>
+      </div>
+      <div class="micro-row">
+        <div class="micro-label">max_total_notional</div>
+        <div class="micro-value mono">
+          <input class="input mono" name="max_total_notional" type="number" min="0" step="0.01" value="{{ l.get('max_total_notional', stage.get('max_total_notional', 0.0)) }}" />
+        </div>
+      </div>
+      <div class="micro-row">
+        <div class="micro-label">paper_fixed_notional</div>
+        <div class="micro-value mono">
+          <input class="input mono" name="paper_fixed_notional" type="number" min="0" step="0.01" value="{{ l.get('paper_fixed_notional', stage.get('paper_fixed_notional', 0.0)) }}" />
+        </div>
+      </div>
+      <div class="micro-row">
+        <div class="micro-label">Action</div>
+        <div class="micro-value"><button class="btn btn-primary btn-sm" type="submit">Save limits</button></div>
+      </div>
+    </form>
+  {% endcall %}
+
+  {% call panel.panel("Mode Switch", "Переключение PAPER / LIVE_STAGE0") %}
+    <div class="flex items-center gap-8">
+      <form method="post" action="/control/live/mode">
+        <input type="hidden" name="execution_mode" value="paper"/>
+        <button class="btn btn-default btn-sm" type="submit">Switch to PAPER</button>
+      </form>
+      <form method="post" action="/control/live/mode">
+        <input type="hidden" name="execution_mode" value="live_stage0"/>
+        <button class="btn btn-primary btn-sm" type="submit">Switch to LIVE_STAGE0</button>
+      </form>
+    </div>
+  {% endcall %}
+{% endblock %}
+
+{% block scripts %}
+  <script>
+    (() => {
+      if (typeof window.psAdminTokenLoad !== "function") return;
+      const form = document.getElementById("live-admin-token-form");
+      const input = document.getElementById("live-admin-token-input");
+      const clearBtn = document.getElementById("live-admin-token-clear");
+      const status = document.getElementById("live-admin-token-status");
+      const setStatus = (msg, isError = false) => {
+        if (!status) return;
+        status.textContent = String(msg || "").trim();
+        status.style.display = status.textContent ? "block" : "none";
+        status.style.color = isError ? "var(--red)" : "var(--green)";
+      };
+      if (form && input) {
+        input.value = window.psAdminTokenLoad();
+        form.addEventListener("submit", (ev) => {
+          ev.preventDefault();
+          const token = String(input.value || "").trim();
+          if (!token) {
+            setStatus("Token is empty. Enter ADMIN_TOKEN.", true);
+            input.focus();
+            return;
+          }
+          const saved = window.psAdminTokenSave(token);
+          input.value = saved;
+          setStatus("Token saved in this browser.", false);
+        });
+      }
+      if (clearBtn && input) {
+        clearBtn.addEventListener("click", () => {
+          window.psAdminTokenSave("");
+          input.value = "";
+          setStatus("Token cleared.", false);
+          input.focus();
+        });
+      }
+
+      document.querySelectorAll("form[action^='/control/live/']").forEach((liveForm) => {
+        liveForm.addEventListener("submit", async (ev) => {
+          ev.preventDefault();
+          await window.psSubmitLiveControlForm(liveForm);
+        });
+      });
+    })();
+  </script>
+{% endblock %}

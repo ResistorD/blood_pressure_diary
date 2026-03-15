@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-import os
 import time
 from urllib.parse import quote
 
@@ -16,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from app.runtime_config import resolve_admin_token
 from utils.logging import get_logger, warn_exc
 
 router = APIRouter()
@@ -68,9 +68,11 @@ def _build_system_status(repo) -> Dict[str, Any]:
     paper_cand = int(rp.get("cand_count", 0) or 0)
     paper_dec = int(rp.get("dec_count", 0) or 0)
     freshness_reason = str(rp.get("freshness_reason") or "NONE").strip().upper() or "NONE"
+    execution_mode = str(getattr(repo, "_runtime_execution_mode", "paper") or "paper").strip().lower()
 
     return {
         "freshness": f"FRESHNESS_{overall}",
+        "execution_mode": execution_mode,
         "decision_mode": decision_mode,
         "reconcile_state": reconcile_state,
         "reconcile_allowed": reconcile_allowed,
@@ -95,7 +97,7 @@ def _require_admin_token(request: Request) -> None:
         auth = (request.headers.get("authorization") or "").strip()
         if auth.lower().startswith("bearer "):
             token = auth.split(" ", 1)[1].strip()
-    expected = (os.getenv("ADMIN_TOKEN") or "").strip()
+    expected = resolve_admin_token(getattr(request.app.state, "settings", None))
     if not expected:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

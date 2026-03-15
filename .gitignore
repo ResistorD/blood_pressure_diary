@@ -11,4 +11,6 @@ __pycache__/
 *.tar
 *.docx
 .env
-.env.*
+.env.dev
+.env.stage
+.env.live

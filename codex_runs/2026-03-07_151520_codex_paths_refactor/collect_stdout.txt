@@ -1,1 +1,0 @@
-Artifacts collected in: /home/resis/src/polysyndicate-v2/codex_runs/2026-03-07_151520_codex_paths_refactor

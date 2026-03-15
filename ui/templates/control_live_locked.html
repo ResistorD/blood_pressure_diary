@@ -1,0 +1,105 @@
+{% extends "_base.html" %}
+{% import "components/_page_header.html" as page %}
+{% import "components/_panel.html" as panel %}
+{% import "components/_badge.html" as badge %}
+{% set page_title = "Stage-0 Live Controls" %}
+{% block title %}Stage-0 Live Controls — Locked{% endblock %}
+
+{% block content %}
+  {% set p = preflight if preflight is defined and preflight else {} %}
+  {% set exm = p.get("execution_mode", "PAPER") %}
+  {% set ready = p.get("ready_for_live", false) %}
+  {% set live_exec = p.get("live_executor", false) %}
+  {% set req = p.get("live_requirements", {}) %}
+  {% set miss = p.get("live_missing", []) %}
+  {% set not_ready_reason = p.get("live_not_ready_reason", "") %}
+  {{ page.page_header("Stage-0 Live Controls", "Доступ ограничен конфигурацией admin-защиты", "") }}
+
+  {% call panel.panel("Access", "Admin protection is required before mutating controls") %}
+    <div class="status-tiles">
+      <div class="status-tile">
+        <div class="status-label">Access</div>
+        <div class="mono">{{ badge.badge("LOCKED", "danger") }}</div>
+        <div class="status-secondary">{{ lock_reason or "ADMIN_TOKEN is not configured" }}</div>
+      </div>
+      <div class="status-tile">
+        <div class="status-label">Hint</div>
+        <div class="mono">{{ badge.badge("ACTION_REQUIRED", "warning") }}</div>
+        <div class="status-secondary">{{ lock_hint or "Set ADMIN_TOKEN and restart the app." }}</div>
+      </div>
+    </div>
+    <form id="live-admin-unlock-form" class="micro-panel" style="margin-top:12px; gap:10px">
+      <div class="micro-row">
+        <div class="micro-label">Admin token</div>
+        <div class="micro-value mono" style="display:flex; gap:8px; align-items:center">
+          <input id="live-admin-token-input" class="input mono" type="password" autocomplete="off" placeholder="Enter ADMIN_TOKEN" />
+          <button class="btn btn-primary btn-sm" type="submit">Unlock</button>
+        </div>
+      </div>
+      <div class="status-secondary">Stored only in this browser (localStorage), never rendered back by server.</div>
+      <div id="live-admin-token-status" class="status-secondary" style="display:none"></div>
+    </form>
+  {% endcall %}
+
+  {% call panel.panel("Execution (read-only)", "Readiness visible even when controls are locked") %}
+    <div class="status-tiles">
+      <div class="status-tile"><div class="status-label">Execution mode</div><div class="mono">{{ badge.badge(exm, "success" if exm == "LIVE_STAGE0" else "warning") }}</div></div>
+      <div class="status-tile"><div class="status-label">Live executor</div><div class="mono">{{ badge.badge("ON" if live_exec else "OFF", "success" if live_exec else "warning") }}</div></div>
+      <div class="status-tile"><div class="status-label">Ready for live</div><div class="mono">{{ badge.badge("READY" if ready else "NOT_READY", "success" if ready else "danger") }}</div></div>
+    </div>
+  {% endcall %}
+
+  {% call panel.panel("Live executor requirements (read-only)", "Configured / missing without exposing secrets") %}
+    <div class="status-tiles requirements-grid">
+      <div class="status-tile"><div class="status-label">Execution mode (EXECUTION_MODE=live_stage0)</div><div class="mono">{{ badge.badge("YES" if req.get("execution_mode_live_stage0") else "NO", "success" if req.get("execution_mode_live_stage0") else "warning") }}</div></div>
+      <div class="status-tile"><div class="status-label">Execution enabled (PS_ENABLE_EXECUTION)</div><div class="mono">{{ badge.badge("YES" if req.get("execution_enabled") else "NO", "success" if req.get("execution_enabled") else "warning") }}</div></div>
+      <div class="status-tile"><div class="status-label">Private key (PRIVATE_KEY)</div><div class="mono">{{ badge.badge("YES" if req.get("private_key_configured") else "NO", "success" if req.get("private_key_configured") else "danger") }}</div></div>
+      <div class="status-tile"><div class="status-label">Polymarket key (POLYMARKET_KEY)</div><div class="mono">{{ badge.badge("YES" if req.get("polymarket_key_configured") else "NO", "success" if req.get("polymarket_key_configured") else "danger") }}</div></div>
+      <div class="status-tile"><div class="status-label">API URL (POLYMARKET_API_URL)</div><div class="mono">{{ badge.badge("YES" if req.get("api_url_configured") else "NO", "success" if req.get("api_url_configured") else "warning") }}</div></div>
+      <div class="status-tile"><div class="status-label">Dry run (LIVE_DRY_RUN must be OFF)</div><div class="mono">{{ badge.badge("ON" if req.get("dry_run") else "OFF", "warning" if req.get("dry_run") else "success") }}</div></div>
+      <div class="status-tile"><div class="status-label">Credential bootstrap</div><div class="mono">{{ badge.badge("OK" if req.get("credential_bootstrap_success") else "FAILED", "success" if req.get("credential_bootstrap_success") else "danger") }}</div></div>
+      <div class="status-tile"><div class="status-label">Executor buildable</div><div class="mono">{{ badge.badge("YES" if req.get("executor_buildable") else "NO", "success" if req.get("executor_buildable") else "danger") }}</div></div>
+    </div>
+    <div class="requirements-tail">
+      <div class="tail-row"><span class="mono">CREDENTIAL_BOOTSTRAP_MODE:</span> {{ req.get("credential_bootstrap_mode", "none") }}</div>
+      <div class="tail-row"><span class="mono">CREDENTIAL_ACCOUNT:</span> {{ req.get("credential_account_type", "EOA") }} (sig={{ req.get("credential_signature_type", 0) }}, chain={{ req.get("credential_chain_id", 137) }}, funder={{ "YES" if req.get("credential_funder_configured") else "NO" }})</div>
+      <div class="tail-row"><span class="mono">CREDENTIAL_BOOTSTRAP_ERROR:</span> {{ req.get("credential_bootstrap_error", "") or "NONE" }}</div>
+      <div class="tail-row"><span class="mono">LIVE_MISSING:</span> {{ (miss|join(", ")) if miss else "NONE" }}</div>
+      <div class="tail-row"><span class="mono">LIVE_NOT_READY_REASON:</span> {{ not_ready_reason or "OK" }}</div>
+    </div>
+  {% endcall %}
+{% endblock %}
+
+{% block scripts %}
+  <script>
+    (() => {
+      const form = document.getElementById("live-admin-unlock-form");
+      const input = document.getElementById("live-admin-token-input");
+      const status = document.getElementById("live-admin-token-status");
+      const setStatus = (msg, isError = false) => {
+        if (!status) return;
+        status.textContent = String(msg || "").trim();
+        status.style.display = status.textContent ? "block" : "none";
+        status.style.color = isError ? "var(--red)" : "var(--green)";
+      };
+      if (!form || !input || typeof window.psAdminTokenLoad !== "function") return;
+      input.value = window.psAdminTokenLoad();
+      form.addEventListener("submit", async (ev) => {
+        ev.preventDefault();
+        const token = String(input.value || "").trim();
+        if (!token) {
+          setStatus("Token is empty. Enter ADMIN_TOKEN.", true);
+          input.focus();
+          return;
+        }
+        const saved = window.psAdminTokenSave(token);
+        input.value = saved;
+        setStatus("Token saved. Opening Live Controls...", false);
+        const ok = await window.psOpenControlLive("/control/live");
+        if (!ok) {
+          setStatus(window.psAdminTokenLastError() || "Unlock failed.", true);
+        }
+      });
+    })();
+  </script>
+{% endblock %}

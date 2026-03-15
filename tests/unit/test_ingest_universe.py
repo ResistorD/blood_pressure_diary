@@ -72,19 +72,25 @@ def test_ingestor_uses_selected_universe():
         def __init__(self):
             self.rows = [{"id": "m1", "tokens": [{"outcome": "YES", "token_id": "t1"}]}]
             self.got_rows = None
+            self.got_hot_ids = None
 
         def fetch_universe_markets(self):
             return [
                 Market(market_id="m1", slug="m1", title="M1", close_time=None, group_key="g1"),
             ], self.rows
 
-        def fetch_snapshots(self, market_rows=None):
+        def fetch_snapshots(self, market_rows=None, hot_market_ids=None):
             self.got_rows = market_rows
+            self.got_hot_ids = set(hot_market_ids or set())
             return [
                 Snapshot(ts=datetime.now(timezone.utc), market_id="m1", outcome="YES", mid=0.5),
             ]
 
-    repo = _Repo()
+    class _CaseRepo(_Repo):
+        def list_cases(self, minutes_signals=30, minutes_snaps=10):
+            return [{"market_id": "m1"}]
+
+    repo = _CaseRepo()
     client = _Client()
     ingestor = Ingestor(repo, client)  # type: ignore[arg-type]
 
@@ -93,3 +99,34 @@ def test_ingestor_uses_selected_universe():
     assert s_cnt == 1
     assert repo.markets == ["m1"]
     assert client.got_rows == client.rows
+    assert client.got_hot_ids == {"m1"}
+
+
+def test_ingestor_hot_market_ids_fallback_on_list_cases_error():
+    class _Repo:
+        def upsert_market(self, _m):
+            return None
+
+        def insert_snapshots(self, snaps):
+            return len(snaps)
+
+        def list_cases(self, minutes_signals=30, minutes_snaps=10):
+            raise RuntimeError("list_cases broken")
+
+    class _Client:
+        def __init__(self):
+            self.hot_ids = None
+
+        def fetch_universe_markets(self):
+            return [
+                Market(market_id="m1", slug="m1", title="M1", close_time=None, group_key="g1"),
+            ], [{"id": "m1", "tokens": [{"outcome": "YES", "token_id": "t1"}]}]
+
+        def fetch_snapshots(self, market_rows=None, hot_market_ids=None):
+            self.hot_ids = set(hot_market_ids or set())
+            return [Snapshot(ts=datetime.now(timezone.utc), market_id="m1", outcome="YES", mid=0.5)]
+
+    ingestor = Ingestor(_Repo(), _Client())  # type: ignore[arg-type]
+    _m_cnt, s_cnt = ingestor.ingest()
+    assert s_cnt == 1
+    assert ingestor.client.hot_ids == set()

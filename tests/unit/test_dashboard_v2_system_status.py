@@ -5,12 +5,14 @@ from api.dashboard_v2 import _build_system_status
 
 def test_system_status_full_allowed() -> None:
     repo = SimpleNamespace(
+        _runtime_execution_mode="paper",
         _runtime_freshness_state={"overall": "OK"},
         _runtime_pipeline_stats={"decision_mode": "FULL", "cand_count": 1, "dec_count": 1, "last": "OPEN/TOP"},
         _runtime_reconcile_diag={"scheduled": 1, "allowed": 1, "skip_reason": "NONE"},
     )
     out = _build_system_status(repo)
     assert out["freshness"] == "FRESHNESS_OK"
+    assert out["execution_mode"] == "paper"
     assert out["decision_mode"] == "FULL"
     assert out["reconcile_state"] == "ALLOWED"
     assert out["open_blocked_by_freshness"] == 0

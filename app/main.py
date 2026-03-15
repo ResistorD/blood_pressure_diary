@@ -10,8 +10,12 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 import uvicorn
+from app.runtime_env import bootstrap_env
+
+_ENV_BOOTSTRAP = bootstrap_env()
 
 from api.http import create_app
+from app.runtime_config import validate_runtime_settings
 from app.settings import Settings, load_settings
 from db.repo import Repo
 from execution.polymarket_executor import ExecutorPolymarketCLOB
@@ -29,10 +33,30 @@ def _git_hash() -> str:
 def _config_hash() -> str:
     return os.getenv("CONFIG_HASH", "")
 
-# Execution mode selector: keep canonical paper flow unless EXECUTION_MODE=live.
+
+def _paper_fixed_notional_value() -> float:
+    raw = os.getenv("PS_PAPER_FIXED_NOTIONAL", os.getenv("PAPER_FIXED_NOTIONAL", "10.0"))
+    try:
+        val = float(raw)
+    except Exception:
+        return 0.0
+    return float(val) if val > 0 else 0.0
+
+# Execution mode selector: keep canonical paper flow unless EXECUTION_MODE=live_stage0.
 def build_executor(settings: Settings):
     mode = str(getattr(settings, "execution_mode", "paper")).lower()
-    if mode == "live":
+    if mode == "live_stage0":
+        validation = validate_runtime_settings(
+            settings,
+            execution_mode_raw=mode,
+            paper_fixed_notional=_paper_fixed_notional_value(),
+        )
+        if not bool(validation.get("ok")):
+            logger.warning(
+                "CONFIG_VALIDATION live executor disabled: %s",
+                ",".join(validation.get("errors", [])[:4]) or "invalid runtime config",
+            )
+            return None
         return ExecutorPolymarketCLOB()
     return None
 
@@ -158,9 +182,23 @@ def _resolve_db_path(settings: Settings) -> str:
 def main() -> None:
     settings = load_settings()
     log = logger
-    if str(getattr(settings, "execution_mode", "paper")).lower() == "live":
+    log.info(
+        "CONFIG_PROFILE profile=%s source=%s env_files=%s",
+        getattr(settings, "runtime_profile", _ENV_BOOTSTRAP.profile),
+        _ENV_BOOTSTRAP.source,
+        ",".join(_ENV_BOOTSTRAP.loaded_files) or "(none)",
+    )
+    validation = getattr(settings, "startup_validation", None)
+    if isinstance(validation, dict):
+        status = "OK" if bool(validation.get("ok")) else "FAILED"
+        log.info("CONFIG_VALIDATION status=%s", status)
+        for item in validation.get("warnings", []) or []:
+            log.warning("CONFIG_WARNING %s", item)
+        for item in validation.get("errors", []) or []:
+            log.error("CONFIG_ERROR %s", item)
+    if str(getattr(settings, "execution_mode", "paper")).lower() == "live_stage0":
         log.warning(
-            "LIVE mode selected; executor safeguards enabled; dry_run=%s",
+            "LIVE_STAGE0 mode selected; executor safeguards enabled; dry_run=%s",
             getattr(settings, "live_dry_run", True),
         )
 
@@ -212,12 +250,14 @@ def main() -> None:
             setattr(loop_obj, "executor", executor)
         except Exception:
             logger.warning("failed to attach executor to dispatcher", exc_info=True)
+            executor = None
 
     t = threading.Thread(target=target, name="dispatcher", daemon=False)
     t.start()
     dispatcher_handle = DispatcherHandle(loop_obj=loop_obj, thread=t)
 
     app = create_app(settings=settings, repo=repo, bus=bus)
+    app.state.dispatcher_loop = loop_obj
     app.state.executor = executor
     @app.on_event("shutdown")
     def _stop_dispatcher() -> None:

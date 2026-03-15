@@ -26,6 +26,7 @@ from execution.reconcile import reconcile_paper
 from app.risk_gate import RiskGate
 from dispatcher.contract import Dispatcher
 from agents.auto_paper_agent import get_auto_paper_agent
+from utils.orderbook_math import calc_depth
 from dispatcher.freshness import (
     STATE_OK,
     STATE_STOP,
@@ -34,6 +35,15 @@ from dispatcher.freshness import (
     max_severity as freshness_max_severity,
 )
 from dispatcher.paper_decision_pipeline import run_paper_pipeline
+from dispatcher.paper_decision_pipeline import (
+    _mm_threshold,
+    _paper_min_similarity,
+    _parse_mm_payload,
+    _parse_strategy_kind,
+    _parse_opportunity_key,
+    _parse_similarity,
+    _scout_pool_size,
+)
 
 log = logging.getLogger("dispatcher.loop")
 
@@ -128,6 +138,12 @@ class MainLoop:
             self._ingest_max_block_ms = float(os.getenv("PS_INGEST_MAX_BLOCK_MS", "0") or 0.0)
         except Exception:
             self._ingest_max_block_ms = 0.0
+        try:
+            self._ingest_block_guard_skip_cap = int(os.getenv("PS_INGEST_BLOCK_GUARD_SKIP_CAP", "3") or 3)
+        except Exception:
+            self._ingest_block_guard_skip_cap = 3
+        self._ingest_block_guard_skip_cap = max(1, int(self._ingest_block_guard_skip_cap))
+        self._ingest_block_guard_skips = 0
         self._last_ingest_wall_ms = 0.0
         self._next_book_ts = 0.0
         self._book_failures = 0
@@ -231,13 +247,30 @@ class MainLoop:
             "paper_reason_counts": {},
             "paper_action_counts": {},
             "hold_reason_counts": {},
+            "mm_markets_raw": 0,
+            "mm_markets_eligible": 0,
+            "mm_candidates_found": 0,
+            "mm_decision_accepted": 0,
+            "mm_orders_placed": 0,
+            "mm_probe_bypass_untradeable": 0,
+            "mm_probe_orders_attempted": 0,
+            "mm_probe_orders_failed": 0,
+            "mm_probe_orders_filled": 0,
+            "mm_final_probe_candidates_seen": 0,
+            "mm_final_probe_candidates_selected": 0,
+            "mm_final_probe_orders_attempted": 0,
+            "mm_final_probe_orders_failed": 0,
         }
         self._paper_pipeline_ctx: Dict[str, Any] = {
             "last_signature": "",
             "last_consumed_scout_key": "",
             "last_consumed_opportunity_key": "",
+            "cluster_mode": "NONE",
             "run_id": run_id,
         }
+        self._live_stage0_last_submit_signature = ""
+        self._mm_probe_prev_stats: Dict[str, int] = {"placed": 0, "filled": 0, "canceled": 0}
+        self._live_stage0_untradeable_suppression: Dict[str, Dict[str, Any]] = {}
         self._wal_ck_enabled = str(os.getenv("PS_WAL_CHECKPOINT_ENABLED", "1")).strip() != "0"
         try:
             self._wal_ck_every_s = max(1.0, float(os.getenv("PS_WAL_CHECKPOINT_EVERY_S", "60") or 60.0))
@@ -331,6 +364,72 @@ class MainLoop:
                     else:
                         diag["logic_pass"] = int(diag.get("logic_pass", 0) or 0) + 1
 
+    def _merge_mm_scan_diag(self, agent: Any) -> None:
+        stats = getattr(agent, "_last_mm_scan_stats", None)
+        if not isinstance(stats, dict):
+            return
+        diag = self._iter_decision_diag
+        diag["mm_markets_raw"] = int(stats.get("raw_markets_count", diag.get("mm_markets_raw", 0)) or 0)
+        diag["mm_markets_eligible"] = int(stats.get("eligible_markets_count", diag.get("mm_markets_eligible", 0)) or 0)
+        diag["mm_candidates_found"] = int(stats.get("candidates_found", diag.get("mm_candidates_found", 0)) or 0)
+
+    def _current_mm_probe_deltas(self) -> Dict[str, int]:
+        current = {"placed": 0, "filled": 0, "canceled": 0}
+        executor = getattr(self, "executor", None)
+        if executor is not None and callable(getattr(executor, "get_mm_probe_stats", None)):
+            try:
+                raw = executor.get_mm_probe_stats() or {}
+                current = {
+                    "placed": int(raw.get("placed", 0) or 0),
+                    "filled": int(raw.get("filled", 0) or 0),
+                    "canceled": int(raw.get("canceled", 0) or 0),
+                }
+            except Exception:
+                current = {"placed": 0, "filled": 0, "canceled": 0}
+        prev = getattr(self, "_mm_probe_prev_stats", None)
+        if not isinstance(prev, dict):
+            prev = {"placed": 0, "filled": 0, "canceled": 0}
+        delta = {
+            key: max(0, int(current.get(key, 0) or 0) - int(prev.get(key, 0) or 0))
+            for key in ("placed", "filled", "canceled")
+        }
+        self._mm_probe_prev_stats = current
+        return delta
+
+    def _emit_mm_probe_summary(self) -> None:
+        diag = getattr(self, "_iter_decision_diag", None) or {}
+        deltas = self._current_mm_probe_deltas()
+        if isinstance(diag, dict):
+            diag["mm_probe_orders_filled"] = int(deltas.get("filled", 0) or 0)
+        log.info(
+            "MM_PROBE_SUMMARY raw_markets=%s eligible_markets=%s candidates=%s "
+            "probe_bypass_untradeable=%s orders_attempted=%s orders_failed=%s "
+            "orders_filled=%s orders_canceled=%s",
+            int(diag.get("mm_markets_raw", 0) or 0),
+            int(diag.get("mm_markets_eligible", 0) or 0),
+            int(diag.get("mm_candidates_found", 0) or 0),
+            int(diag.get("mm_probe_bypass_untradeable", 0) or 0),
+            int(diag.get("mm_probe_orders_attempted", 0) or 0),
+            int(diag.get("mm_probe_orders_failed", 0) or 0),
+            int(deltas.get("filled", 0) or 0),
+            int(deltas.get("canceled", 0) or 0),
+        )
+
+    def _emit_mm_final_probe_summary(self) -> None:
+        diag = getattr(self, "_iter_decision_diag", None) or {}
+        deltas = self._current_mm_probe_deltas()
+        log.info(
+            "MM_FINAL_PROBE_SUMMARY candidates_seen=%s candidates_selected=%s orders_attempted=%s "
+            "orders_placed=%s orders_filled=%s orders_canceled=%s orders_failed=%s",
+            int(diag.get("mm_final_probe_candidates_seen", 0) or 0),
+            int(diag.get("mm_final_probe_candidates_selected", 0) or 0),
+            int(diag.get("mm_final_probe_orders_attempted", 0) or 0),
+            int(deltas.get("placed", 0) or 0),
+            int(deltas.get("filled", 0) or 0),
+            int(deltas.get("canceled", 0) or 0),
+            int(diag.get("mm_final_probe_orders_failed", 0) or 0),
+        )
+
     def _count_live_cases_for_diag(self) -> int:
         try:
             rows = self.repo.list_cases(minutes_signals=30, minutes_snaps=10) or []
@@ -413,12 +512,1575 @@ class MainLoop:
         action = str(out.get("paper_action", "") or "").strip().upper()
         if action != "OPEN":
             return out, 0
+        if str(out.get("paper_strategy") or "").strip().upper() == "MM":
+            mm_score = out.get("mm_score")
+            log.info(
+                "MM_DECISION_REJECTED market_id=%s mm_score=%s threshold=%.6f reject_reason=FRESHNESS_BLOCK",
+                str(out.get("paper_market_id") or out.get("ref_id") or "").strip() or "-",
+                "-" if mm_score is None else f"{float(mm_score):.6f}",
+                float(_mm_threshold()),
+            )
         out["paper_action"] = "HOLD"
         out["paper_reason"] = "FRESHNESS_WARN_OPEN_BLOCKED"
         out["last"] = "HOLD/FRESHNESS_WARN_OPEN_BLOCKED"
         out["dec_count"] = 0
         out["freshness_reason"] = "FRESHNESS_WARN_OPEN_BLOCKED"
         return out, 1
+
+    @staticmethod
+    def _parse_open_market_id_from_pipe(pipe: Dict[str, Any]) -> str:
+        market_id = str(pipe.get("paper_market_id") or pipe.get("ref_id") or "").strip()
+        if market_id:
+            return market_id
+        sig = str(pipe.get("dedup_signature") or "").strip()
+        if not sig:
+            return ""
+        parts = sig.split("|", 2)
+        if len(parts) != 3:
+            return ""
+        return str(parts[2] or "").strip()
+
+    def _resolve_stage0_token_id(self, market_id: str, outcome: str = "YES") -> str:
+        out = str(outcome or "YES").strip().upper() or "YES"
+        mid = str(market_id or "").strip()
+        if not mid:
+            return ""
+        try:
+            with self.repo.conn() as con:
+                row = con.execute("SELECT raw_json FROM markets WHERE market_id = ? LIMIT 1", (mid,)).fetchone()
+            raw_json = str((row["raw_json"] if row and isinstance(row, dict) else (row[0] if row else "")) or "")
+            if not raw_json:
+                return mid
+            raw = json.loads(raw_json)
+            tokens = _extract_tokens_from_row(raw)
+            if not tokens:
+                return mid
+            fallback = ""
+            for t in tokens:
+                tid = (
+                    t.get("token_id")
+                    or t.get("tokenId")
+                    or t.get("clobTokenId")
+                    or t.get("clob_token_id")
+                    or t.get("id")
+                )
+                if tid is None:
+                    continue
+                tok_out = str(t.get("outcome") or "").strip().upper()
+                tid_s = str(tid).strip()
+                if not tid_s:
+                    continue
+                if not fallback:
+                    fallback = tid_s
+                if tok_out == out:
+                    return tid_s
+            return fallback or mid
+        except Exception:
+            return mid
+
+    def _resolve_stage0_order_price(self, market_id: str, outcome: str = "YES", token_id: str = "") -> Optional[float]:
+        out = str(outcome or "YES").strip().upper() or "YES"
+        tid = str(token_id or "").strip() or "-"
+        log.info("PIPE_OPEN_BRIDGE_PRICE_LOOKUP market_id=%s outcome=%s token_id=%s", market_id, out, tid)
+        try:
+            snaps = self._latest_snapshots_by_outcome(market_id)
+            q: Dict[str, Any] = {}
+            snapshot_outcome_key = "-"
+            if isinstance(snaps, dict):
+                direct = snaps.get(out)
+                if isinstance(direct, dict):
+                    q = direct
+                    snapshot_outcome_key = out
+                else:
+                    for k, v in snaps.items():
+                        if str(k or "").strip().upper() == out and isinstance(v, dict):
+                            q = v
+                            snapshot_outcome_key = str(k or "").strip() or out
+                            break
+            ask = q.get("ask")
+            bid = q.get("bid")
+            mid = q.get("mid")
+            book_found = 0
+            book_best_ask: Any = None
+            book_mid: Any = None
+            if hasattr(self.repo, "get_latest_orderbook_snapshot"):
+                try:
+                    ob = self.repo.get_latest_orderbook_snapshot(market_id)
+                except Exception:
+                    ob = None
+                if isinstance(ob, dict):
+                    book_found = 1
+                    book_best_ask = ob.get("best_ask")
+                    book_mid = ob.get("mid")
+
+            log.info(
+                "PIPE_OPEN_BRIDGE_PRICE_SOURCE market_id=%s outcome=%s token_id=%s snapshot_found=%s "
+                "snapshot_outcome_key=%s book_found=%s ask=%s bid=%s mid=%s book_best_ask=%s book_mid=%s",
+                market_id,
+                out,
+                tid,
+                int(bool(q)),
+                snapshot_outcome_key,
+                int(book_found),
+                str(ask if ask is not None else "-"),
+                str(bid if bid is not None else "-"),
+                str(mid if mid is not None else "-"),
+                str(book_best_ask if book_best_ask is not None else "-"),
+                str(book_mid if book_mid is not None else "-"),
+            )
+            for src, raw in (
+                ("SNAPSHOT_ASK", ask),
+                ("SNAPSHOT_MID", mid),
+                ("ORDERBOOK_BEST_ASK", book_best_ask),
+                ("ORDERBOOK_MID", book_mid),
+            ):
+                try:
+                    p = float(raw)
+                    if 0.0 < p < 1.0:
+                        log.info(
+                            "PIPE_OPEN_BRIDGE_PRICE_RESOLVED market_id=%s outcome=%s token_id=%s source=%s price=%.6f",
+                            market_id,
+                            out,
+                            tid,
+                            src,
+                            p,
+                        )
+                        return p
+                except Exception:
+                    continue
+            log.warning(
+                "PIPE_OPEN_BRIDGE_PRICE_SKIP reason=NO_VALID_PRICE market_id=%s outcome=%s token_id=%s",
+                market_id,
+                out,
+                tid,
+            )
+            return None
+        except Exception:
+            log.exception(
+                "PIPE_OPEN_BRIDGE_PRICE_SKIP reason=PRICE_LOOKUP_EXCEPTION market_id=%s outcome=%s token_id=%s",
+                market_id,
+                out,
+                tid,
+            )
+            return None
+
+    def _resolve_stage0_order_qty(self, price: float) -> Optional[float]:
+        if not (price > 0.0):
+            return None
+        try:
+            fixed_notional = float(getattr(self.settings, "paper_fixed_notional", 0.0) or 0.0)
+        except Exception:
+            fixed_notional = 0.0
+        if fixed_notional <= 0.0:
+            fixed_notional = 1.0
+        try:
+            min_submit_notional = float(
+                getattr(self.settings, "live_stage0_min_submit_notional", 0.0)
+                or os.getenv("PS_LIVE_STAGE0_MIN_SUBMIT_NOTIONAL", os.getenv("LIVE_STAGE0_MIN_SUBMIT_NOTIONAL", "1.05"))
+                or 1.05
+            )
+        except Exception:
+            min_submit_notional = 1.05
+        # Keep stage-0 orders safely above Polymarket's $1 marketable BUY minimum.
+        target_notional = max(float(fixed_notional), float(min_submit_notional))
+        qty = target_notional / float(price)
+        if qty <= 0.0:
+            return None
+        return float(qty)
+
+    def _live_exec_style(self) -> str:
+        raw = getattr(self.settings, "live_exec_style", None)
+        if raw is None:
+            raw = os.getenv("PS_LIVE_EXEC_STYLE", os.getenv("LIVE_EXEC_STYLE", "human_limit"))
+        style = str(raw or "human_limit").strip().lower()
+        if style in {"direct", "legacy"}:
+            return "direct"
+        return "human_limit"
+
+    @staticmethod
+    def _env_float(name: str, default: float) -> float:
+        try:
+            return float(os.getenv(name, str(default)) or default)
+        except Exception:
+            return float(default)
+
+    @staticmethod
+    def _safe_float(value: Any) -> Optional[float]:
+        try:
+            out = float(value)
+        except Exception:
+            return None
+        if out != out:
+            return None
+        return out
+
+    @staticmethod
+    def _clamp_price(price: float) -> float:
+        return max(0.001, min(0.999, round(float(price), 6)))
+
+    def _latest_stage0_orderbook(self, market_id: str) -> dict:
+        repo = getattr(self, "repo", None)
+        getter = getattr(repo, "get_latest_orderbook_snapshot", None)
+        if not callable(getter):
+            return {}
+        try:
+            row = getter(market_id) or {}
+            return row if isinstance(row, dict) else {}
+        except Exception:
+            log.exception("HUMAN_ORDER_SKIP reason=ORDERBOOK_LOOKUP_EXCEPTION market_id=%s", market_id)
+            return {}
+
+    def _build_human_limit_order_plan(self, market_id: str, outcome: str, token_id: str) -> Optional[dict[str, Any]]:
+        outcome_u = str(outcome or "YES").strip().upper() or "YES"
+        snaps = self._latest_snapshots_by_outcome(market_id)
+        quote = {}
+        for key, row in (snaps or {}).items():
+            if str(key or "").strip().upper() == outcome_u:
+                quote = row if isinstance(row, dict) else {}
+                break
+        if not quote:
+            log.info(
+                "HUMAN_ORDER_PLACE_FAIL market_id=%s token_id=%s reason=NO_SNAPSHOT outcome=%s",
+                market_id,
+                token_id,
+                outcome_u,
+            )
+            return None
+
+        bid = self._safe_float(quote.get("bid"))
+        ask = self._safe_float(quote.get("ask"))
+        mid = self._safe_float(quote.get("mid"))
+        spread = self._safe_float(quote.get("spread"))
+        liquidity = self._safe_float(quote.get("liquidity"))
+        book = self._latest_stage0_orderbook(market_id)
+        book_bid = self._safe_float(book.get("best_bid"))
+        book_ask = self._safe_float(book.get("best_ask"))
+        book_mid = self._safe_float(book.get("mid"))
+
+        asks = []
+        try:
+            asks = json.loads(book.get("asks_json") or "[]")
+        except Exception:
+            asks = []
+        ask_levels = [lvl for lvl in asks if isinstance(lvl, dict)]
+
+        ask_candidates = [x for x in (book_ask, ask) if x is not None and 0.0 < x < 1.0]
+        bid_candidates = [x for x in (book_bid, bid) if x is not None and 0.0 < x < 1.0]
+        mid_candidates = [x for x in (mid, book_mid) if x is not None and 0.0 < x < 1.0]
+        if not ask_candidates or not bid_candidates:
+            log.info(
+                "HUMAN_ORDER_PLACE_FAIL market_id=%s token_id=%s reason=INSUFFICIENT_PRICE_DATA outcome=%s",
+                market_id,
+                token_id,
+                outcome_u,
+            )
+            return None
+
+        ref_ask = min(ask_candidates)
+        ref_bid = max(bid_candidates)
+        ref_mid = mid_candidates[0] if mid_candidates else ((ref_bid + ref_ask) / 2.0)
+        eff_spread = spread if spread is not None and spread > 0.0 else (ref_ask - ref_bid)
+
+        max_spread = self._env_float("PS_LIVE_HUMAN_MAX_SPREAD", 0.035)
+        min_price = self._env_float("PS_LIVE_HUMAN_MIN_PRICE", 0.03)
+        max_price = self._env_float("PS_LIVE_HUMAN_MAX_PRICE", 0.97)
+        tick_size = self._env_float("PS_LIVE_HUMAN_TICK_SIZE", 0.001)
+        min_submit_notional = self._env_float("PS_LIVE_HUMAN_MIN_NOTIONAL", 2.0)
+        ttl_seconds = max(0.0, self._env_float("PS_LIVE_HUMAN_TTL_SEC", 15.0))
+        depth_pct = max(0.001, self._env_float("PS_LIVE_HUMAN_DEPTH_PCT", 0.03))
+        depth_multiple = max(1.0, self._env_float("PS_LIVE_HUMAN_MIN_DEPTH_MULTIPLE", 1.25))
+
+        try:
+            target_notional = float(getattr(self.settings, "paper_fixed_notional", 0.0) or 0.0)
+        except Exception:
+            target_notional = 0.0
+        if target_notional <= 0.0:
+            target_notional = 1.0
+
+        if target_notional < min_submit_notional:
+            original_notional = float(target_notional)
+            target_notional = float(min_submit_notional)
+            log.info(
+                "HUMAN_LIMIT_NOTIONAL_UPSCALED market_id=%s token_id=%s original_notional=%.6f adjusted_notional=%.6f min_notional=%.6f",
+                market_id,
+                token_id,
+                original_notional,
+                target_notional,
+                min_submit_notional,
+            )
+
+        risk_cfg = getattr(self.settings, "risk", None)
+        cap_candidates = [
+            self._safe_float(getattr(self.settings, "live_max_notional", None)),
+            self._safe_float(getattr(risk_cfg, "max_notional_total", None)),
+        ]
+        positive_caps = [x for x in cap_candidates if x is not None and x > 0.0]
+        available_capital = min(positive_caps) if positive_caps else target_notional
+        if available_capital < target_notional:
+            log.info(
+                "HUMAN_ORDER_PLACE_FAIL market_id=%s token_id=%s reason=CAPITAL_TOO_SMALL available_capital=%.6f target_notional=%.6f",
+                market_id,
+                token_id,
+                available_capital,
+                target_notional,
+            )
+            return None
+
+        if not (0.0 < ref_bid < ref_ask < 1.0) or eff_spread <= 0.0 or eff_spread > max_spread:
+            log.info(
+                "HUMAN_ORDER_PLACE_FAIL market_id=%s token_id=%s reason=SPREAD_OR_PRICE_INVALID bid=%.6f ask=%.6f spread=%.6f max_spread=%.6f",
+                market_id,
+                token_id,
+                ref_bid,
+                ref_ask,
+                eff_spread,
+                max_spread,
+            )
+            return None
+
+        if ref_bid <= min_price or ref_ask >= max_price or ref_mid <= min_price or ref_mid >= max_price:
+            log.info(
+                "HUMAN_ORDER_PLACE_FAIL market_id=%s token_id=%s reason=PATHOLOGICAL_BOUNDARY bid=%.6f ask=%.6f mid=%.6f min_price=%.6f max_price=%.6f",
+                market_id,
+                token_id,
+                ref_bid,
+                ref_ask,
+                ref_mid,
+                min_price,
+                max_price,
+            )
+            return None
+
+        ask_depth_notional = calc_depth(ask_levels, ref_mid, depth_pct, "ask") if ask_levels else 0.0
+        visible_liquidity = max(float(liquidity or 0.0), float(ask_depth_notional or 0.0))
+        min_visible_liquidity = max(target_notional * depth_multiple, min_submit_notional * depth_multiple)
+        if visible_liquidity < min_visible_liquidity:
+            log.info(
+                "HUMAN_ORDER_PLACE_FAIL market_id=%s token_id=%s reason=INSUFFICIENT_VISIBLE_LIQUIDITY visible_liquidity=%.6f min_visible=%.6f",
+                market_id,
+                token_id,
+                visible_liquidity,
+                min_visible_liquidity,
+            )
+            return None
+
+        if available_capital < (target_notional * 2.0):
+            log.info(
+                "HUMAN_ORDER_SINGLE_LEG_SMOKE market_id=%s token_id=%s available_capital=%.6f target_notional=%.6f paired_affordable=0",
+                market_id,
+                token_id,
+                available_capital,
+                target_notional,
+            )
+
+        limit_price = self._clamp_price(max(ref_bid, ref_ask - tick_size))
+        if not (0.0 < limit_price < ref_ask < 1.0):
+            log.info(
+                "HUMAN_ORDER_PLACE_FAIL market_id=%s token_id=%s reason=NON_PASSIVE_LIMIT price=%.6f bid=%.6f ask=%.6f",
+                market_id,
+                token_id,
+                limit_price,
+                ref_bid,
+                ref_ask,
+            )
+            return None
+        qty = target_notional / limit_price
+        if qty <= 0.0:
+            log.info("HUMAN_ORDER_PLACE_FAIL market_id=%s token_id=%s reason=BAD_QTY", market_id, token_id)
+            return None
+        return {
+            "price": float(limit_price),
+            "qty": float(qty),
+            "notional": float(qty * limit_price),
+            "ttl_seconds": ttl_seconds,
+            "visible_liquidity": float(visible_liquidity),
+            "spread": float(eff_spread),
+            "reference_ask": float(ref_ask),
+            "reference_bid": float(ref_bid),
+            "single_leg_smoke_mode": int(available_capital < (target_notional * 2.0)),
+        }
+
+    def _live_stage0_market_untradeable_reason(
+        self,
+        market_id: str,
+        outcome: str,
+        token_id: str,
+    ) -> tuple[str, Optional[float], Optional[float], Optional[float]]:
+        outcome_u = str(outcome or "YES").strip().upper() or "YES"
+        snaps = self._latest_snapshots_by_outcome(market_id)
+        quote = {}
+        for key, row in (snaps or {}).items():
+            if str(key or "").strip().upper() == outcome_u:
+                quote = row if isinstance(row, dict) else {}
+                break
+
+        bid = self._safe_float(quote.get("bid"))
+        ask = self._safe_float(quote.get("ask"))
+        spread = self._safe_float(quote.get("spread"))
+        book = self._latest_stage0_orderbook(market_id)
+        book_bid = self._safe_float(book.get("best_bid"))
+        book_ask = self._safe_float(book.get("best_ask"))
+
+        ref_bid = book_bid if book_bid is not None else bid
+        ref_ask = book_ask if book_ask is not None else ask
+        eff_spread = spread if spread is not None and spread > 0.0 else None
+        if eff_spread is None and ref_bid is not None and ref_ask is not None:
+            eff_spread = ref_ask - ref_bid
+
+        max_spread = self._env_float("PS_LIVE_HUMAN_MAX_SPREAD", 0.035)
+        min_price = self._env_float("PS_LIVE_HUMAN_MIN_PRICE", 0.03)
+        max_price = self._env_float("PS_LIVE_HUMAN_MAX_PRICE", 0.97)
+
+        reason = ""
+        if ref_bid is None or ref_ask is None:
+            reason = "MISSING_BOOK"
+        elif not (0.0 < ref_bid < ref_ask < 1.0):
+            reason = "INVALID_BOOK"
+        elif ref_bid <= 0.01 or ref_ask >= 0.99:
+            reason = "BOUNDARY_BOOK"
+        elif eff_spread is None or eff_spread <= 0.0 or eff_spread > max_spread:
+            reason = "WIDE_SPREAD"
+        elif ref_bid <= min_price or ref_ask >= max_price:
+            reason = "BOUNDARY_BOOK"
+        return reason, ref_bid, ref_ask, eff_spread
+
+    @staticmethod
+    def _mm_probe_allow_untradeable() -> bool:
+        raw = str(os.getenv("PS_MM_PROBE_ALLOW_UNTRADEABLE", "false") or "false").strip().lower()
+        return raw in {"1", "true", "yes", "on"}
+
+    @staticmethod
+    def _mm_final_probe_enabled() -> bool:
+        raw = str(os.getenv("PS_MM_FINAL_PROBE", "false") or "false").strip().lower()
+        return raw in {"1", "true", "yes", "on"}
+
+    def _mm_probe_post_side(self, pipe: Dict[str, Any]) -> str:
+        bid = self._safe_float((pipe or {}).get("mm_bid"))
+        ask = self._safe_float((pipe or {}).get("mm_ask"))
+        if bid is None and ask is not None:
+            return "SELL"
+        if ask is None and bid is not None:
+            return "BUY"
+        return "BOTH"
+
+    def _is_live_stage0_market_tradeable(self, market_id: str, outcome: str, token_id: str) -> bool:
+        outcome_u = str(outcome or "YES").strip().upper() or "YES"
+        reason, ref_bid, ref_ask, eff_spread = self._live_stage0_market_untradeable_reason(
+            market_id,
+            outcome_u,
+            token_id,
+        )
+
+        if reason:
+            log.info(
+                "LIVE_STAGE0_MARKET_UNTRADEABLE market_id=%s token_id=%s outcome=%s bid=%s ask=%s spread=%s reason=%s",
+                market_id,
+                token_id,
+                outcome_u,
+                "-" if ref_bid is None else f"{ref_bid:.6f}",
+                "-" if ref_ask is None else f"{ref_ask:.6f}",
+                "-" if eff_spread is None else f"{eff_spread:.6f}",
+                reason,
+            )
+            return False
+        return True
+
+    def _live_stage0_untradeable_key(self, pipe: Dict[str, Any], market_id: str, outcome: str, token_id: str) -> str:
+        opportunity_key = str(pipe.get("opportunity_key", "") or "").strip()
+        if opportunity_key:
+            return f"opp:{opportunity_key}"
+        return f"mkt:{market_id}|tok:{token_id}|out:{str(outcome or 'YES').strip().upper() or 'YES'}"
+
+    def _live_stage0_untradeable_cooldown_sec(self) -> float:
+        return max(1.0, self._env_float("PS_LIVE_STAGE0_UNTRADEABLE_COOLDOWN_SEC", 300.0))
+
+    def _prune_live_stage0_untradeable_suppression(self, now_mono: float) -> None:
+        store = getattr(self, "_live_stage0_untradeable_suppression", None)
+        if not isinstance(store, dict) or not store:
+            return
+        cooldown = self._live_stage0_untradeable_cooldown_sec()
+        stale_keys = [
+            key for key, item in store.items()
+            if (now_mono - float((item or {}).get("ts_mono", 0.0) or 0.0)) >= cooldown
+        ]
+        for key in stale_keys:
+            store.pop(key, None)
+
+    def _is_live_stage0_untradeable_suppressed(
+        self,
+        pipe: Dict[str, Any],
+        market_id: str,
+        outcome: str,
+        token_id: str,
+    ) -> bool:
+        now_mono = time.monotonic()
+        self._prune_live_stage0_untradeable_suppression(now_mono)
+        key = self._live_stage0_untradeable_key(pipe, market_id, outcome, token_id)
+        store = getattr(self, "_live_stage0_untradeable_suppression", None)
+        if not isinstance(store, dict):
+            return False
+        item = store.get(key) or {}
+        if not item:
+            return False
+        age_sec = max(0.0, now_mono - float(item.get("ts_mono", 0.0) or 0.0))
+        cooldown = self._live_stage0_untradeable_cooldown_sec()
+        if age_sec >= cooldown:
+            store.pop(key, None)
+            return False
+        log.info(
+            "LIVE_STAGE0_CANDIDATE_SUPPRESSED market_id=%s token_id=%s outcome=%s suppression_key=%s age_sec=%.3f cooldown_sec=%.3f reason=%s",
+            market_id,
+            token_id,
+            str(outcome or "YES").strip().upper() or "YES",
+            key,
+            age_sec,
+            cooldown,
+            str(item.get("reason") or "UNTRADEABLE_MARKET").strip() or "UNTRADEABLE_MARKET",
+        )
+        return True
+
+    def _record_live_stage0_untradeable_suppression(
+        self,
+        pipe: Dict[str, Any],
+        market_id: str,
+        outcome: str,
+        token_id: str,
+        reason: str,
+    ) -> None:
+        now_mono = time.monotonic()
+        self._prune_live_stage0_untradeable_suppression(now_mono)
+        store = getattr(self, "_live_stage0_untradeable_suppression", None)
+        if not isinstance(store, dict):
+            self._live_stage0_untradeable_suppression = {}
+            store = self._live_stage0_untradeable_suppression
+        key = self._live_stage0_untradeable_key(pipe, market_id, outcome, token_id)
+        store[key] = {
+            "ts_mono": now_mono,
+            "reason": str(reason or "UNTRADEABLE_MARKET").strip().upper() or "UNTRADEABLE_MARKET",
+        }
+
+    def _apply_live_stage0_untradeable_suppression_to_pipe(self, pipe: Dict[str, Any]) -> Dict[str, Any]:
+        out = dict(pipe or {})
+        mode = str(getattr(self.settings, "execution_mode", "paper") or "paper").strip().lower()
+        if mode != "live_stage0" or self._live_exec_style() != "human_limit":
+            return out
+        action = str(out.get("paper_action", "") or "").strip().upper()
+        if action != "OPEN":
+            return out
+        market_id = self._parse_open_market_id_from_pipe(out)
+        if not market_id:
+            return out
+        outcome = str(out.get("paper_outcome", "YES") or "YES").strip().upper() or "YES"
+        token_id = self._resolve_stage0_token_id(market_id, outcome)
+        if not token_id:
+            return out
+        if not self._is_live_stage0_untradeable_suppressed(out, market_id, outcome, token_id):
+            return out
+        out["paper_action"] = "HOLD"
+        out["paper_reason"] = "UNTRADEABLE_COOLDOWN"
+        out["last"] = "HOLD/UNTRADEABLE_COOLDOWN"
+        out["paper_source"] = "live_stage0.untradeable_cooldown"
+        out["selected"] = 0
+        out["open_blocked_by_untradeable_cooldown"] = 1
+        log.info(
+            "LIVE_STAGE0_PIPE_SUPPRESSED market_id=%s token_id=%s outcome=%s reason=UNTRADEABLE_COOLDOWN",
+            market_id,
+            token_id,
+            outcome,
+        )
+        return out
+
+    def _pending_scout_signal_rows(self) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for signal in list(getattr(self, "_iter_signals_buf", []) or []):
+            agent_id = str(getattr(signal, "agent_id", "") or "").strip().lower()
+            market_id = str(getattr(signal, "scope_market_id", "") or "").strip()
+            if not market_id or not agent_id.startswith("scout"):
+                continue
+            ts = getattr(signal, "ts", None)
+            if isinstance(ts, datetime):
+                signal_ts = ts.astimezone(timezone.utc).isoformat(timespec="seconds")
+            else:
+                signal_ts = str(ts or "").strip()
+            claim = getattr(signal, "claim", {})
+            features = getattr(signal, "features", {})
+            try:
+                claim_json = json.dumps(claim if isinstance(claim, dict) else {}, ensure_ascii=False)
+            except Exception:
+                claim_json = "{}"
+            try:
+                features_json = json.dumps(features if isinstance(features, dict) else {}, ensure_ascii=False)
+            except Exception:
+                features_json = "{}"
+            rows.append(
+                {
+                    "signal_rowid": 0,
+                    "signal_ts": signal_ts,
+                    "market_id": market_id,
+                    "claim_json": claim_json,
+                    "features_json": features_json,
+                    "signal_origin": "pending_iter_scout",
+                }
+            )
+        return rows
+
+    def _live_stage0_current_generation_rows(self) -> list[dict[str, Any]]:
+        pending_rows = self._pending_scout_signal_rows()
+        current_ts = max((str(row.get("signal_ts") or "") for row in pending_rows), default="")
+        db_rows: list[dict[str, Any]] = []
+        if not current_ts:
+            with self.repo.conn() as con:
+                latest_cur = con.execute(
+                    """
+                    SELECT MAX(ts) AS latest_ts
+                    FROM signals
+                    WHERE scope_market_id IS NOT NULL
+                      AND scope_market_id <> ''
+                      AND lower(agent_id) LIKE 'scout%'
+                    """
+                )
+                try:
+                    latest = latest_cur.fetchone()
+                except Exception:
+                    latest_rows = latest_cur.fetchall()
+                    latest = latest_rows[0] if latest_rows else None
+                if latest is not None:
+                    try:
+                        current_ts = str(latest["latest_ts"] or "").strip()
+                    except Exception:
+                        current_ts = ""
+                if current_ts:
+                    db_rows = con.execute(
+                        """
+                        SELECT
+                          rowid AS signal_rowid,
+                          ts AS signal_ts,
+                          scope_market_id AS market_id,
+                          claim_json,
+                          features_json,
+                          'signals.latest_scout_generation' AS signal_origin
+                        FROM signals
+                        WHERE scope_market_id IS NOT NULL
+                          AND scope_market_id <> ''
+                          AND lower(agent_id) LIKE 'scout%'
+                          AND ts = ?
+                        ORDER BY rowid DESC
+                        """,
+                        (current_ts,),
+                    ).fetchall()
+        else:
+            with self.repo.conn() as con:
+                db_rows = con.execute(
+                    """
+                    SELECT
+                      rowid AS signal_rowid,
+                      ts AS signal_ts,
+                      scope_market_id AS market_id,
+                      claim_json,
+                      features_json,
+                      'signals.latest_scout_generation' AS signal_origin
+                    FROM signals
+                    WHERE scope_market_id IS NOT NULL
+                      AND scope_market_id <> ''
+                      AND lower(agent_id) LIKE 'scout%'
+                      AND ts = ?
+                    ORDER BY rowid DESC
+                    """,
+                    (current_ts,),
+                ).fetchall()
+        rows = [row for row in pending_rows if str(row.get("signal_ts") or "") == current_ts]
+        rows.extend(db_rows or [])
+        return rows
+
+    def _live_stage0_ranked_candidate_pool(self) -> list[dict[str, Any]]:
+        try:
+            pool_n = _scout_pool_size()
+            arb_threshold = _paper_min_similarity()
+            mm_threshold = _mm_threshold()
+            mode = str(getattr(self.settings, "execution_mode", "paper") or "paper").strip().lower()
+            live_human_limit = mode == "live_stage0" and self._live_exec_style() == "human_limit"
+            if live_human_limit:
+                rows = self._live_stage0_current_generation_rows()
+            else:
+                with self.repo.conn() as con:
+                    rows = con.execute(
+                        f"""
+                        SELECT
+                          rowid AS signal_rowid,
+                          ts AS signal_ts,
+                          scope_market_id AS market_id,
+                          claim_json,
+                          features_json
+                        FROM signals
+                        WHERE scope_market_id IS NOT NULL
+                          AND scope_market_id <> ''
+                          AND lower(agent_id) LIKE 'scout%'
+                        ORDER BY ts DESC, rowid DESC
+                        LIMIT {int(pool_n)}
+                        """
+                    ).fetchall()
+            ranked: list[dict[str, Any]] = []
+            for row in rows or []:
+                market_id = str(row["market_id"] or "").strip()
+                if not market_id:
+                    continue
+                strategy = _parse_strategy_kind(row["claim_json"])
+                similarity = _parse_similarity(row["features_json"], row["claim_json"])
+                mm_payload = _parse_mm_payload(row["features_json"], row["claim_json"])
+                score: float | None
+                if strategy == "MM":
+                    score = self._safe_float(mm_payload.get("mm_score"))
+                    if score is None or float(score) < float(mm_threshold):
+                        continue
+                else:
+                    score = similarity
+                    if score is None or float(score) < float(arb_threshold):
+                        continue
+                rowid_raw = str(row["signal_rowid"] or "").strip()
+                ts_raw = str(row["signal_ts"] or "").strip()
+                if rowid_raw:
+                    consumed_key = f"rowid:{rowid_raw}"
+                elif ts_raw:
+                    consumed_key = f"ts:{ts_raw}|ref:{market_id}"
+                else:
+                    consumed_key = f"ref:{market_id}"
+                try:
+                    rowid_num = int(row["signal_rowid"])
+                except Exception:
+                    rowid_num = 0
+                candidate = {
+                    "ref_id": market_id,
+                    "consumed_key": consumed_key,
+                    "opportunity_key": _parse_opportunity_key(row["claim_json"]),
+                    "similarity": float(similarity) if similarity is not None else None,
+                    "score": float(score),
+                    "strategy": strategy,
+                    "paper_reason": "TOP_MM_CANDIDATE" if strategy == "MM" else "TOP_SCOUT_CANDIDATE",
+                    "strategy_action": "OPEN_MM" if strategy == "MM" else "OPEN_ARB",
+                    "ts": ts_raw,
+                    "rowid": rowid_num,
+                    "source": str(
+                        row["signal_origin"]
+                        if "signal_origin" in row.keys()
+                        else "signals.recent_scout_pool_ranked_by_similarity_ts_rowid"
+                    ),
+                    "mm_bid": self._safe_float(mm_payload.get("bid")),
+                    "mm_ask": self._safe_float(mm_payload.get("ask")),
+                    "mm_mid": self._safe_float(mm_payload.get("mid")),
+                    "mm_spread": self._safe_float(mm_payload.get("spread")),
+                    "mm_bid_size": self._safe_float(mm_payload.get("bid_size")),
+                    "mm_ask_size": self._safe_float(mm_payload.get("ask_size")),
+                    "mm_liquidity": self._safe_float(mm_payload.get("liquidity")),
+                    "mm_score": self._safe_float(mm_payload.get("mm_score")),
+                    "mm_quote_mode": str(mm_payload.get("quote_mode") or "TWO_SIDED").strip().upper() or "TWO_SIDED",
+                    "mm_post_side": str(mm_payload.get("post_side") or "BOTH").strip().upper() or "BOTH",
+                }
+                if mode == "live_stage0" and self._live_exec_style() == "human_limit":
+                    token_id = self._resolve_stage0_token_id(market_id, "YES")
+                    reason, ref_bid, ref_ask, eff_spread = self._live_stage0_market_untradeable_reason(
+                        market_id,
+                        "YES",
+                        token_id,
+                    )
+                    if reason:
+                        if strategy == "MM" and self._mm_probe_allow_untradeable():
+                            candidate["mm_probe_bypass_untradeable"] = 1
+                            candidate["mm_probe_untradeable_reason"] = reason
+                            candidate["mm_probe_ref_bid"] = ref_bid
+                            candidate["mm_probe_ref_ask"] = ref_ask
+                            candidate["mm_probe_ref_spread"] = eff_spread
+                            diag = getattr(self, "_iter_decision_diag", None)
+                            if isinstance(diag, dict):
+                                diag["mm_probe_bypass_untradeable"] = int(
+                                    diag.get("mm_probe_bypass_untradeable", 0) or 0
+                                ) + 1
+                            log.info(
+                                "MM_PROBE_BYPASS_UNTRADEABLE market_id=%s reason=%s bid=%s ask=%s spread=%s",
+                                market_id,
+                                reason,
+                                "-" if ref_bid is None else f"{ref_bid:.6f}",
+                                "-" if ref_ask is None else f"{ref_ask:.6f}",
+                                "-" if eff_spread is None else f"{eff_spread:.6f}",
+                            )
+                        else:
+                            log.info(
+                                "LIVE_STAGE0_CANDIDATE_FILTERED opportunity_key=%s market_id=%s token_id=%s reason=%s bid=%s ask=%s spread=%s",
+                                str(candidate.get("opportunity_key") or "").strip() or "-",
+                                market_id,
+                                token_id or "-",
+                                reason,
+                                "-" if ref_bid is None else f"{ref_bid:.6f}",
+                                "-" if ref_ask is None else f"{ref_ask:.6f}",
+                                "-" if eff_spread is None else f"{eff_spread:.6f}",
+                            )
+                            continue
+                ranked.append(candidate)
+            ranked.sort(
+                key=lambda c: (
+                    1 if str(c.get("strategy") or "ARB").strip().upper() == "ARB" else 0,
+                    float(c.get("score", -1.0)),
+                    str(c.get("ts") or ""),
+                    int(c.get("rowid") or 0),
+                ),
+                reverse=True,
+            )
+            if live_human_limit and ranked:
+                ranked = ranked[: int(pool_n)]
+            return ranked
+        except Exception:
+            log.exception("LIVE_STAGE0_CANDIDATE_FALLBACK_POOL_FAIL")
+            return []
+
+    def _mm_final_probe_candidates(self, ranked: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        mm_candidates = [
+            cand for cand in (ranked or [])
+            if str(cand.get("strategy") or "").strip().upper() == "MM" and cand.get("mm_score") is not None
+        ]
+        mm_candidates.sort(
+            key=lambda cand: (
+                float(cand.get("mm_score") or -1.0),
+                float(cand.get("mm_spread") or -1.0),
+                str(cand.get("ts") or ""),
+                int(cand.get("rowid") or 0),
+            ),
+            reverse=True,
+        )
+        selected: list[dict[str, Any]] = []
+        for idx, cand in enumerate(mm_candidates[:3], start=1):
+            out = dict(cand)
+            out["mm_final_probe_rank"] = idx
+            selected.append(out)
+            log.info(
+                "MM_FINAL_PROBE_SELECTED market_id=%s mm_score=%s spread=%s bid=%s ask=%s bid_size=%s ask_size=%s probe_rank=%s",
+                str(out.get("ref_id") or "").strip() or "-",
+                "-" if out.get("mm_score") is None else f"{float(out.get('mm_score')):.6f}",
+                "-" if out.get("mm_spread") is None else f"{float(out.get('mm_spread')):.6f}",
+                "-" if out.get("mm_bid") is None else f"{float(out.get('mm_bid')):.6f}",
+                "-" if out.get("mm_ask") is None else f"{float(out.get('mm_ask')):.6f}",
+                "-" if out.get("mm_bid_size") is None else f"{float(out.get('mm_bid_size')):.6f}",
+                "-" if out.get("mm_ask_size") is None else f"{float(out.get('mm_ask_size')):.6f}",
+                idx,
+            )
+        diag = getattr(self, "_iter_decision_diag", None)
+        if isinstance(diag, dict):
+            diag["mm_final_probe_candidates_seen"] = int(len(mm_candidates))
+            diag["mm_final_probe_candidates_selected"] = int(len(selected))
+        return selected
+
+    def _apply_mm_final_probe(self, pipe: Dict[str, Any]) -> Dict[str, Any]:
+        out = dict(pipe or {})
+        mode = str(getattr(self.settings, "execution_mode", "paper") or "paper").strip().lower()
+        if mode != "live_stage0" or self._live_exec_style() != "human_limit" or not self._mm_final_probe_enabled():
+            return out
+        if str(out.get("paper_action", "") or "").strip().upper() == "OPEN" and str(out.get("paper_strategy", "") or "").strip().upper() == "ARB":
+            return out
+        ranked = self._live_stage0_ranked_candidate_pool()
+        selected = self._mm_final_probe_candidates(ranked)
+        if not selected:
+            return out
+        for cand in selected:
+            market_id = str(cand.get("ref_id") or "").strip()
+            if not market_id:
+                continue
+            outcome = "YES"
+            token_id = self._resolve_stage0_token_id(market_id, outcome)
+            if not token_id:
+                continue
+            if self._is_live_stage0_untradeable_suppressed({"opportunity_key": cand.get("opportunity_key", "")}, market_id, outcome, token_id):
+                continue
+            log.info(
+                "MM_FINAL_PROBE_DECISION_BYPASS market_id=%s mm_score=%s original_decision=%s original_reason=%s",
+                market_id,
+                "-" if cand.get("mm_score") is None else f"{float(cand.get('mm_score')):.6f}",
+                str(out.get("paper_action", "") or "").strip().upper() or "NONE",
+                str(out.get("paper_reason", "") or "").strip().upper() or "NONE",
+            )
+            signature = f"OPEN|TOP_MM_CANDIDATE|{market_id}"
+            return {
+                **out,
+                "last": "OPEN/TOP_MM_CANDIDATE",
+                "paper_action": "OPEN",
+                "paper_reason": "TOP_MM_CANDIDATE",
+                "paper_source": f"live_stage0.final_probe.{str(cand.get('source') or 'ranked_pool')}",
+                "dedup_signature": signature,
+                "matched_prev_signature": "",
+                "selected": 1,
+                "skipped_as_stale": 0,
+                "consumed_key": str(cand.get("consumed_key") or "").strip(),
+                "opportunity_key": str(cand.get("opportunity_key") or "").strip(),
+                "same_opportunity_as_prev": 0,
+                "skipped_as_same_opportunity": 0,
+                "paper_market_id": market_id,
+                "cand_count": 1,
+                "candidate_pool_size": len(selected),
+                "paper_strategy": "MM",
+                "strategy_action": "OPEN_MM",
+                "cluster_mode": "MM",
+                "mm_bid": cand.get("mm_bid"),
+                "mm_ask": cand.get("mm_ask"),
+                "mm_mid": cand.get("mm_mid"),
+                "mm_spread": cand.get("mm_spread"),
+                "mm_bid_size": cand.get("mm_bid_size"),
+                "mm_ask_size": cand.get("mm_ask_size"),
+                "mm_liquidity": cand.get("mm_liquidity"),
+                "mm_score": cand.get("mm_score"),
+                "mm_quote_mode": cand.get("mm_quote_mode"),
+                "mm_post_side": cand.get("mm_post_side"),
+                "mm_probe_bypass_untradeable": cand.get("mm_probe_bypass_untradeable", 0),
+                "mm_probe_untradeable_reason": cand.get("mm_probe_untradeable_reason", ""),
+                "mm_probe_ref_bid": cand.get("mm_probe_ref_bid"),
+                "mm_probe_ref_ask": cand.get("mm_probe_ref_ask"),
+                "mm_probe_ref_spread": cand.get("mm_probe_ref_spread"),
+                "mm_final_probe": 1,
+                "mm_final_probe_rank": cand.get("mm_final_probe_rank"),
+            }
+        return out
+
+    def _apply_live_stage0_candidate_fallback(self, pipe: Dict[str, Any]) -> Dict[str, Any]:
+        out = dict(pipe or {})
+        mode = str(getattr(self.settings, "execution_mode", "paper") or "paper").strip().lower()
+        if mode != "live_stage0" or self._live_exec_style() != "human_limit":
+            return out
+        if self._mm_final_probe_enabled():
+            return self._apply_mm_final_probe(out)
+
+        action = str(out.get("paper_action", "") or "").strip().upper()
+        reason = str(out.get("paper_reason", "") or "").strip().upper()
+        if action not in {"OPEN", "HOLD"}:
+            return out
+        if int(out.get("open_blocked_by_freshness", 0) or 0) > 0:
+            return out
+        if str(out.get("freshness_reason", "NONE") or "NONE").strip().upper() == "FRESHNESS_WARN_OPEN_BLOCKED":
+            return out
+
+        current_market_id = self._parse_open_market_id_from_pipe(out)
+        current_consumed_key = str(out.get("consumed_key", "") or "").strip()
+        current_opportunity_key = str(out.get("opportunity_key", "") or "").strip()
+        prev_consumed_key = str(getattr(self, "_paper_pipeline_ctx", {}).get("last_consumed_scout_key") or "").strip()
+        prev_opportunity_key = str(getattr(self, "_paper_pipeline_ctx", {}).get("last_consumed_opportunity_key") or "").strip()
+
+        ranked = self._live_stage0_ranked_candidate_pool()
+        if not ranked:
+            fallback_reason = "NO_USABLE_LIVE_CANDIDATES"
+            if action == "HOLD" and reason and reason not in {"TOP_SCOUT_CANDIDATE", "TOP_MM_CANDIDATE", "DEDUP", "NO_DECISION"}:
+                fallback_reason = reason
+            return {
+                **out,
+                "last": f"HOLD/{fallback_reason}",
+                "paper_action": "HOLD",
+                "paper_reason": fallback_reason,
+                "paper_source": "live_stage0.filtered_ranked_pool_empty",
+                "selected": 0,
+            }
+
+        last_reject_reason = reason if action == "HOLD" else ""
+        for idx, cand in enumerate(ranked, start=1):
+            market_id = str(cand.get("ref_id") or "").strip()
+            consumed_key = str(cand.get("consumed_key") or "").strip()
+            opportunity_key = str(cand.get("opportunity_key") or "").strip()
+            if not market_id:
+                continue
+            reject_reason = ""
+            if current_consumed_key and consumed_key and consumed_key == current_consumed_key:
+                reject_reason = reason or "CURRENT_CANDIDATE_REJECTED"
+            elif current_market_id and market_id == current_market_id and current_opportunity_key and opportunity_key == current_opportunity_key:
+                reject_reason = reason or "CURRENT_CANDIDATE_REJECTED"
+            elif prev_consumed_key and consumed_key and consumed_key == prev_consumed_key:
+                reject_reason = "STALE_CANDIDATE_SKIPPED"
+            elif opportunity_key and prev_opportunity_key and opportunity_key == prev_opportunity_key:
+                reject_reason = "SAME_OPPORTUNITY_SKIPPED"
+            else:
+                outcome = "YES"
+                token_id = self._resolve_stage0_token_id(market_id, outcome)
+                if not token_id:
+                    reject_reason = "MISSING_TOKEN_ID"
+                elif self._is_live_stage0_untradeable_suppressed({"opportunity_key": opportunity_key}, market_id, outcome, token_id):
+                    reject_reason = "UNTRADEABLE_COOLDOWN"
+                elif not self._is_live_stage0_market_tradeable(market_id, outcome, token_id):
+                    self._record_live_stage0_untradeable_suppression(
+                        {"opportunity_key": opportunity_key},
+                        market_id,
+                        outcome,
+                        token_id,
+                        reason="UNTRADEABLE_MARKET",
+                    )
+                    reject_reason = "UNTRADEABLE_MARKET"
+                else:
+                    paper_reason = str(cand.get("paper_reason") or "TOP_SCOUT_CANDIDATE").strip().upper() or "TOP_SCOUT_CANDIDATE"
+                    signature = f"OPEN|{paper_reason}|{market_id}"
+                    ctx = getattr(self, "_paper_pipeline_ctx", None)
+                    if isinstance(ctx, dict):
+                        ctx["last_signature"] = signature
+                        ctx["last_consumed_scout_key"] = consumed_key
+                        ctx["last_consumed_opportunity_key"] = opportunity_key
+                        ctx["cluster_mode"] = "MM" if paper_reason == "TOP_MM_CANDIDATE" else "ARB"
+                    log.info(
+                        "LIVE_STAGE0_CANDIDATE_FALLBACK opportunity_key=%s market_id=%s fallback_index=%s selected=1",
+                        opportunity_key or "-",
+                        market_id,
+                        idx,
+                    )
+                    return {
+                        **out,
+                        "last": f"OPEN/{paper_reason}",
+                        "paper_action": "OPEN",
+                        "paper_reason": paper_reason,
+                        "paper_source": f"live_stage0.fallback.{str(cand.get('source') or 'ranked_pool')}",
+                        "dedup_signature": signature,
+                        "matched_prev_signature": "",
+                        "selected": 1,
+                        "skipped_as_stale": 0,
+                        "consumed_key": consumed_key,
+                        "opportunity_key": opportunity_key,
+                        "same_opportunity_as_prev": 0,
+                        "skipped_as_same_opportunity": 0,
+                        "paper_market_id": market_id,
+                        "cand_count": 1,
+                        "candidate_pool_size": len(ranked),
+                        "paper_strategy": str(cand.get("strategy") or "ARB").strip().upper() or "ARB",
+                        "strategy_action": str(cand.get("strategy_action") or "OPEN_ARB"),
+                        "cluster_mode": "MM" if paper_reason == "TOP_MM_CANDIDATE" else "ARB",
+                        "mm_bid": cand.get("mm_bid"),
+                        "mm_ask": cand.get("mm_ask"),
+                        "mm_mid": cand.get("mm_mid"),
+                        "mm_spread": cand.get("mm_spread"),
+                        "mm_bid_size": cand.get("mm_bid_size"),
+                        "mm_ask_size": cand.get("mm_ask_size"),
+                        "mm_liquidity": cand.get("mm_liquidity"),
+                        "mm_score": cand.get("mm_score"),
+                        "mm_quote_mode": cand.get("mm_quote_mode"),
+                        "mm_post_side": cand.get("mm_post_side"),
+                        "mm_probe_bypass_untradeable": cand.get("mm_probe_bypass_untradeable", 0),
+                        "mm_probe_untradeable_reason": cand.get("mm_probe_untradeable_reason", ""),
+                        "mm_probe_ref_bid": cand.get("mm_probe_ref_bid"),
+                        "mm_probe_ref_ask": cand.get("mm_probe_ref_ask"),
+                        "mm_probe_ref_spread": cand.get("mm_probe_ref_spread"),
+                    }
+            last_reject_reason = reject_reason or last_reject_reason
+            log.info(
+                "LIVE_STAGE0_CANDIDATE_REJECTED opportunity_key=%s market_id=%s reject_reason=%s fallback_index=%s",
+                opportunity_key or "-",
+                market_id,
+                reject_reason or "REJECTED",
+                idx,
+            )
+        fallback_reason = last_reject_reason or "NO_USABLE_LIVE_CANDIDATES"
+        return {
+            **out,
+            "last": f"HOLD/{fallback_reason}",
+            "paper_action": "HOLD",
+            "paper_reason": fallback_reason,
+            "paper_source": "live_stage0.filtered_ranked_pool_exhausted",
+            "selected": 0,
+            "candidate_pool_size": len(ranked),
+        }
+
+    def _maybe_submit_stage0_open_from_pipeline(self, now: datetime) -> int:
+        mode = str(getattr(self.settings, "execution_mode", "paper") or "paper").strip().lower()
+        exec_style = self._live_exec_style()
+        pipe = self._iter_pipe or {}
+        action = str(pipe.get("paper_action", "") or "").strip().upper()
+        signature = str(pipe.get("dedup_signature", "") or "").strip()
+        strategy = str(pipe.get("paper_strategy") or "").strip().upper()
+        if not strategy:
+            strategy = "MM" if str(pipe.get("paper_reason") or "").strip().upper() == "TOP_MM_CANDIDATE" else "ARB"
+        log.info(
+            "PIPE_OPEN_BRIDGE_ENTER mode=%s style=%s action=%s dedup_signature=%s",
+            mode or "-",
+            exec_style,
+            action or "NONE",
+            signature or "-",
+        )
+        if mode != "live_stage0":
+            log.info("PIPE_OPEN_BRIDGE_SKIP reason=MODE_NOT_LIVE_STAGE0 mode=%s", mode or "-")
+            return 0
+        executor = getattr(self, "executor", None)
+        if executor is None or not callable(getattr(executor, "place_order", None)):
+            log.warning("PIPE_OPEN_BRIDGE_SKIP reason=EXECUTOR_UNAVAILABLE")
+            return 0
+
+        if action != "OPEN":
+            log.info("PIPE_OPEN_BRIDGE_SKIP reason=PIPE_ACTION_NOT_OPEN action=%s", action or "NONE")
+            return 0
+
+        if signature and signature == str(self._live_stage0_last_submit_signature or ""):
+            if strategy == "MM":
+                log.info(
+                    "MM_DECISION_REJECTED market_id=%s mm_score=%s threshold=%.6f reject_reason=DEDUP",
+                    str(pipe.get("paper_market_id") or "").strip() or "-",
+                    "-" if pipe.get("mm_score") is None else f"{float(pipe.get('mm_score')):.6f}",
+                    float(_mm_threshold()),
+                )
+            log.info("PIPE_OPEN_BRIDGE_SKIP reason=DEDUP_SIGNATURE signature=%s", signature)
+            return 0
+
+        market_id = self._parse_open_market_id_from_pipe(pipe)
+        if not market_id:
+            log.warning("PIPE_OPEN_BRIDGE_SKIP reason=MISSING_MARKET_ID")
+            return 0
+        outcome = str(pipe.get("paper_outcome", "YES") or "YES").strip().upper() or "YES"
+
+        gate = getattr(self.decision_engine, "_risk_gate", None)
+        if gate is not None:
+            try:
+                verdict = gate.check_market(market_id)
+                if verdict is not None and not getattr(verdict, "allow", True):
+                    if strategy == "MM":
+                        log.info(
+                            "MM_DECISION_REJECTED market_id=%s mm_score=%s threshold=%.6f reject_reason=RISK_BLOCK",
+                            market_id,
+                            "-" if pipe.get("mm_score") is None else f"{float(pipe.get('mm_score')):.6f}",
+                            float(_mm_threshold()),
+                        )
+                    log.info(
+                        "PIPE_OPEN_BRIDGE_SKIP reason=RISK_GATE_BLOCK market_id=%s risk_kind=%s code=%s",
+                        market_id,
+                        str(getattr(verdict, "kind", "NONE") or "NONE").strip().upper() or "NONE",
+                        str(getattr(verdict, "code", "GATE") or "GATE").strip().upper() or "GATE",
+                    )
+                    return 0
+            except Exception:
+                log.exception("PIPE_OPEN_BRIDGE_SKIP reason=RISK_GATE_CHECK_FAILED market_id=%s", market_id)
+                return 0
+
+        token_id = self._resolve_stage0_token_id(market_id, outcome)
+        if not token_id:
+            log.warning("PIPE_OPEN_BRIDGE_SKIP reason=MISSING_TOKEN_ID market_id=%s outcome=%s", market_id, outcome)
+            return 0
+
+        if strategy == "MM":
+            log.info(
+                "OPEN_MM_SELECTED market_id=%s mm_score=%s spread=%s bid_size=%s ask_size=%s",
+                market_id,
+                "-" if pipe.get("mm_score") is None else f"{float(pipe.get('mm_score')):.6f}",
+                "-" if pipe.get("mm_spread") is None else f"{float(pipe.get('mm_spread')):.6f}",
+                "-" if pipe.get("mm_bid_size") is None else f"{float(pipe.get('mm_bid_size')):.6f}",
+                "-" if pipe.get("mm_ask_size") is None else f"{float(pipe.get('mm_ask_size')):.6f}",
+            )
+            return self._submit_live_stage0_mm_orders(
+                now=now,
+                executor=executor,
+                pipe=pipe,
+                signature=signature,
+                market_id=market_id,
+                outcome=outcome,
+                token_id=token_id,
+                exec_style=exec_style,
+            )
+
+        ttl_seconds = 0.0
+        if exec_style == "human_limit":
+            if self._is_live_stage0_untradeable_suppressed(pipe, market_id, outcome, token_id):
+                log.info(
+                    "PIPE_OPEN_BRIDGE_SKIP reason=UNTRADEABLE_COOLDOWN market_id=%s outcome=%s token_id=%s",
+                    market_id,
+                    outcome,
+                    token_id,
+                )
+                return 0
+            if not self._is_live_stage0_market_tradeable(market_id, outcome, token_id):
+                self._record_live_stage0_untradeable_suppression(
+                    pipe,
+                    market_id,
+                    outcome,
+                    token_id,
+                    reason="UNTRADEABLE_MARKET",
+                )
+                log.info(
+                    "PIPE_OPEN_BRIDGE_SKIP reason=UNTRADEABLE_MARKET market_id=%s outcome=%s token_id=%s",
+                    market_id,
+                    outcome,
+                    token_id,
+                )
+                return 0
+            plan = self._build_human_limit_order_plan(market_id, outcome, token_id)
+            if plan is None:
+                log.info(
+                    "PIPE_OPEN_BRIDGE_SKIP reason=HUMAN_LIMIT_BLOCKED market_id=%s outcome=%s token_id=%s",
+                    market_id,
+                    outcome,
+                    token_id,
+                )
+                return 0
+            price = float(plan["price"])
+            qty = float(plan["qty"])
+            notional = float(plan["notional"])
+            ttl_seconds = float(plan["ttl_seconds"])
+        else:
+            price = self._resolve_stage0_order_price(market_id, outcome, token_id=token_id)
+            if price is None:
+                log.warning("PIPE_OPEN_BRIDGE_SKIP reason=MISSING_PRICE market_id=%s outcome=%s token_id=%s", market_id, outcome, token_id)
+                return 0
+            qty = self._resolve_stage0_order_qty(price)
+            if qty is None:
+                log.warning("PIPE_OPEN_BRIDGE_SKIP reason=BAD_QTY market_id=%s outcome=%s token_id=%s", market_id, outcome, token_id)
+                return 0
+            notional = float(qty) * float(price)
+
+        log.info(
+            "PIPE_OPEN_BRIDGE_RESOLVED market_id=%s token_id=%s outcome=%s style=%s price=%.6f qty=%.6f notional=%.6f",
+            market_id,
+            token_id,
+            outcome,
+            exec_style,
+            price,
+            qty,
+            notional,
+        )
+        log.info(
+            "PIPE_OPEN_BRIDGE_SUBMIT_ATTEMPT market_id=%s token_id=%s outcome=%s qty=%.6f price=%.6f notional=%.6f",
+            market_id,
+            token_id,
+            outcome,
+            qty,
+            price,
+            notional,
+        )
+        try:
+            order_id = executor.place_order(
+                market_id=token_id,
+                outcome=outcome,
+                side="BUY",
+                qty=qty,
+                limit_price=price,
+                ttl_seconds=ttl_seconds,
+                execution_style=exec_style,
+                metadata={
+                    "market_id": market_id,
+                    "token_id": token_id,
+                    "single_leg_smoke_mode": int(exec_style == "human_limit"),
+                },
+            )
+            self._live_stage0_last_submit_signature = signature or f"OPEN|{market_id}|{outcome}"
+            log.info(
+                "PIPE_OPEN_BRIDGE_SUBMIT_OK market_id=%s token_id=%s outcome=%s style=%s order_id=%s",
+                market_id,
+                token_id,
+                outcome,
+                exec_style,
+                str(order_id or "-")[:128],
+            )
+            self._queue_event(
+                ts=now,
+                level="INFO",
+                component="live_stage0",
+                message="order_submit_attempted",
+                payload={"market_id": market_id, "token_id": token_id, "outcome": outcome, "style": exec_style},
+            )
+            return 1
+        except Exception as e:
+            safe_error = f"{type(e).__name__}: {e}"
+            log.warning(
+                "PIPE_OPEN_BRIDGE_SUBMIT_FAIL market_id=%s token_id=%s outcome=%s safe_error=%s",
+                market_id,
+                token_id,
+                outcome,
+                safe_error,
+            )
+            return 0
+
+    def _submit_live_stage0_mm_orders(
+        self,
+        *,
+        now: datetime,
+        executor: Any,
+        pipe: Dict[str, Any],
+        signature: str,
+        market_id: str,
+        outcome: str,
+        token_id: str,
+        exec_style: str,
+    ) -> int:
+        if exec_style != "human_limit":
+            log.info("PIPE_OPEN_BRIDGE_SKIP reason=MM_REQUIRES_HUMAN_LIMIT market_id=%s", market_id)
+            return 0
+        bid = self._safe_float(pipe.get("mm_bid"))
+        ask = self._safe_float(pipe.get("mm_ask"))
+        mid = self._safe_float(pipe.get("mm_mid"))
+        spread = self._safe_float(pipe.get("mm_spread"))
+        bid_size = self._safe_float(pipe.get("mm_bid_size"))
+        ask_size = self._safe_float(pipe.get("mm_ask_size"))
+        liquidity = self._safe_float(pipe.get("mm_liquidity"))
+        quote_mode = str(pipe.get("mm_quote_mode") or "TWO_SIDED").strip().upper() or "TWO_SIDED"
+        post_side = str(pipe.get("mm_post_side") or "BOTH").strip().upper() or "BOTH"
+        probe_bypass = int(pipe.get("mm_probe_bypass_untradeable", 0) or 0) > 0 and self._mm_probe_allow_untradeable()
+        final_probe = int(pipe.get("mm_final_probe", 0) or 0) > 0 and self._mm_final_probe_enabled()
+        if liquidity is None:
+            sizes = [float(size) for size in (bid_size, ask_size) if size is not None and float(size) > 0.0]
+            liquidity = min(sizes) if sizes else None
+        if mid is None or spread is None or liquidity is None:
+            log.info("PIPE_OPEN_BRIDGE_SKIP reason=MM_MISSING_QUOTE market_id=%s", market_id)
+            return 0
+        if final_probe:
+            side = "BUY" if ask is not None else "SELL" if bid is not None else ""
+            if not side:
+                log.info("PIPE_OPEN_BRIDGE_SKIP reason=MM_FINAL_PROBE_MISSING_SIDE market_id=%s", market_id)
+                return 0
+            price = self._clamp_price(float(mid) - (float(spread) * 0.25)) if side == "BUY" else self._clamp_price(float(mid) + (float(spread) * 0.25))
+            if not (0.0 < price < 1.0):
+                log.info("PIPE_OPEN_BRIDGE_SKIP reason=MM_BAD_PRICES market_id=%s buy_sell_price=%.6f", market_id, price)
+                return 0
+            min_submit_notional = self._env_float("PS_LIVE_HUMAN_MIN_NOTIONAL", 2.0)
+            target_notional = max(2.0, float(min_submit_notional))
+            risk_cfg = getattr(self.settings, "risk", None)
+            cap_candidates = [
+                self._safe_float(getattr(self.settings, "live_max_notional", None)),
+                self._safe_float(getattr(risk_cfg, "max_notional_total", None)),
+            ]
+            positive_caps = [x for x in cap_candidates if x is not None and x > 0.0]
+            available_capital = min(positive_caps) if positive_caps else target_notional
+            if available_capital < target_notional:
+                log.info(
+                    "MM_DECISION_REJECTED market_id=%s mm_score=%s threshold=%.6f reject_reason=NO_CAPITAL",
+                    market_id,
+                    "-" if pipe.get("mm_score") is None else f"{float(pipe.get('mm_score')):.6f}",
+                    float(_mm_threshold()),
+                )
+                return 0
+            qty = target_notional / float(price)
+            notional = float(qty) * float(price)
+            diag = getattr(self, "_iter_decision_diag", None)
+            if isinstance(diag, dict):
+                diag["mm_final_probe_orders_attempted"] = int(diag.get("mm_final_probe_orders_attempted", 0) or 0) + 1
+            log.info(
+                "MM_FINAL_PROBE_ORDER market_id=%s side=%s price=%.6f qty=%.6f notional=%.6f ttl_sec=45.000",
+                market_id,
+                side,
+                price,
+                qty,
+                notional,
+            )
+            log.info(
+                "MM_ORDER_PLACE market_id=%s token_id=%s side=%s price=%.6f qty=%.6f ttl_seconds=45.000",
+                market_id,
+                token_id,
+                side,
+                price,
+                qty,
+            )
+            try:
+                order_id = executor.place_order(
+                    market_id=token_id,
+                    outcome=outcome,
+                    side=side,
+                    qty=qty,
+                    limit_price=price,
+                    ttl_seconds=45.0,
+                    execution_style=exec_style,
+                    metadata={
+                        "market_id": market_id,
+                        "token_id": token_id,
+                        "single_leg_smoke_mode": 1,
+                        "strategy": "MM",
+                        "leg_side": side,
+                        "final_probe": 1,
+                    },
+                )
+            except Exception:
+                if isinstance(diag, dict):
+                    diag["mm_final_probe_orders_failed"] = int(diag.get("mm_final_probe_orders_failed", 0) or 0) + 1
+                raise
+            if isinstance(diag, dict):
+                diag["mm_orders_placed"] = int(diag.get("mm_orders_placed", 0) or 0) + 1
+            self._live_stage0_last_submit_signature = ""
+            log.info(
+                "MM_ORDER_PLACE_OK market_id=%s token_id=%s side=%s order_id=%s price=%.6f qty=%.6f",
+                market_id,
+                token_id,
+                side,
+                str(order_id or "-")[:128],
+                price,
+                qty,
+            )
+            self._queue_event(
+                ts=now,
+                level="INFO",
+                component="live_stage0",
+                message="mm_final_probe_order_submit_attempted",
+                payload={"market_id": market_id, "token_id": token_id, "outcome": outcome, "style": exec_style},
+            )
+            return 1
+        min_bid = self._env_float("PS_MM_MIN_BID", 0.001)
+        max_ask = self._env_float("PS_MM_MAX_ASK", 0.999)
+        max_spread = self._env_float("PS_MM_MAX_SPREAD", 0.5)
+        if float(spread) < 0.02 or float(spread) > float(max_spread):
+            log.info("PIPE_OPEN_BRIDGE_SKIP reason=MM_WIDE_SPREAD market_id=%s token_id=%s spread=%.6f max_spread=%.6f", market_id, token_id, float(spread), float(max_spread))
+            return 0
+        if quote_mode == "TWO_SIDED":
+            if bid is None or ask is None:
+                log.info("PIPE_OPEN_BRIDGE_SKIP reason=MM_MISSING_QUOTE market_id=%s", market_id)
+                return 0
+            if not (0.0 < float(bid) < float(ask) < 1.0):
+                log.info("PIPE_OPEN_BRIDGE_SKIP reason=MM_INVALID_BOOK market_id=%s token_id=%s", market_id, token_id)
+                return 0
+            if float(bid) <= float(min_bid) or float(ask) >= float(max_ask):
+                log.info("PIPE_OPEN_BRIDGE_SKIP reason=MM_BOUNDARY_BOOK market_id=%s token_id=%s", market_id, token_id)
+                return 0
+        elif quote_mode == "ASK_ONLY":
+            if ask is None or not (0.0 < float(ask) < 1.0):
+                log.info("PIPE_OPEN_BRIDGE_SKIP reason=MM_INVALID_BOOK market_id=%s token_id=%s", market_id, token_id)
+                return 0
+            if float(ask) >= float(max_ask):
+                log.info("PIPE_OPEN_BRIDGE_SKIP reason=MM_BOUNDARY_BOOK market_id=%s token_id=%s", market_id, token_id)
+                return 0
+            post_side = "BUY"
+        elif quote_mode == "BID_ONLY":
+            if bid is None or not (0.0 < float(bid) < 1.0):
+                log.info("PIPE_OPEN_BRIDGE_SKIP reason=MM_INVALID_BOOK market_id=%s token_id=%s", market_id, token_id)
+                return 0
+            if float(bid) <= float(min_bid):
+                log.info("PIPE_OPEN_BRIDGE_SKIP reason=MM_BOUNDARY_BOOK market_id=%s token_id=%s", market_id, token_id)
+                return 0
+            post_side = "SELL"
+        else:
+            log.info("PIPE_OPEN_BRIDGE_SKIP reason=MM_INVALID_MODE market_id=%s quote_mode=%s", market_id, quote_mode)
+            return 0
+        if probe_bypass:
+            post_side = self._mm_probe_post_side(pipe)
+            log.info("MM_PROBE_POST_SIDE side=%s market_id=%s", post_side, market_id)
+        try:
+            base_notional = float(getattr(self.settings, "paper_fixed_notional", 0.0) or 0.0)
+        except Exception:
+            base_notional = 0.0
+        if base_notional <= 0.0:
+            base_notional = 1.0
+        base_size = float(base_notional) / float(mid)
+        size = min(float(base_size), float(liquidity) * 0.2)
+        if size <= 0.0:
+            log.info(
+                "MM_DECISION_REJECTED market_id=%s mm_score=%s threshold=%.6f reject_reason=NO_CAPITAL",
+                market_id,
+                "-" if pipe.get("mm_score") is None else f"{float(pipe.get('mm_score')):.6f}",
+                float(_mm_threshold()),
+            )
+            log.info("PIPE_OPEN_BRIDGE_SKIP reason=MM_BAD_SIZE market_id=%s liquidity=%s", market_id, liquidity)
+            return 0
+        buy_price = self._clamp_price(float(mid) - (float(spread) * 0.25))
+        sell_price = self._clamp_price(float(mid) + (float(spread) * 0.25))
+        if not (0.0 < buy_price < float(mid) < sell_price < 1.0):
+            log.info("PIPE_OPEN_BRIDGE_SKIP reason=MM_BAD_PRICES market_id=%s buy=%.6f mid=%.6f sell=%.6f", market_id, buy_price, float(mid), sell_price)
+            return 0
+        ctx = getattr(self, "_paper_pipeline_ctx", None)
+        if isinstance(ctx, dict) and str(ctx.get("cluster_mode") or "NONE").strip().upper() == "MM":
+            log.info(
+                "MM_REPRICE market_id=%s token_id=%s buy_price=%.6f sell_price=%.6f size=%.6f",
+                market_id,
+                token_id,
+                buy_price,
+                sell_price,
+                size,
+            )
+        placed = 0
+        sides_and_prices = [("BUY", buy_price), ("SELL", sell_price)]
+        if post_side == "BUY":
+            sides_and_prices = [("BUY", buy_price)]
+        elif post_side == "SELL":
+            sides_and_prices = [("SELL", sell_price)]
+        for side, price in sides_and_prices:
+            diag = getattr(self, "_iter_decision_diag", None)
+            if isinstance(diag, dict):
+                diag["mm_probe_orders_attempted"] = int(diag.get("mm_probe_orders_attempted", 0) or 0) + 1
+            log.info(
+                "MM_ORDER_PLACE market_id=%s token_id=%s side=%s price=%.6f qty=%.6f ttl_seconds=30.000",
+                market_id,
+                token_id,
+                side,
+                price,
+                size,
+            )
+            try:
+                order_id = executor.place_order(
+                    market_id=token_id,
+                    outcome=outcome,
+                    side=side,
+                    qty=size,
+                    limit_price=price,
+                    ttl_seconds=30.0,
+                    execution_style=exec_style,
+                    metadata={
+                        "market_id": market_id,
+                        "token_id": token_id,
+                        "single_leg_smoke_mode": 0,
+                        "strategy": "MM",
+                        "leg_side": side,
+                    },
+                )
+            except Exception:
+                if isinstance(diag, dict):
+                    diag["mm_probe_orders_failed"] = int(diag.get("mm_probe_orders_failed", 0) or 0) + 1
+                log.info(
+                    "MM_DECISION_REJECTED market_id=%s mm_score=%s threshold=%.6f reject_reason=NO_CAPITAL",
+                    market_id,
+                    "-" if pipe.get("mm_score") is None else f"{float(pipe.get('mm_score')):.6f}",
+                    float(_mm_threshold()),
+                )
+                raise
+            placed += 1
+            if isinstance(diag, dict):
+                diag["mm_orders_placed"] = int(diag.get("mm_orders_placed", 0) or 0) + 1
+            log.info(
+                "MM_ORDER_PLACE_OK market_id=%s token_id=%s side=%s order_id=%s price=%.6f qty=%.6f",
+                market_id,
+                token_id,
+                side,
+                str(order_id or "-")[:128],
+                price,
+                size,
+            )
+        if isinstance(ctx, dict):
+            ctx["cluster_mode"] = "MM"
+        # Allow the next loop to recompute and replace after TTL expiry.
+        self._live_stage0_last_submit_signature = ""
+        self._queue_event(
+            ts=now,
+            level="INFO",
+            component="live_stage0",
+            message="mm_order_submit_attempted",
+            payload={"market_id": market_id, "token_id": token_id, "outcome": outcome, "style": exec_style},
+        )
+        return 1 if placed > 0 else 0
+
+    def _maybe_release_stage0_candidate_suppression(self) -> None:
+        mode = str(getattr(self.settings, "execution_mode", "paper") or "paper").strip().lower()
+        if mode != "live_stage0":
+            return
+        if str(self._live_stage0_last_submit_signature or "").strip():
+            return
+        pipe = self._iter_pipe or {}
+        action = str(pipe.get("paper_action", "") or "").strip().upper()
+        reason = str(pipe.get("paper_reason", "") or "").strip().upper()
+        if action != "HOLD":
+            return
+        if reason not in {"SAME_OPPORTUNITY_SKIPPED", "STALE_CANDIDATE_SKIPPED"}:
+            return
+        ctx = getattr(self, "_paper_pipeline_ctx", None)
+        if not isinstance(ctx, dict):
+            return
+        if not any(
+            str(ctx.get(k) or "").strip()
+            for k in ("last_signature", "last_consumed_scout_key", "last_consumed_opportunity_key")
+        ):
+            return
+        ctx["last_signature"] = ""
+        ctx["last_consumed_scout_key"] = ""
+        ctx["last_consumed_opportunity_key"] = ""
+        log.info(
+            "LIVE_STAGE0_PIPELINE_UNLOCK reason=NO_SUCCESSFUL_SUBMIT_YET hold_reason=%s",
+            reason,
+        )
+
+    def _resolve_ingest_block_guard(self, eligible_for_ingest: bool) -> tuple[bool, bool]:
+        raw_block = self._ingest_max_block_ms > 0 and self._last_ingest_wall_ms > self._ingest_max_block_ms
+        if not raw_block:
+            self._ingest_block_guard_skips = 0
+            return False, False
+        if not eligible_for_ingest:
+            return True, False
+        self._ingest_block_guard_skips = int(self._ingest_block_guard_skips or 0) + 1
+        if self._ingest_block_guard_skips >= int(self._ingest_block_guard_skip_cap or 1):
+            self._ingest_block_guard_skips = 0
+            return False, True
+        return True, False
 
     def _emit_freshness_diag(self, freshness: Dict[str, Any]) -> None:
         state_obj = freshness.get("state") or {}
@@ -1297,6 +2959,9 @@ class MainLoop:
                         self._iter_decision_diag["slow_scout_candidates"] = int(
                             self._iter_decision_diag.get("slow_scout_candidates", 0) or 0
                         ) + self._diag_candidate_count(signals)
+                        self._merge_mm_scan_diag(agent)
+                elif bucket == "scout":
+                    self._merge_mm_scan_diag(agent)
             except Exception as e:
                 if bucket:
                     _mark(bucket, t_agent if "t_agent" in locals() else time.perf_counter())
@@ -1361,6 +3026,15 @@ class MainLoop:
                         message=f"paper reconcile failed: {e}",
                         payload={},
                     )
+                live_n = 0
+                try:
+                    live_n = self._maybe_submit_stage0_open_from_pipeline(now)
+                except Exception:
+                    log.exception("live_stage0 dispatch failed")
+                if self._mm_final_probe_enabled():
+                    self._emit_mm_final_probe_summary()
+                else:
+                    self._emit_mm_probe_summary()
                 self._iter_stage_ms["reconcile"] = self._iter_stage_ms.get("reconcile", 0.0) + (
                     (time.perf_counter() - t0) * 1000.0
                 )
@@ -1369,7 +3043,7 @@ class MainLoop:
                     ts=now,
                     level="INFO",
                     component="decision",
-                    message=f"decisions written: {n} | paper executed: {x}",
+                    message=f"decisions written: {n} | paper executed: {x} | live submitted: {live_n}",
                     payload={},
                 )
 
@@ -1417,6 +3091,19 @@ class MainLoop:
                 "paper_reason_counts": {},
                 "paper_action_counts": {},
                 "hold_reason_counts": {},
+                "mm_markets_raw": 0,
+                "mm_markets_eligible": 0,
+                "mm_candidates_found": 0,
+                "mm_decision_accepted": 0,
+                "mm_orders_placed": 0,
+                "mm_probe_bypass_untradeable": 0,
+                "mm_probe_orders_attempted": 0,
+                "mm_probe_orders_failed": 0,
+                "mm_probe_orders_filled": 0,
+                "mm_final_probe_candidates_seen": 0,
+                "mm_final_probe_candidates_selected": 0,
+                "mm_final_probe_orders_attempted": 0,
+                "mm_final_probe_orders_failed": 0,
             }
             self._iter_db_write_signals_count = 0
             self._iter_db_write_calls = 0
@@ -1472,8 +3159,21 @@ class MainLoop:
                     reason = getattr(e, "reason", None)
                     err_type = type(reason).__name__ if reason is not None else type(e).__name__
                     log.info("NET_PING ok=0 errno=%s err_type=%s", err_no if err_no is not None else "-", err_type)
-            block_guard = self._ingest_max_block_ms > 0 and self._last_ingest_wall_ms > self._ingest_max_block_ms
-            if do_poll and self.settings.enable_ingest and mono >= self._next_ingest_ts and mono >= self._ingest_neterr_until and not block_guard:
+            ingest_guard_eligible = (
+                bool(do_poll)
+                and bool(self.settings.enable_ingest)
+                and mono >= self._next_ingest_ts
+                and mono >= self._ingest_neterr_until
+            )
+            block_guard, block_guard_reset = self._resolve_ingest_block_guard(ingest_guard_eligible)
+            if block_guard_reset:
+                log.info(
+                    "INGEST_BLOCK_GUARD_RESET last_ms=%.0f max_ms=%.0f skip_cap=%s",
+                    float(self._last_ingest_wall_ms),
+                    float(self._ingest_max_block_ms),
+                    int(self._ingest_block_guard_skip_cap),
+                )
+            if ingest_guard_eligible and not block_guard:
                 t0 = time.perf_counter()
                 try:
                     print("INGEST TICK", now)
@@ -1656,9 +3356,11 @@ class MainLoop:
                         )
                     elif reason == "MAX_BLOCK_MS":
                         log.info(
-                            "INGEST_SKIPPED reason=MAX_BLOCK_MS last_ms=%.0f max_ms=%.0f",
+                            "INGEST_SKIPPED reason=MAX_BLOCK_MS last_ms=%.0f max_ms=%.0f skip_n=%s skip_cap=%s",
                             float(self._last_ingest_wall_ms),
                             float(self._ingest_max_block_ms),
+                            int(self._ingest_block_guard_skips or 0),
+                            int(self._ingest_block_guard_skip_cap),
                         )
                     else:
                         log.info(
@@ -1864,7 +3566,10 @@ class MainLoop:
                     context=self._paper_pipeline_ctx,
                 )
                 gated_pipe, open_blocked = self._apply_paper_action_freshness_gate(raw_pipe, decision_mode)
+                gated_pipe = self._apply_live_stage0_untradeable_suppression_to_pipe(gated_pipe)
+                gated_pipe = self._apply_live_stage0_candidate_fallback(gated_pipe)
                 self._iter_pipe = gated_pipe
+                self._maybe_release_stage0_candidate_suppression()
                 self._iter_reconcile_diag["open_blocked_by_freshness"] = int(open_blocked)
                 if decision_mode == DECISION_MODE_SAFE:
                     log.info(
@@ -1878,6 +3583,9 @@ class MainLoop:
             self._iter_pipe["freshness_reason"] = str(self._iter_pipe.get("freshness_reason", "NONE") or "NONE").upper()
             paper_action = str(self._iter_pipe.get("paper_action", "") or "").strip().upper()
             paper_reason = str(self._iter_pipe.get("paper_reason", "") or "").strip().upper()
+            paper_strategy = str(self._iter_pipe.get("paper_strategy", "") or "").strip().upper()
+            if paper_action == "OPEN" and paper_strategy == "MM":
+                self._iter_decision_diag["mm_decision_accepted"] = 1
             freshness_reason = str(self._iter_pipe.get("freshness_reason", "NONE") or "NONE").strip().upper()
             paper_source = str(self._iter_pipe.get("paper_source", "") or "").strip() or "-"
             dedup_sig = str(self._iter_pipe.get("dedup_signature", "") or "").strip() or "-"

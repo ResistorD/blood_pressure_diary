@@ -47,3 +47,8 @@ class RepoAgentDataProvider:
         except Exception:
             return []
         return out
+
+    def get_latest_orderbook(self, market_id: str) -> Dict[str, Any]:
+        if hasattr(self.repo, "get_latest_orderbook_snapshot"):
+            return dict(self.repo.get_latest_orderbook_snapshot(market_id) or {})
+        return {}

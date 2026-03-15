@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Tuple
+from typing import Any, List, Set, Tuple
 import logging
 import json
 import time
@@ -30,6 +30,31 @@ class Ingestor:
             return False
         self._backfill_queue.append(mid)
         return True
+
+    def _derive_hot_market_ids(self) -> Set[str]:
+        hot_ids: Set[str] = set()
+        list_cases = getattr(self.repo, "list_cases", None)
+        if not callable(list_cases):
+            return hot_ids
+        try:
+            cases = list_cases(minutes_signals=30, minutes_snaps=10) or []
+            for rec in cases:
+                market_id: Any = None
+                if isinstance(rec, dict):
+                    market_id = rec.get("market_id")
+                if market_id is None:
+                    market_id = getattr(rec, "market_id", None)
+                if market_id is None:
+                    try:
+                        market_id = rec["market_id"]  # sqlite.Row / mapping-like
+                    except Exception:
+                        market_id = None
+                mid = str(market_id or "").strip()
+                if mid:
+                    hot_ids.add(mid)
+        except Exception:
+            return set()
+        return hot_ids
 
     def ingest(self) -> Tuple[int, int]:
         self.logger.info("INGEST_TICK_START")
@@ -229,8 +254,9 @@ class Ingestor:
 
         t_f0 = time.perf_counter()
         calls_snapshots += 1
+        hot_market_ids = self._derive_hot_market_ids()
         try:
-            snaps = self.client.fetch_snapshots(market_rows=rows)
+            snaps = self.client.fetch_snapshots(market_rows=rows, hot_market_ids=hot_market_ids)
         except Exception as e:
             self.logger.info(
                 "INGEST_TICK_FAIL where=%s err_type=%s errno=%s",
@@ -271,7 +297,7 @@ class Ingestor:
             snaps_after,
         )
         self.logger.info(
-            "INGEST_FETCH_DETAIL market_detail=%.0fms(calls=%s) universe=%.0fms(calls=%s) snapshots=%.0fms(calls=%s) retries=%s fetch_err=%s",
+            "INGEST_FETCH_DETAIL market_detail=%.0fms(calls=%s) universe=%.0fms(calls=%s) snapshots=%.0fms(calls=%s) retries=%s fetch_err=%s hot_ids=%s",
             fetch_market_detail_ms,
             calls_market_detail,
             fetch_universe_markets_ms,
@@ -280,6 +306,7 @@ class Ingestor:
             calls_snapshots,
             retry_count,
             fetch_err_count,
+            len(hot_market_ids),
         )
         inserted = 0
         db_errors = 0

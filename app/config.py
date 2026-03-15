@@ -135,6 +135,7 @@ class AppConfig(BaseModel):
     """Main application configuration."""
     
     mode: Mode = Mode.DRY_RUN
+    runtime_profile: str = Field("dev", description="Runtime profile: dev|stage|live")
     
     # API
     api_host: str = "127.0.0.1"
@@ -147,7 +148,16 @@ class AppConfig(BaseModel):
     enable_execution: bool = False
     taker_fee_rate: float = Field(0.0, ge=0, description="Taker fee rate")
     slippage_rate: float = Field(0.0, ge=0, description="Execution slippage rate")
-    execution_mode: str = Field("paper", description="Execution mode: paper|live")
+    execution_mode: str = Field("paper", description="Execution mode: paper|live_stage0")
+    admin_token: str = Field("", description="Admin token (masked in diagnostics)", repr=False)
+    private_key: str = Field("", description="Polymarket private key (masked in diagnostics)", repr=False)
+    polymarket_key: str = Field("", description="Polymarket API key (masked in diagnostics)", repr=False)
+    polymarket_secret: str = Field("", description="Polymarket API secret (masked in diagnostics)", repr=False)
+    polymarket_passphrase: str = Field("", description="Polymarket API passphrase (masked in diagnostics)", repr=False)
+    polymarket_api_url: str = Field("", description="Polymarket API URL")
+    polymarket_chain_id: int = Field(137, ge=1, description="Polymarket chain id (Polygon=137)")
+    polymarket_signature_type: int = Field(0, ge=0, description="Signature type (EOA=0)")
+    polymarket_funder: str = Field("", description="Funder address for non-EOA flows")
     live_max_notional: float = Field(0.0, ge=0, description="Max notional per live order")
     live_max_orders_per_day: int = Field(0, ge=0, description="Max live orders per day")
     live_dry_run: bool = Field(True, description="Dry-run guard for live execution")
@@ -179,6 +189,10 @@ class AppConfig(BaseModel):
             )
             
             mode: Mode = Mode.DRY_RUN
+            runtime_profile: str = Field(
+                "dev",
+                validation_alias=AliasChoices("APP_ENV", "PS_APP_ENV", "PS_PROFILE"),
+            )
             api_host: str = "127.0.0.1"
             api_port: int = 8000
             enable_ingest: bool = True
@@ -188,6 +202,40 @@ class AppConfig(BaseModel):
             taker_fee_rate: float = Field(0.0, validation_alias=AliasChoices("TAKER_FEE_RATE", "PS_TAKER_FEE_RATE"))
             slippage_rate: float = Field(0.0, validation_alias=AliasChoices("SLIPPAGE_RATE", "PS_SLIPPAGE_RATE"))
             execution_mode: str = Field("paper", validation_alias=AliasChoices("EXECUTION_MODE", "PS_EXECUTION_MODE"))
+            admin_token: str = Field("", validation_alias=AliasChoices("ADMIN_TOKEN", "PS_ADMIN_TOKEN"), repr=False)
+            private_key: str = Field("", validation_alias=AliasChoices("PRIVATE_KEY", "PS_PRIVATE_KEY"), repr=False)
+            polymarket_key: str = Field("", validation_alias=AliasChoices("POLYMARKET_KEY", "PS_POLYMARKET_KEY"), repr=False)
+            polymarket_secret: str = Field(
+                "",
+                validation_alias=AliasChoices("POLYMARKET_SECRET", "PS_POLYMARKET_SECRET", "CLOB_SECRET", "PS_CLOB_SECRET"),
+                repr=False,
+            )
+            polymarket_passphrase: str = Field(
+                "",
+                validation_alias=AliasChoices(
+                    "POLYMARKET_PASSPHRASE",
+                    "PS_POLYMARKET_PASSPHRASE",
+                    "CLOB_PASSPHRASE",
+                    "PS_CLOB_PASSPHRASE",
+                ),
+                repr=False,
+            )
+            polymarket_api_url: str = Field(
+                "",
+                validation_alias=AliasChoices("POLYMARKET_API_URL", "PS_POLYMARKET_API_URL"),
+            )
+            polymarket_chain_id: int = Field(
+                137,
+                validation_alias=AliasChoices("POLYMARKET_CHAIN_ID", "PS_POLYMARKET_CHAIN_ID"),
+            )
+            polymarket_signature_type: int = Field(
+                0,
+                validation_alias=AliasChoices("POLYMARKET_SIGNATURE_TYPE", "PS_POLYMARKET_SIGNATURE_TYPE"),
+            )
+            polymarket_funder: str = Field(
+                "",
+                validation_alias=AliasChoices("POLYMARKET_FUNDER", "PS_POLYMARKET_FUNDER"),
+            )
             live_max_notional: float = Field(0.0, validation_alias=AliasChoices("LIVE_MAX_NOTIONAL", "PS_LIVE_MAX_NOTIONAL"))
             live_max_orders_per_day: int = Field(0, validation_alias=AliasChoices("LIVE_MAX_ORDERS_PER_DAY", "PS_LIVE_MAX_ORDERS_PER_DAY"))
             live_dry_run: bool = Field(True, validation_alias=AliasChoices("LIVE_DRY_RUN", "PS_LIVE_DRY_RUN"))
@@ -213,6 +261,14 @@ class AppConfig(BaseModel):
             raise ValueError("deprioritize_mode must be one of: off, ui, pipeline")
         return mode
 
+    @field_validator("runtime_profile")
+    @classmethod
+    def validate_runtime_profile(cls, v: str) -> str:
+        profile = (v or "dev").strip().lower()
+        if profile not in {"dev", "stage", "live"}:
+            raise ValueError("runtime_profile must be one of: dev, stage, live")
+        return profile
+
 
 # Backward compatibility - keep old settings structure
 class LifecycleSettings(BaseModel):
@@ -227,6 +283,7 @@ class AppSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="PS_", env_file=".env", extra="ignore")
 
     mode: Mode = Mode.DRY_RUN
+    runtime_profile: str = Field(default="dev", validation_alias=AliasChoices("APP_ENV", "PS_APP_ENV", "PS_PROFILE"))
     db_path: str = Field(default="polysyndicate.db")
 
     poll_interval_sec: int = 20
@@ -245,6 +302,40 @@ class AppSettings(BaseSettings):
     taker_fee_rate: float = Field(default=0.0, validation_alias=AliasChoices("PS_TAKER_FEE_RATE", "TAKER_FEE_RATE"))
     slippage_rate: float = Field(default=0.0, validation_alias=AliasChoices("PS_SLIPPAGE_RATE", "SLIPPAGE_RATE"))
     execution_mode: str = Field(default="paper", validation_alias=AliasChoices("PS_EXECUTION_MODE", "EXECUTION_MODE"))
+    admin_token: str = Field(default="", validation_alias=AliasChoices("PS_ADMIN_TOKEN", "ADMIN_TOKEN"), repr=False)
+    private_key: str = Field(default="", validation_alias=AliasChoices("PS_PRIVATE_KEY", "PRIVATE_KEY"), repr=False)
+    polymarket_key: str = Field(default="", validation_alias=AliasChoices("PS_POLYMARKET_KEY", "POLYMARKET_KEY"), repr=False)
+    polymarket_secret: str = Field(
+        default="",
+        validation_alias=AliasChoices("PS_POLYMARKET_SECRET", "POLYMARKET_SECRET", "PS_CLOB_SECRET", "CLOB_SECRET"),
+        repr=False,
+    )
+    polymarket_passphrase: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "PS_POLYMARKET_PASSPHRASE",
+            "POLYMARKET_PASSPHRASE",
+            "PS_CLOB_PASSPHRASE",
+            "CLOB_PASSPHRASE",
+        ),
+        repr=False,
+    )
+    polymarket_api_url: str = Field(
+        default="",
+        validation_alias=AliasChoices("PS_POLYMARKET_API_URL", "POLYMARKET_API_URL"),
+    )
+    polymarket_chain_id: int = Field(
+        default=137,
+        validation_alias=AliasChoices("PS_POLYMARKET_CHAIN_ID", "POLYMARKET_CHAIN_ID"),
+    )
+    polymarket_signature_type: int = Field(
+        default=0,
+        validation_alias=AliasChoices("PS_POLYMARKET_SIGNATURE_TYPE", "POLYMARKET_SIGNATURE_TYPE"),
+    )
+    polymarket_funder: str = Field(
+        default="",
+        validation_alias=AliasChoices("PS_POLYMARKET_FUNDER", "POLYMARKET_FUNDER"),
+    )
     live_max_notional: float = Field(default=0.0, validation_alias=AliasChoices("PS_LIVE_MAX_NOTIONAL", "LIVE_MAX_NOTIONAL"))
     live_max_orders_per_day: int = Field(default=0, validation_alias=AliasChoices("PS_LIVE_MAX_ORDERS_PER_DAY", "LIVE_MAX_ORDERS_PER_DAY"))
     live_dry_run: bool = Field(default=True, validation_alias=AliasChoices("PS_LIVE_DRY_RUN", "LIVE_DRY_RUN"))
@@ -270,6 +361,14 @@ class AppSettings(BaseSettings):
         if mode not in {"off", "ui", "pipeline"}:
             raise ValueError("deprioritize_mode must be one of: off, ui, pipeline")
         return mode
+
+    @field_validator("runtime_profile")
+    @classmethod
+    def validate_runtime_profile(cls, v: str) -> str:
+        profile = (v or "dev").strip().lower()
+        if profile not in {"dev", "stage", "live"}:
+            raise ValueError("runtime_profile must be one of: dev, stage, live")
+        return profile
     
     @property
     def host(self) -> str:

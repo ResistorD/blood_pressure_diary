@@ -151,6 +151,130 @@
   </div>
 
   <script>
+    window.PSAdminToken = (() => {
+      const STORAGE_KEY = "ps_admin_token";
+      let lastError = "";
+      const setLastError = (msg) => {
+        lastError = String(msg || "").trim();
+      };
+      const read = () => {
+        try {
+          return String(window.localStorage.getItem(STORAGE_KEY) || "").trim();
+        } catch (_e) {
+            return "";
+        }
+      };
+      const write = (token) => {
+        const value = String(token || "").trim();
+        try {
+          if (value) {
+            window.localStorage.setItem(STORAGE_KEY, value);
+          } else {
+            window.localStorage.removeItem(STORAGE_KEY);
+          }
+        } catch (_e) {
+          return;
+        }
+      };
+      const headers = (token) => {
+        const t = String(token || read() || "").trim();
+        if (!t) {
+          return {};
+        }
+        return {
+          "x-admin-token": t,
+          "authorization": `Bearer ${t}`,
+        };
+      };
+      const openControlLive = async (url = "/control/live") => {
+        const token = read();
+        if (!token) {
+          setLastError("Admin token is not saved in this browser.");
+          return false;
+        }
+        try {
+          const resp = await fetch(url, {
+            method: "GET",
+            headers: {
+              "accept": "text/html",
+              ...headers(token),
+            },
+            credentials: "same-origin",
+          });
+          if (!resp.ok) {
+            let detail = "";
+            try {
+              const payload = await resp.json();
+              detail = String(payload && payload.detail ? payload.detail : "").trim();
+            } catch (_e) {
+              detail = "";
+            }
+            setLastError(detail || `Live Controls request failed (${resp.status}).`);
+            return false;
+          }
+          const contentType = String(resp.headers.get("content-type") || "").toLowerCase();
+          if (!contentType.includes("text/html")) {
+            setLastError("Unexpected response format while opening Live Controls.");
+            return false;
+          }
+          const html = await resp.text();
+          document.open();
+          document.write(html);
+          document.close();
+          setLastError("");
+          return resp.ok;
+        } catch (e) {
+          setLastError(`Live Controls request failed: ${String((e && e.message) || "network error")}`);
+          return false;
+        }
+      };
+      const submitLiveForm = async (form) => {
+        const token = read();
+        if (!token) {
+          setLastError("Admin token is not saved in this browser.");
+          return false;
+        }
+        const body = new URLSearchParams(new FormData(form));
+        let resp;
+        try {
+          resp = await fetch(form.action, {
+            method: "POST",
+            headers: {
+              "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+              ...headers(token),
+            },
+            body: body.toString(),
+            redirect: "manual",
+            credentials: "same-origin",
+          });
+        } catch (_e) {
+          setLastError("Live action request failed.");
+          return false;
+        }
+        const next = resp.headers.get("location") || "/control/live";
+        const ok = await openControlLive(next);
+        return resp.ok && ok;
+      };
+      return {
+        read,
+        write,
+        headers,
+        openControlLive,
+        submitLiveForm,
+        getLastError: () => lastError,
+      };
+    })();
+    window.psAdminTokenLoad = () => window.PSAdminToken.read();
+    window.psAdminTokenSave = (token) => {
+      window.PSAdminToken.write(token);
+      return window.PSAdminToken.read();
+    };
+    window.psAdminTokenHeaders = (token) => window.PSAdminToken.headers(token);
+    window.psOpenControlLive = (url = "/control/live") => window.PSAdminToken.openControlLive(url);
+    window.psSubmitLiveControlForm = (form) => window.PSAdminToken.submitLiveForm(form);
+    window.psAdminTokenLastError = () => window.PSAdminToken.getLastError();
+    window.__psAdminHelperLoaded = true;
+
     window.addEventListener("load", () => {
       const flash = document.querySelector(".flash-banner");
       if (!flash) return;
