@@ -118,7 +118,7 @@ class _StatisticsViewState extends State<_StatisticsView> {
 
     final titleStyle = TextStyle(
       fontFamily: text.family,
-      fontSize: sp(context, text.fs26),
+      fontSize: sp(context, text.fs24),
       fontWeight: text.w600,
       color: colors.textOnBrand,
       height: 1.0,

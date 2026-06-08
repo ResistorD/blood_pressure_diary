@@ -59,7 +59,7 @@ afterEvaluate {
             flutterOut.mkdirs()
 
             // Без java.io.File — просто resolve()
-            val dst = flutterOut.resolve("app-release.apk")
+            val dst = flutterOut.resolve("PressureDiary.apk")
             apk.copyTo(dst, overwrite = true)
 
             println("✔ Mirrored APK to: ${dst.absolutePath}")

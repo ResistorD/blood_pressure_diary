@@ -78,3 +78,31 @@ class DateTimeSet extends AddRecordEvent {
   @override
   List<Object?> get props => [value];
 }
+
+class DraftLoaded extends AddRecordEvent {
+  final String systolic;
+  final String diastolic;
+  final String pulse;
+  final String note;
+  final DateTime selectedDateTime;
+  final List<String> tags;
+
+  const DraftLoaded({
+    required this.systolic,
+    required this.diastolic,
+    required this.pulse,
+    required this.note,
+    required this.selectedDateTime,
+    required this.tags,
+  });
+
+  @override
+  List<Object?> get props => [
+    systolic,
+    diastolic,
+    pulse,
+    note,
+    selectedDateTime,
+    tags,
+  ];
+}

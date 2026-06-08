@@ -17,22 +17,37 @@ import 'package:flutter/widgets.dart';
 //
 // ════════════════════════════════════════════════════════════════════════════
 
-// Эталонная высота (iPhone 13 Pro)
-const double _designHeight = 844.0;
+// Эталонная ширина (Poco F3)
+// Poco F3 (1080×2400) типичный logical width в Flutter ≈ 392.
+const double _designWidth = 392.0;
 
-/// Базовый scale от высоты экрана
+/// Базовый scale от ширины экрана
 double _scale(BuildContext context) {
   // ВАЖНО: Используем MediaQuery.of(context).size
   // А НЕ MediaQuery.sizeOf(context)!
   //
   // MediaQuery.of(context).size - ВСЕГДА размер экрана
   // MediaQuery.sizeOf(context) - может быть размер локального виджета!
-  final height = MediaQuery.of(context).size.height;
+  //
+  // Дополнительно страхуемся от локальных MediaQuery (оверлеи/диалоги):
+  // если MediaQuery недоступен, берём размер окна из View.
+  final mq = MediaQuery.maybeOf(context);
+  final view = View.of(context);
+  final size = mq?.size ?? (view.physicalSize / view.devicePixelRatio);
 
-  final scale = height / _designHeight;
+  final width = size.width;
 
-  // Ограничения для адекватных размеров
-  return scale.clamp(0.90, 1.35);
+  // На планшетах/широких экранах глобальное масштабирование чаще вредит,
+  // чем помогает (раздувает UI). Оставляем 1.0.
+  if (width >= 600) {
+    return 1.0;
+  }
+
+  final scale = width / _designWidth;
+
+  // Умеренные ограничения: убираем «дрейф» на разных aspect ratio,
+  // но сохраняем читаемость на очень узких/широких телефонах.
+  return scale.clamp(0.92, 1.10);
 }
 
 /// 📏 Горизонтальные размеры (width, padding между элементами)
@@ -91,6 +106,15 @@ class HeaderSizes {
     if (isLandscape(context)) {
       return vdp(context, 100);
     }
+
+    final height = MediaQuery.of(context).size.height;
+
+    // Увеличиваем header только для очень высоких экранов (Xiaomi 15T Pro)
+    if (height > 920) {
+      return vdp(context, 190);
+    }
+
+    // Все остальные - стандартный размер
     return vdp(context, 160);
   }
 
@@ -102,6 +126,14 @@ class HeaderSizes {
   }
 
   static double overlap(BuildContext context) {
+    final height = MediaQuery.of(context).size.height;
+
+    // Уменьшаем overlap на высоких экранах для большего зазора
+    if (height > 920) {
+      return dp(context, 40);
+    }
+
+    // Стандартный overlap
     return dp(context, 50);
   }
 

@@ -13,12 +13,29 @@ import 'package:blood_pressure_diary/core/utils/l10n_extensions.dart';
 
 class SummaryCard extends StatelessWidget {
   final BloodPressureRecord? record;
+  final int? trendDelta;
 
-  const SummaryCard({super.key, this.record});
+  const SummaryCard({super.key, this.record, this.trendDelta});
 
   String _time(BuildContext context, DateTime t) {
     final locale = Localizations.localeOf(context).toLanguageTag();
     return DateFormat.Hm(locale).format(t); // locale-aware (12/24h where applicable)
+  }
+
+  String _trendLabel(BuildContext context, int delta) {
+    if (delta == 0) return _tr(context, ru: '≈ среднее', en: '≈ average');
+    final sign = delta > 0 ? '↗' : '↘';
+    final value = delta > 0 ? '+${delta.abs()}' : '-${delta.abs()}';
+    final tail = delta > 0
+        ? _tr(context, ru: 'выше среднего', en: 'above average')
+        : _tr(context, ru: 'ниже среднего', en: 'below average');
+    final period = _tr(context, ru: 'в выбранном периоде', en: 'for selected period');
+    return '$sign $value $tail $period';
+  }
+
+  String _tr(BuildContext context, {required String ru, required String en}) {
+    final code = Localizations.localeOf(context).languageCode.toLowerCase();
+    return code == 'ru' ? ru : en;
   }
 
   @override
@@ -40,7 +57,7 @@ class SummaryCard extends StatelessWidget {
     final shadow = context.appShadow;
     final text = context.appText;
 
-    final width = MediaQuery.sizeOf(context).width - context.horizontalPadding * 2;
+    final width = MediaQuery.of(context).size.width - context.horizontalPadding * 2;
     final height = dp(context, space.s114); // фикс по макету
     final r = dp(context, radii.r10);
 
@@ -61,7 +78,7 @@ class SummaryCard extends StatelessWidget {
 
     final pressureStyle = TextStyle(
       fontFamily: text.family,
-      fontSize: sp(context, text.fs30),
+      fontSize: sp(context, text.fs30 + 4),
       fontWeight: text.w600,
       color: mainText,
       height: 1.0,
@@ -69,7 +86,7 @@ class SummaryCard extends StatelessWidget {
 
     final pulseStyle = TextStyle(
       fontFamily: text.family,
-      fontSize: sp(context, text.fs22),
+      fontSize: sp(context, text.fs22 + 4),
       fontWeight: text.w600,
       color: mainText,
       height: 1.0,
@@ -78,6 +95,14 @@ class SummaryCard extends StatelessWidget {
     final timeStyle = TextStyle(
       fontFamily: text.family,
       fontSize: sp(context, text.fs22),
+      fontWeight: text.w600,
+      color: mainText,
+      height: 1.0,
+    );
+
+    final trendStyle = TextStyle(
+      fontFamily: text.family,
+      fontSize: sp(context, text.fs14),
       fontWeight: text.w600,
       color: mainText,
       height: 1.0,
@@ -117,15 +142,29 @@ class SummaryCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // 1) Давление
-          Text(
-            '${record!.systolic}/${record!.diastolic}',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: pressureStyle,
+          // 1) Давление слева, время справа
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '${record!.systolic}/${record!.diastolic}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: pressureStyle,
+                ),
+              ),
+              SvgPicture.asset(
+                'assets/clock.svg',
+                width: dp(context, space.s20),
+                height: dp(context, space.s20),
+                colorFilter: ColorFilter.mode(clockColor, BlendMode.srcIn),
+              ),
+              SizedBox(width: dp(context, space.s6)),
+              Text(_time(context, record!.dateTime), style: timeStyle),
+            ],
           ),
 
-          // 2) Пульс + галочка
+          // 2) Пульс слева, индикатор справа
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
@@ -155,18 +194,18 @@ class SummaryCard extends StatelessWidget {
             ],
           ),
 
-          Row(
-            children: [
-              SvgPicture.asset(
-                'assets/clock.svg',
-                width: dp(context, space.s20),
-                height: dp(context, space.s20),
-                colorFilter: ColorFilter.mode(clockColor, BlendMode.srcIn),
+          // 3) Тренд (снизу, по центру)
+          if (trendDelta != null)
+            Center(
+              child: Text(
+                _trendLabel(context, trendDelta!),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: trendStyle,
               ),
-              SizedBox(width: dp(context, space.s6)),
-              Text(_time(context, record!.dateTime), style: timeStyle),
-            ],
-          ),
+            )
+          else
+            const SizedBox.shrink(),
         ],
       ),
     );

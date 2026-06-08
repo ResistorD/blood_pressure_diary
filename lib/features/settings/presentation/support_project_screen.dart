@@ -94,13 +94,11 @@ class SupportProjectScreen extends StatelessWidget {
 
     final gap20 = dp(context, space.s20);
     final gap16 = dp(context, space.s16);
-    final gap12 = dp(context, space.s12);
-    final gap10 = dp(context, space.s10);
 
     final titleStyle = TextStyle(
       fontFamily: txt.family,
       fontSize: sp(context, txt.fs24),
-      fontWeight: txt.w700,
+      fontWeight: txt.w600,
       color: colors.textOnBrand,
       height: 1.0,
     );
@@ -203,28 +201,22 @@ class SupportProjectScreen extends StatelessWidget {
             padding: EdgeInsets.only(
               left: side,
               right: side,
-              top: topInset + gap12,
-              bottom: gap12,
+              top: topInset + dp(context, space.s20),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Stack(
               children: [
-                SizedBox(height: gap10),
-                Row(
-                  children: [
-                    _HeaderIconButton(
-                      icon: Icons.close,
-                      onTap: () => Navigator.of(context).pop(),
-                    ),
-                    const Spacer(),
-                  ],
-                ),
-                SizedBox(height: gap12),
                 Text(
                   l10n.supportProject,
                   style: titleStyle,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
+                ),
+                Align(
+                  alignment: Alignment.topRight,
+                  child: _HeaderIconButton(
+                    icon: Icons.close,
+                    onTap: () => Navigator.of(context).pop(),
+                  ),
                 ),
               ],
             ),

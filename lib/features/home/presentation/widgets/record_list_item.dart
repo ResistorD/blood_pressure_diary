@@ -103,7 +103,7 @@ class RecordListItem extends StatelessWidget {
 
     final iconSize = dp(context, s.s22);
     final iconGap = dp(context, s.s6);
-    final blockGap = dp(context, s.s12);
+    final blockGap = dp(context, s.s20);
 
     final cardR = dp(context, r.r5);
     final padH = dp(context, s.s20);
@@ -192,42 +192,42 @@ class RecordListItem extends StatelessWidget {
                 ),
                 child: hasMeta
                     ? Align(
-                        alignment: Alignment.centerLeft,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _MainRow(
-                              record: record,
-                              valueStyle: valueStyle,
-                              iconSize: iconSize,
-                              iconGap: iconGap,
-                              blockGap: blockGap,
-                              iconColor: iconColor,
-                            ),
-                            SizedBox(height: dp(context, s.s8)),
-                            _TagsMetaRow(
-                              tags: tags,
-                              note: note,
-                              noteStyle: noteStyle,
-                              iconColor: iconColor,
-                              iconSize: dp(context, s.s14),
-                              gap: dp(context, s.s6),
-                            ),
-                          ],
-                        ),
-                      )
-                    : Align(
-                        alignment: Alignment.centerLeft,
-                        child: _MainRow(
-                          record: record,
-                          valueStyle: valueStyle,
-                          iconSize: iconSize,
-                          iconGap: iconGap,
-                          blockGap: blockGap,
-                          iconColor: iconColor,
-                        ),
+                  alignment: Alignment.centerLeft,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _MainRow(
+                        record: record,
+                        valueStyle: valueStyle,
+                        iconSize: iconSize,
+                        iconGap: iconGap,
+                        blockGap: blockGap,
+                        iconColor: iconColor,
                       ),
+                      SizedBox(height: dp(context, s.s8)),
+                      _TagsMetaRow(
+                        tags: tags,
+                        note: note,
+                        noteStyle: noteStyle,
+                        iconColor: iconColor,
+                        iconSize: dp(context, s.s14),
+                        gap: dp(context, s.s6),
+                      ),
+                    ],
+                  ),
+                )
+                    : Align(
+                  alignment: Alignment.centerLeft,
+                  child: _MainRow(
+                    record: record,
+                    valueStyle: valueStyle,
+                    iconSize: iconSize,
+                    iconGap: iconGap,
+                    blockGap: blockGap,
+                    iconColor: iconColor,
+                  ),
+                ),
               ),
             ),
           ],
@@ -375,6 +375,12 @@ class _MainRow extends StatelessWidget {
               colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
             ),
           ],
+        ),
+        SizedBox(width: blockGap),
+        Container(
+          width: 1,
+          height: iconSize,
+          color: iconColor.withValues(alpha: 0.35),
         ),
         SizedBox(width: blockGap),
         Row(

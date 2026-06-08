@@ -1,11 +1,15 @@
 import 'dart:io';
+import 'package:intl/intl.dart';
+
 import 'about_app_screen.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:csv/csv.dart';
 
 import 'package:blood_pressure_diary/core/services/export_service.dart';
 import 'package:blood_pressure_diary/core/services/backup_service.dart';
+import 'package:blood_pressure_diary/features/home/data/blood_pressure_model.dart';
 import 'package:blood_pressure_diary/core/database/isar_service.dart';
 import 'package:blood_pressure_diary/core/di/service_locator.dart';
 import 'package:blood_pressure_diary/core/theme/app_theme.dart';
@@ -146,6 +150,167 @@ class SettingsScreen extends StatelessWidget {
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(_tr(context, 'Данные восстановлены', 'Data restored'))),
+    );
+  }
+
+  int _csvColumnIndex(List<dynamic> header, List<String> names) {
+    for (var i = 0; i < header.length; i++) {
+      final value = header[i].toString().trim().replaceAll('\ufeff', '').toLowerCase();
+      for (final name in names) {
+        if (value == name.toLowerCase()) return i;
+      }
+    }
+    return -1;
+  }
+
+  String _csvCell(List<dynamic> row, int index) {
+    if (index < 0 || index >= row.length) return '';
+    return row[index].toString().trim();
+  }
+
+  DateTime? _parseCsvDateTime(String date, String time) {
+    final d = date.trim();
+    final t = time.trim();
+    if (d.isEmpty || t.isEmpty) return null;
+
+    final dateFormats = <DateFormat>[
+      DateFormat('yyyy-MM-dd'),
+      DateFormat('dd.MM.yyyy'),
+      DateFormat('dd/MM/yyyy'),
+    ];
+
+    DateTime? parsedDate;
+    for (final format in dateFormats) {
+      try {
+        parsedDate = format.parseStrict(d);
+        break;
+      } catch (_) {
+        // try next format
+      }
+    }
+    if (parsedDate == null) return null;
+
+    final timeParts = t.split(':');
+    if (timeParts.length < 2) return null;
+    final hour = int.tryParse(timeParts[0]);
+    final minute = int.tryParse(timeParts[1]);
+    if (hour == null || minute == null) return null;
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+
+    return DateTime(parsedDate.year, parsedDate.month, parsedDate.day, hour, minute);
+  }
+
+  List<BloodPressureRecord> _parseMedMCsv(String csvText) {
+    final rows = const CsvToListConverter(
+      shouldParseNumbers: false,
+    ).convert(csvText.replaceFirst('\ufeff', ''));
+
+    if (rows.isEmpty) return const <BloodPressureRecord>[];
+
+    final header = rows.first;
+    final dateIndex = _csvColumnIndex(header, ['Дата', 'Date']);
+    final timeIndex = _csvColumnIndex(header, ['Время', 'Time']);
+    final sysIndex = _csvColumnIndex(header, ['Сис', 'Systolic', 'SYS']);
+    final diaIndex = _csvColumnIndex(header, ['Диа', 'Diastolic', 'DIA']);
+    final pulseIndex = _csvColumnIndex(header, ['Пульс', 'Pulse']);
+    final noteIndex = _csvColumnIndex(header, ['Заметка', 'Note']);
+
+    if (dateIndex < 0 || timeIndex < 0 || sysIndex < 0 || diaIndex < 0 || pulseIndex < 0) {
+      throw const FormatException('CSV columns not found');
+    }
+
+    final records = <BloodPressureRecord>[];
+
+    for (final row in rows.skip(1)) {
+      final dateTime = _parseCsvDateTime(_csvCell(row, dateIndex), _csvCell(row, timeIndex));
+      final systolic = int.tryParse(_csvCell(row, sysIndex));
+      final diastolic = int.tryParse(_csvCell(row, diaIndex));
+      final pulse = int.tryParse(_csvCell(row, pulseIndex));
+
+      if (dateTime == null || systolic == null || diastolic == null || pulse == null) {
+        continue;
+      }
+
+      final note = _csvCell(row, noteIndex);
+
+      records.add(
+        BloodPressureRecord()
+          ..dateTime = dateTime
+          ..systolic = systolic
+          ..diastolic = diastolic
+          ..pulse = pulse
+          ..note = note.isEmpty ? null : note
+          ..tags = const [],
+      );
+    }
+
+    return records;
+  }
+
+  Future<void> _importFromCsv(BuildContext context) async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['csv'],
+      withData: false,
+    );
+
+    if (result == null || result.files.isEmpty) return;
+    final path = result.files.first.path;
+    if (path == null) return;
+
+    List<BloodPressureRecord> records;
+    int totalRows;
+    try {
+      final csvText = await File(path).readAsString();
+      final rows = const CsvToListConverter(shouldParseNumbers: false).convert(csvText.replaceFirst('\ufeff', ''));
+      totalRows = rows.isEmpty ? 0 : rows.length - 1;
+      records = _parseMedMCsv(csvText);
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_tr(context, 'Не удалось прочитать CSV-файл', 'Failed to read CSV file'))),
+      );
+      return;
+    }
+
+    if (!context.mounted) return;
+
+    if (records.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_tr(context, 'В CSV не найдено подходящих записей', 'No valid records found in CSV'))),
+      );
+      return;
+    }
+
+    final skipped = totalRows - records.length;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(_tr(context, 'Импорт CSV', 'CSV import')),
+        content: Text(
+          _tr(
+            context,
+            'Будет добавлено записей: ${records.length}.\nПропущено строк: $skipped.\n\nСуществующие записи удалены не будут. Продолжить?',
+            'Records to add: ${records.length}.\nSkipped rows: $skipped.\n\nExisting records will not be deleted. Continue?',
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: Text(_tr(context, 'Отмена', 'Cancel'))),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: Text(_tr(context, 'Импорт', 'Import'))),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+
+    await _runBlocking(context, () async {
+      await getIt<IsarService>().saveRecords(records);
+    });
+
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(_tr(context, 'CSV импортирован: ${records.length} записей', 'CSV imported: ${records.length} records'))),
     );
   }
 
@@ -743,6 +908,8 @@ class SettingsScreen extends StatelessWidget {
                         actionButton(title: _tr(context, 'Резервная копия (JSON)', 'Backup (JSON)'), onTap: () => _backupToJson(context)),
                         SizedBox(height: gap8),
                         actionButton(title: _tr(context, 'Восстановить из копии', 'Restore from backup'), onTap: () => _restoreFromJson(context)),
+                        SizedBox(height: gap8),
+                        actionButton(title: _tr(context, 'Импорт CSV', 'Import CSV'), onTap: () => _importFromCsv(context)),
                         SizedBox(height: gap8),
 
                         actionButton(title: l10n.clearData, onTap: () => _showClearDataDialog(context, l10n)),
