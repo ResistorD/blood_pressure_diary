@@ -317,7 +317,7 @@ abstract class AppLocalizations {
   /// No description provided for @bpLevelLow.
   ///
   /// In ru, this message translates to:
-  /// **'Понижено'**
+  /// **'Низкое'**
   String get bpLevelLow;
 
   /// No description provided for @bpLevelNormal.
@@ -329,7 +329,7 @@ abstract class AppLocalizations {
   /// No description provided for @bpLevelElevated.
   ///
   /// In ru, this message translates to:
-  /// **'Повышено'**
+  /// **'Повышенное'**
   String get bpLevelElevated;
 
   /// No description provided for @bpLevelHtn1.
@@ -347,7 +347,7 @@ abstract class AppLocalizations {
   /// No description provided for @bpLevelCrisis.
   ///
   /// In ru, this message translates to:
-  /// **'Кризис'**
+  /// **'Гипертония 3'**
   String get bpLevelCrisis;
 
   /// No description provided for @notifTitleMeasureNow.

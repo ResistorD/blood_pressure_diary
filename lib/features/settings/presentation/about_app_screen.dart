@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:in_app_review/in_app_review.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'support_project_screen.dart';
@@ -16,9 +15,11 @@ class AboutAppScreen extends StatelessWidget {
   static const _supportEmail = 'resistor.rs@gmail.com';
 
   Future<void> _openEmail(BuildContext context) async {
-    final l10n = AppLocalizations.of(context)!;
+    final l10n = AppLocalizations.of(context);
 
-    final subject = Uri.encodeComponent('Pressure Diary — ${l10n.contactSupport}');
+    final subject = Uri.encodeComponent(
+      'Pressure Diary — ${l10n.contactSupport}',
+    );
     final body = Uri.encodeComponent('${l10n.contactSupport}\n');
 
     final uri = Uri.parse('mailto:$_supportEmail?subject=$subject&body=$body');
@@ -29,32 +30,14 @@ class AboutAppScreen extends StatelessWidget {
     }
   }
 
-  Future<void> _rateApp(BuildContext context) async {
-    final l10n = AppLocalizations.of(context)!;
-
-    final inAppReview = InAppReview.instance;
-    try {
-      if (await inAppReview.isAvailable()) {
-        await inAppReview.requestReview();
-      } else {
-        await inAppReview.openStoreListing();
-      }
-    } catch (_) {
-      if (context.mounted) _snack(context, l10n.actionFailed);
-    }
-  }
-
   Future<void> _supportProject(BuildContext context) async {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const SupportProjectScreen()),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const SupportProjectScreen()));
   }
-
 
   static void _snack(BuildContext context, String text) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(text)),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   }
 
   @override
@@ -75,7 +58,7 @@ class AboutAppScreen extends StatelessWidget {
     final gap20 = dp(context, space.s20);
     final gap16 = dp(context, space.s16);
 
-    final l10n = AppLocalizations.of(context)!;
+    final l10n = AppLocalizations.of(context);
 
     final titleStyle = TextStyle(
       fontFamily: txt.family,
@@ -221,7 +204,9 @@ class AboutAppScreen extends StatelessWidget {
                                 fontFamily: txt.family,
                                 fontSize: sp(context, txt.fs12),
                                 fontWeight: txt.w400,
-                                color: isDark ? AppPalette.dark350 : AppPalette.grey500,
+                                color: isDark
+                                    ? AppPalette.dark350
+                                    : AppPalette.grey500,
                                 height: 1.0,
                               ),
                             );
@@ -256,7 +241,9 @@ class AboutAppScreen extends StatelessWidget {
                           title: l10n.privacyPolicy,
                           onTap: () {
                             Navigator.of(context).push(
-                              MaterialPageRoute(builder: (_) => const PrivacyPolicyScreen()),
+                              MaterialPageRoute(
+                                builder: (_) => const PrivacyPolicyScreen(),
+                              ),
                             );
                           },
                         ),

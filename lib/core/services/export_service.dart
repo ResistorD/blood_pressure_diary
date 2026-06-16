@@ -17,7 +17,7 @@ class ExportService {
   // ✅ Кэш для шрифтов PDF
   pw.Font? _cachedTtf;
   pw.Font? _cachedTtfBold;
-  
+
   Future<pw.Font> _loadTtf() async {
     if (_cachedTtf != null) return _cachedTtf!;
     final fontData = await rootBundle.load('assets/fonts/Inter-Regular.ttf');
@@ -33,12 +33,12 @@ class ExportService {
   }
 
   Future<void> exportData(
-      List<BloodPressureRecord> records,
-      ExportFormat format,
-      String languageCode, {
-        UserProfile? profile,
-        int periodDays = 14,
-      }) async {
+    List<BloodPressureRecord> records,
+    ExportFormat format,
+    String languageCode, {
+    UserProfile? profile,
+    int periodDays = 14,
+  }) async {
     if (format == ExportFormat.csv) {
       await _exportToCSV(records);
       return;
@@ -55,7 +55,7 @@ class ExportService {
   // --- ВОССТАНОВЛЕННЫЙ CSV ---
   Future<void> _exportToCSV(List<BloodPressureRecord> records) async {
     List<List<dynamic>> rows = [
-      ["Date", "Time", "Systolic", "Diastolic", "Pulse", "Note", "Tags"]
+      ["Date", "Time", "Systolic", "Diastolic", "Pulse", "Note", "Tags"],
     ];
 
     for (var record in records) {
@@ -71,15 +71,15 @@ class ExportService {
     }
 
     String csv = const ListToCsvConverter().convert(rows);
-    
+
     // ✅ Использование постоянного хранилища (как в PDF)
     final dir = await getApplicationDocumentsDirectory();
     final exportDir = Directory('${dir.path}/exports');
-    
+
     if (!await exportDir.exists()) {
       await exportDir.create(recursive: true);
     }
-    
+
     // ✅ Cleanup файлов старше 7 дней
     try {
       final now = DateTime.now();
@@ -94,7 +94,7 @@ class ExportService {
     } catch (e) {
       debugPrint('Cleanup old CSV exports error: $e');
     }
-    
+
     final file = File(
       '${exportDir.path}/blood_pressure_export_${DateTime.now().millisecondsSinceEpoch}.csv',
     );
@@ -116,7 +116,9 @@ class ExportService {
 
     final now = DateTime.now();
     final threshold = now.subtract(Duration(days: periodDays));
-    final filtered = records.where((r) => r.dateTime.isAfter(threshold)).toList();
+    final filtered = records
+        .where((r) => r.dateTime.isAfter(threshold))
+        .toList();
 
     // ✅ Использование кэшированных шрифтов
     final ttf = await _loadTtf();
@@ -146,12 +148,18 @@ class ExportService {
           ),
           pw.SizedBox(height: 12),
 
-          pw.Text('${isRu ? 'Период' : 'Period'}: $periodStr',
-              style: const pw.TextStyle(fontSize: 10)),
-          pw.Text('${isRu ? 'Пациент' : 'Patient'}: ${_profileName(profile)}',
-              style: const pw.TextStyle(fontSize: 10)),
-          pw.Text('${isRu ? 'Возраст' : 'Age'}: $ageStr',
-              style: const pw.TextStyle(fontSize: 10)),
+          pw.Text(
+            '${isRu ? 'Период' : 'Period'}: $periodStr',
+            style: const pw.TextStyle(fontSize: 10),
+          ),
+          pw.Text(
+            '${isRu ? 'Пациент' : 'Patient'}: ${_profileName(profile)}',
+            style: const pw.TextStyle(fontSize: 10),
+          ),
+          pw.Text(
+            '${isRu ? 'Возраст' : 'Age'}: $ageStr',
+            style: const pw.TextStyle(fontSize: 10),
+          ),
           pw.Text(
             '${isRu ? 'Целевые значения' : 'Target values'}: ${profile?.targetSystolic ?? 120}/${profile?.targetDiastolic ?? 80}',
             style: const pw.TextStyle(fontSize: 10),
@@ -163,12 +171,18 @@ class ExportService {
           _buildTitle(isRu ? 'Резюме' : 'Summary', primaryColor),
           _buildResumeTable(
             rows: [
-              [isRu ? 'Среднее за период' : 'Average', '${stats.avgSys}/${stats.avgDia}'],
+              [
+                isRu ? 'Среднее за период' : 'Average',
+                '${stats.avgSys}/${stats.avgDia}',
+              ],
               [isRu ? 'Минимум' : 'Minimum', '${stats.minSys}/${stats.minDia}'],
-              [isRu ? 'Максимум' : 'Maximum', '${stats.maxSys}/${stats.maxDia}'],
+              [
+                isRu ? 'Максимум' : 'Maximum',
+                '${stats.maxSys}/${stats.maxDia}',
+              ],
               [
                 isRu ? 'Выше нормы' : 'Above normal',
-                '${stats.outOfRangePct.round()}% (${stats.outOfRangeCount}/${stats.n})'
+                '${stats.outOfRangePct.round()}% (${stats.outOfRangeCount}/${stats.n})',
               ],
             ],
             bgColor: lightGrey,
@@ -177,11 +191,14 @@ class ExportService {
           pw.SizedBox(height: 10),
 
           // 2. АНАЛИТИКА
-          _buildTitle(isRu ? 'Аналитика по времени суток' : 'Time of day analytics', primaryColor),
+          _buildTitle(
+            isRu ? 'Аналитика по времени суток' : 'Time of day analytics',
+            primaryColor,
+          ),
           _buildStandardTable(
             headers: [
               isRu ? 'Время суток' : 'Time of day',
-              isRu ? 'Среднее (SYS/DIA)' : 'Avg (SYS/DIA)'
+              isRu ? 'Среднее (SYS/DIA)' : 'Avg (SYS/DIA)',
             ],
             rows: _calcTimeBuckets(filtered, isRu),
             headerColor: primaryColor,
@@ -190,19 +207,24 @@ class ExportService {
           pw.SizedBox(height: 10),
 
           // 3. ЖУРНАЛ
-          _buildTitle(isRu ? 'Журнал измерений' : 'Measurement log', primaryColor),
+          _buildTitle(
+            isRu ? 'Журнал измерений' : 'Measurement log',
+            primaryColor,
+          ),
           _buildStandardTable(
             headers: isRu
                 ? ['Дата', 'Время', 'SYS/DIA', 'Пульс', 'Примечание']
                 : ['Date', 'Time', 'SYS/DIA', 'Pulse', 'Note'],
             rows: filtered
-                .map((r) => [
-              DateFormat('dd.MM.yyyy').format(r.dateTime),
-              DateFormat('HH:mm').format(r.dateTime),
-              '${r.systolic}/${r.diastolic}',
-              r.pulse.toString(),
-              _noteWithTags(r), // ✅ note + tags
-            ])
+                .map(
+                  (r) => [
+                    DateFormat('dd.MM.yyyy').format(r.dateTime),
+                    DateFormat('HH:mm').format(r.dateTime),
+                    '${r.systolic}/${r.diastolic}',
+                    r.pulse.toString(),
+                    _noteWithTags(r), // ✅ note + tags
+                  ],
+                )
                 .toList(),
             headerColor: primaryColor,
             isJournal: true,
@@ -211,13 +233,15 @@ class ExportService {
           pw.SizedBox(height: 20),
 
           // 4. ЗАМЕТКИ ВРАЧА
-          pw.Text(isRu ? 'Заметки врача:' : 'Doctor\'s notes:',
-              style: pw.TextStyle(font: ttfBold, fontSize: 10)),
+          pw.Text(
+            isRu ? 'Заметки врача:' : 'Doctor\'s notes:',
+            style: pw.TextStyle(font: ttfBold, fontSize: 10),
+          ),
           pw.SizedBox(height: 5),
           pw.Column(
             children: List.generate(
               7,
-                  (index) => pw.Container(
+              (index) => pw.Container(
                 height: 18,
                 decoration: const pw.BoxDecoration(
                   border: pw.Border(
@@ -239,16 +263,16 @@ class ExportService {
     );
 
     final bytes = await pdf.save();
-    
+
     // ✅ Использование постоянного хранилища вместо temporary
     final dir = await getApplicationDocumentsDirectory();
     final exportDir = Directory('${dir.path}/exports');
-    
+
     // Создаем директорию, если её нет
     if (!await exportDir.exists()) {
       await exportDir.create(recursive: true);
     }
-    
+
     // ✅ Cleanup файлов старше 7 дней
     try {
       await for (final entity in exportDir.list()) {
@@ -263,8 +287,10 @@ class ExportService {
       // Ignore cleanup errors
       debugPrint('Cleanup old exports error: $e');
     }
-    
-    final file = File('${exportDir.path}/report_${now.millisecondsSinceEpoch}.pdf');
+
+    final file = File(
+      '${exportDir.path}/report_${now.millisecondsSinceEpoch}.pdf',
+    );
     await file.writeAsBytes(bytes, flush: true);
     await Share.shareXFiles([XFile(file.path)]);
   }
@@ -294,7 +320,10 @@ class ExportService {
     ),
   );
 
-  pw.Widget _buildResumeTable({required List<List<String>> rows, required PdfColor bgColor}) {
+  pw.Widget _buildResumeTable({
+    required List<List<String>> rows,
+    required PdfColor bgColor,
+  }) {
     return pw.Container(
       decoration: pw.BoxDecoration(
         color: bgColor,
@@ -307,9 +336,15 @@ class ExportService {
           border: null,
           cellStyle: const pw.TextStyle(fontSize: 9),
           data: rows,
-          columnWidths: {0: const pw.FixedColumnWidth(150), 1: const pw.FlexColumnWidth()},
+          columnWidths: {
+            0: const pw.FixedColumnWidth(150),
+            1: const pw.FlexColumnWidth(),
+          },
           cellAlignments: {0: pw.Alignment.centerLeft, 1: pw.Alignment.center},
-          cellPadding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          cellPadding: const pw.EdgeInsets.symmetric(
+            horizontal: 10,
+            vertical: 5,
+          ),
         ),
       ),
     );
@@ -346,14 +381,20 @@ class ExportService {
           data: rows,
           columnWidths: isJournal
               ? {
-            0: const pw.FixedColumnWidth(65),
-            1: const pw.FixedColumnWidth(45),
-            2: const pw.FixedColumnWidth(60),
-            3: const pw.FixedColumnWidth(45),
-            4: const pw.FlexColumnWidth(),
-          }
-              : {0: const pw.FixedColumnWidth(215), 1: const pw.FlexColumnWidth()},
-          cellPadding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  0: const pw.FixedColumnWidth(65),
+                  1: const pw.FixedColumnWidth(45),
+                  2: const pw.FixedColumnWidth(60),
+                  3: const pw.FixedColumnWidth(45),
+                  4: const pw.FlexColumnWidth(),
+                }
+              : {
+                  0: const pw.FixedColumnWidth(215),
+                  1: const pw.FlexColumnWidth(),
+                },
+          cellPadding: const pw.EdgeInsets.symmetric(
+            horizontal: 8,
+            vertical: 4,
+          ),
         ),
       ),
     );
@@ -386,7 +427,8 @@ class ExportService {
       if (dob == null) return null;
       int years = now.year - dob.year;
       final hadBirthdayThisYear =
-          (now.month > dob.month) || (now.month == dob.month && now.day >= dob.day);
+          (now.month > dob.month) ||
+          (now.month == dob.month && now.day >= dob.day);
       if (!hadBirthdayThisYear) years -= 1;
       return years;
     }
@@ -395,7 +437,10 @@ class ExportService {
     return v;
   }
 
-  _Stats _calculateStats(List<BloodPressureRecord> records, UserProfile? profile) {
+  _Stats _calculateStats(
+    List<BloodPressureRecord> records,
+    UserProfile? profile,
+  ) {
     if (records.isEmpty) return _Stats.empty();
     int sSum = 0, dSum = 0, outCount = 0;
     int minS = 999, maxS = 0, minD = 999, maxD = 0;
@@ -423,7 +468,10 @@ class ExportService {
     );
   }
 
-  List<List<String>> _calcTimeBuckets(List<BloodPressureRecord> records, bool isRu) {
+  List<List<String>> _calcTimeBuckets(
+    List<BloodPressureRecord> records,
+    bool isRu,
+  ) {
     final b = {
       'm': <BloodPressureRecord>[],
       'd': <BloodPressureRecord>[],
@@ -432,24 +480,30 @@ class ExportService {
     };
     for (var r in records) {
       final h = r.dateTime.hour;
-      if (h >= 6 && h < 11) b['m']!.add(r);
-      else if (h >= 11 && h < 18) b['d']!.add(r);
-      else if (h >= 18 && h < 23) b['e']!.add(r);
-      else if (h >= 23 || h < 6) b['n']!.add(r);
+      if (h >= 6 && h < 11) {
+        b['m']!.add(r);
+      } else if (h >= 11 && h < 18) {
+        b['d']!.add(r);
+      } else if (h >= 18 && h < 23) {
+        b['e']!.add(r);
+      } else if (h >= 23 || h < 6) {
+        b['n']!.add(r);
+      }
     }
     String f(List<BloodPressureRecord> l) {
       if (l.isEmpty) return '—';
-      final s =
-      (l.map((e) => e.systolic).reduce((a, b) => a + b) / l.length).round();
-      final d =
-      (l.map((e) => e.diastolic).reduce((a, b) => a + b) / l.length).round();
+      final s = (l.map((e) => e.systolic).reduce((a, b) => a + b) / l.length)
+          .round();
+      final d = (l.map((e) => e.diastolic).reduce((a, b) => a + b) / l.length)
+          .round();
       final label = isRu
           ? (l.length == 1
-          ? 'измерение'
-          : (l.length < 5 ? 'измерения' : 'измерений'))
+                ? 'измерение'
+                : (l.length < 5 ? 'измерения' : 'измерений'))
           : 'records';
       return '$s/$d (${l.length} $label)';
     }
+
     return [
       [isRu ? 'Утро (06-11)' : 'Morning', f(b['m']!)],
       [isRu ? 'День (11-18)' : 'Day', f(b['d']!)],

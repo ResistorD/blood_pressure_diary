@@ -17,16 +17,16 @@ class SettingsCubit extends Cubit<SettingsState> {
   final NotificationService _notificationService;
 
   SettingsCubit(
-      this._isarService,
-      this._pressureRepository,
-      this._exportService,
-      this._notificationService,
-      ) : super(SettingsState(AppSettings())) {
-    _loadSettings();
+    this._isarService,
+    this._pressureRepository,
+    this._exportService,
+    this._notificationService,
+  ) : super(SettingsState(AppSettings())) {
+    reloadSettings();
     _loadAppVersion();
   }
 
-  Future<void> _loadSettings() async {
+  Future<void> reloadSettings() async {
     // ✅ Надёжно: всегда получаем singleton-настройки из Isar
     final settings = await _isarService.getOrCreateSettings();
     emit(SettingsState(settings, appVersion: state.appVersion));
@@ -82,7 +82,8 @@ class SettingsCubit extends Cubit<SettingsState> {
     if (index < 0 || index >= state.settings.reminders.length) return;
 
     final timeStr = state.settings.reminders[index];
-    final newList = List<String>.from(state.settings.reminders)..removeAt(index);
+    final newList = List<String>.from(state.settings.reminders)
+      ..removeAt(index);
 
     final newSettings = state.settings.copyWith(reminders: newList);
     await _isarService.saveSettings(newSettings);

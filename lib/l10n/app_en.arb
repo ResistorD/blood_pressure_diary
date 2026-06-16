@@ -47,7 +47,7 @@
   "bpLevelElevated": "Elevated",
   "bpLevelHtn1": "Hypertension (Stage 1)",
   "bpLevelHtn2": "Hypertension (Stage 2)",
-  "bpLevelCrisis": "Hypertensive crisis",
+  "bpLevelCrisis": "Hypertension (Stage 3)",
   "notifTitleMeasureNow": "Time to measure",
   "notifBodyDontForget": "Don’t forget to log your blood pressure.",
   "notifChannelName": "Reminders",

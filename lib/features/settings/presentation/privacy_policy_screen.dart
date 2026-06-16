@@ -27,7 +27,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
 
     final headerBg = isDark ? AppPalette.dark800 : AppPalette.blue700;
 
-    final l10n = AppLocalizations.of(context)!;
+    final l10n = AppLocalizations.of(context);
 
     const lastUpdate = '15.02.2026';
 
@@ -109,10 +109,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
                     style: metaStyle,
                   ),
                   SizedBox(height: gap16),
-                  Text(
-                    l10n.privacyPolicyFullText,
-                    style: bodyStyle,
-                  ),
+                  Text(l10n.privacyPolicyFullText, style: bodyStyle),
                 ],
               ),
             ),

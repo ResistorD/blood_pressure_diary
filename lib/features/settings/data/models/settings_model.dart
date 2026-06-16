@@ -31,7 +31,7 @@ class AppSettings {
     this.accountEmail = '',
     this.accountProvider = '',
   });
-  
+
   /// ✅ copyWith для избежания дублирования кода в SettingsCubit
   AppSettings copyWith({
     AppThemeMode? themeMode,
@@ -50,12 +50,8 @@ class AppSettings {
       accountLinked: accountLinked ?? this.accountLinked,
       accountEmail: accountEmail ?? this.accountEmail,
       accountProvider: accountProvider ?? this.accountProvider,
-    )..id = this.id;
+    )..id = id;
   }
 }
 
-enum AppThemeMode {
-  light,
-  dark,
-  system,
-}
+enum AppThemeMode { light, dark, system }

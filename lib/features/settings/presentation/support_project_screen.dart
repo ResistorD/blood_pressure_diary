@@ -19,17 +19,12 @@ class SupportProjectScreen extends StatelessWidget {
   }
 
   Future<void> _shareApp(BuildContext context) async {
-    final l10n = AppLocalizations.of(context)!;
+    final l10n = AppLocalizations.of(context);
 
     try {
       const appUrl = 'https://resistord.github.io/pressure-diary-site';
 
-      final text = [
-        l10n.appTitle,
-        '',
-        l10n.shareAppText,
-        appUrl,
-      ].join('\n');
+      final text = [l10n.appTitle, '', l10n.shareAppText, appUrl].join('\n');
 
       await Share.share(text);
     } catch (_) {
@@ -37,14 +32,19 @@ class SupportProjectScreen extends StatelessWidget {
     }
   }
 
-
-
   Future<void> _openKofi(BuildContext context) async {
     try {
-      final ok = await launchUrl(Uri.parse(_kofi), mode: LaunchMode.externalApplication);
-      if (!ok && context.mounted) _snack(context, AppLocalizations.of(context)!.actionFailed);
+      final ok = await launchUrl(
+        Uri.parse(_kofi),
+        mode: LaunchMode.externalApplication,
+      );
+      if (!ok && context.mounted) {
+        _snack(context, AppLocalizations.of(context).actionFailed);
+      }
     } catch (_) {
-      if (context.mounted) _snack(context, AppLocalizations.of(context)!.actionFailed);
+      if (context.mounted) {
+        _snack(context, AppLocalizations.of(context).actionFailed);
+      }
     }
   }
 
@@ -58,7 +58,7 @@ class SupportProjectScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context)!;
+    final l10n = AppLocalizations.of(context);
 
     final colors = context.appColors;
     final space = context.appSpace;
@@ -249,13 +249,16 @@ class SupportProjectScreen extends StatelessWidget {
                         actionRow(
                           icon: Icons.public,
                           title: 'Ko-fi',
-                          subtitle: Localizations.localeOf(context).languageCode == 'ru'
+                          subtitle:
+                              Localizations.localeOf(context).languageCode ==
+                                  'ru'
                               ? 'Угостить кофе ☕'
                               : 'Buy Pressure Diary a coffee ☕',
                           onTap: () => _openKofi(context),
                         ),
                         SizedBox(height: dp(context, space.s8)),
-                        if (Localizations.localeOf(context).languageCode == 'ru') ...[
+                        if (Localizations.localeOf(context).languageCode ==
+                            'ru') ...[
                           actionRow(
                             icon: Icons.payments_outlined,
                             title: 'Поддержать через СБП',

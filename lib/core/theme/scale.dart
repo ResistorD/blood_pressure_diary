@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import 'package:flutter/widgets.dart';
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -87,8 +86,10 @@ double sp(BuildContext context, double designSp) {
 /// Они НЕ зависят от context, НЕ используют MediaQuery!
 ///
 /// Это решает проблему разных отступов на Poco F3 и Xiaomi 15T Pro.
-const double _horizontalPadding = 20.0;  // Фиксированный отступ 20px для всех экранов
-const double _verticalPadding = 16.0;     // Фиксированный отступ 16px для всех экранов
+const double _horizontalPadding =
+    20.0; // Фиксированный отступ 20px для всех экранов
+const double _verticalPadding =
+    16.0; // Фиксированный отступ 16px для всех экранов
 
 /// Проверка landscape
 bool isLandscape(BuildContext context) {
@@ -201,12 +202,10 @@ extension PaddingExtension on BuildContext {
   );
 
   /// Только горизонтальные отступы
-  EdgeInsets get horizontalPagePadding => EdgeInsets.symmetric(
-    horizontal: horizontalPadding,
-  );
+  EdgeInsets get horizontalPagePadding =>
+      EdgeInsets.symmetric(horizontal: horizontalPadding);
 
   /// Только вертикальные отступы
-  EdgeInsets get verticalPagePadding => EdgeInsets.symmetric(
-    vertical: adaptiveVerticalPadding,
-  );
+  EdgeInsets get verticalPagePadding =>
+      EdgeInsets.symmetric(vertical: adaptiveVerticalPadding);
 }

@@ -24,10 +24,16 @@ class StatisticsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context)!;
-    final localeName = Localizations.localeOf(context).languageCode;
-
     return BlocBuilder<ProfileCubit, ProfileState>(
+      buildWhen: (previous, current) {
+        if (previous is ProfileLoaded && current is ProfileLoaded) {
+          return previous.profile.targetSystolic !=
+                  current.profile.targetSystolic ||
+              previous.profile.targetDiastolic !=
+                  current.profile.targetDiastolic;
+        }
+        return previous.runtimeType != current.runtimeType;
+      },
       builder: (context, profileState) {
         int targetSys = 120;
         int targetDia = 80;
@@ -38,9 +44,12 @@ class StatisticsScreen extends StatelessWidget {
         }
 
         return BlocBuilder<HomeBloc, HomeState>(
+          buildWhen: (previous, current) => previous != current,
           builder: (context, homeState) {
             if (homeState is! HomeLoaded) {
-              return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
             }
 
             return BlocProvider(
@@ -84,8 +93,7 @@ class _StatisticsViewState extends State<_StatisticsView> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    final l10n = AppLocalizations.of(context)!;
-    final localeName = Localizations.localeOf(context).languageCode;
+    final l10n = AppLocalizations.of(context);
 
     final colors = context.appColors;
     final space = context.appSpace;
@@ -98,7 +106,10 @@ class _StatisticsViewState extends State<_StatisticsView> {
     final side = space.s20;
 
     final chipH = dp(context, space.s32);
-    final chipW = dp(context, space.w96) + dp(context, space.s4) + dp(context, space.s1); // 101
+    final chipW =
+        dp(context, space.w96) +
+        dp(context, space.s4) +
+        dp(context, space.s1); // 101
     final chipR = dp(context, radii.r5);
 
     final tabsW = double.infinity;
@@ -175,7 +186,8 @@ class _StatisticsViewState extends State<_StatisticsView> {
                       bg: chipBg,
                       textColor: colors.textOnBrand,
                       label: _periodLabel(state.period, l10n),
-                      onSelected: (p) => context.read<StatisticsCubit>().updatePeriod(p),
+                      onSelected: (p) =>
+                          context.read<StatisticsCubit>().updatePeriod(p),
                     ),
                   ],
                 ),
@@ -191,99 +203,58 @@ class _StatisticsViewState extends State<_StatisticsView> {
                   ),
                   child: Column(
                     children: [
-                      // Tabs card
-                      Container(
+                      _StatisticsTabsCard(
                         width: tabsW,
                         height: tabsH,
-                        decoration: BoxDecoration(
-                          color: cardBg,
-                          boxShadow: [shadows.card],
-                        ),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: _WordUnderlineTab(
-                                title: l10n.tabPressure,
-                                selected: _tab == _ChartTab.pressure,
-                                selectedStyle: tabSelectedStyle,
-                                unselectedStyle: tabUnselectedStyle,
-                                underlineColor: isDark ? colors.textOnBrand : AppPalette.blue900,
-                                underlineHeight: dp(context, space.s2),
-                                onTap: () => setState(() => _tab = _ChartTab.pressure),
-                              ),
-                            ),
-                            Expanded(
-                              child: _WordUnderlineTab(
-                                title: l10n.tabPulse,
-                                selected: _tab == _ChartTab.pulse,
-                                selectedStyle: tabSelectedStyle,
-                                unselectedStyle: tabUnselectedStyle,
-                                underlineColor: isDark ? colors.textOnBrand : AppPalette.blue900,
-                                underlineHeight: dp(context, space.s2),
-                                onTap: () => setState(() => _tab = _ChartTab.pulse),
-                              ),
-                            ),
-                          ],
-                        ),
+                        backgroundColor: cardBg,
+                        shadow: shadows.card,
+                        currentTab: _tab,
+                        selectedStyle: tabSelectedStyle,
+                        unselectedStyle: tabUnselectedStyle,
+                        underlineColor: isDark
+                            ? colors.textOnBrand
+                            : AppPalette.blue900,
+                        underlineHeight: dp(context, space.s2),
+                        onTabChanged: (tab) => setState(() => _tab = tab),
                       ),
 
                       SizedBox(height: dp(context, space.s2)),
 
-                      // Chart card
-                      Container(
+                      _StatisticsChartCard(
                         width: chartW,
                         height: chartH,
-                        decoration: BoxDecoration(
-                          color: cardBg,
-                          boxShadow: [shadows.card],
-                        ),
-                        child: Padding(
-                          padding: EdgeInsets.fromLTRB(
-                            space.s16,
-                            dp(context, space.s16),
-                            space.s16,
-                            dp(context, space.s20),
-                          ),
-                          child: hasData
-                              ? _Chart(
-                            tab: _tab,
-                            state: state,
-                            isDark: isDark,
-                          )
-                              : Center(
-                            child: Text(
-                              l10n.noDataForPeriod,
-                              style: TextStyle(
-                                fontFamily: text.family,
-                                fontSize: sp(context, text.fs14),
-                                fontWeight: text.w400,
-                                color: isDark ? AppPalette.dark350 : AppPalette.grey500,
-                                height: 1.0,
-                              ),
-                            ),
-                          ),
+                        backgroundColor: cardBg,
+                        shadow: shadows.card,
+                        horizontalPadding: space.s16,
+                        topPadding: dp(context, space.s16),
+                        bottomPadding: dp(context, space.s20),
+                        hasData: hasData,
+                        tab: _tab,
+                        state: state,
+                        isDark: isDark,
+                        emptyStyle: TextStyle(
+                          fontFamily: text.family,
+                          fontSize: sp(context, text.fs14),
+                          fontWeight: text.w400,
+                          color: isDark
+                              ? AppPalette.dark350
+                              : AppPalette.grey500,
+                          height: 1.0,
                         ),
                       ),
 
                       SizedBox(height: dp(context, space.s20)),
 
-                      // Stats
-                      Container(
+                      _StatisticsStatsCard(
                         width: statsW,
                         height: statsH,
-                        decoration: BoxDecoration(
-                          color: cardBg,
-                          boxShadow: [shadows.card],
-                        ),
-                        padding: EdgeInsets.symmetric(
-                          horizontal: dp(context, space.s20),
-                          vertical: dp(context, space.s16),
-                        ),
-                        child: _StatsBlock(
-                          isDark: isDark,
-                          tab: _tab,
-                          state: state,
-                        ),
+                        backgroundColor: cardBg,
+                        shadow: shadows.card,
+                        horizontalPadding: dp(context, space.s20),
+                        verticalPadding: dp(context, space.s16),
+                        isDark: isDark,
+                        tab: _tab,
+                        state: state,
                       ),
                     ],
                   ),
@@ -320,13 +291,19 @@ class _PeriodChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final space = context.appSpace;
     final text = context.appText;
-    final l10n = AppLocalizations.of(context)!;
+    final l10n = AppLocalizations.of(context);
 
     return PopupMenuButton<StatisticsPeriod>(
       onSelected: onSelected,
       itemBuilder: (context) => [
-        PopupMenuItem(value: StatisticsPeriod.sevenDays, child: Text(l10n.week)),
-        PopupMenuItem(value: StatisticsPeriod.thirtyDays, child: Text(l10n.month)),
+        PopupMenuItem(
+          value: StatisticsPeriod.sevenDays,
+          child: Text(l10n.week),
+        ),
+        PopupMenuItem(
+          value: StatisticsPeriod.thirtyDays,
+          child: Text(l10n.month),
+        ),
         PopupMenuItem(value: StatisticsPeriod.all, child: Text(l10n.periodAll)),
       ],
       offset: Offset(0, dp(context, space.s30 - space.s2)),
@@ -413,6 +390,159 @@ class _WordUnderlineTab extends StatelessWidget {
   }
 }
 
+class _StatisticsTabsCard extends StatelessWidget {
+  final double width;
+  final double height;
+  final Color backgroundColor;
+  final BoxShadow shadow;
+  final _ChartTab currentTab;
+  final TextStyle selectedStyle;
+  final TextStyle unselectedStyle;
+  final Color underlineColor;
+  final double underlineHeight;
+  final ValueChanged<_ChartTab> onTabChanged;
+
+  const _StatisticsTabsCard({
+    required this.width,
+    required this.height,
+    required this.backgroundColor,
+    required this.shadow,
+    required this.currentTab,
+    required this.selectedStyle,
+    required this.unselectedStyle,
+    required this.underlineColor,
+    required this.underlineHeight,
+    required this.onTabChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(color: backgroundColor, boxShadow: [shadow]),
+      child: Row(
+        children: [
+          Expanded(
+            child: _WordUnderlineTab(
+              title: l10n.tabPressure,
+              selected: currentTab == _ChartTab.pressure,
+              selectedStyle: selectedStyle,
+              unselectedStyle: unselectedStyle,
+              underlineColor: underlineColor,
+              underlineHeight: underlineHeight,
+              onTap: () => onTabChanged(_ChartTab.pressure),
+            ),
+          ),
+          Expanded(
+            child: _WordUnderlineTab(
+              title: l10n.tabPulse,
+              selected: currentTab == _ChartTab.pulse,
+              selectedStyle: selectedStyle,
+              unselectedStyle: unselectedStyle,
+              underlineColor: underlineColor,
+              underlineHeight: underlineHeight,
+              onTap: () => onTabChanged(_ChartTab.pulse),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatisticsChartCard extends StatelessWidget {
+  final double width;
+  final double height;
+  final Color backgroundColor;
+  final BoxShadow shadow;
+  final double horizontalPadding;
+  final double topPadding;
+  final double bottomPadding;
+  final bool hasData;
+  final _ChartTab tab;
+  final StatisticsState state;
+  final bool isDark;
+  final TextStyle emptyStyle;
+
+  const _StatisticsChartCard({
+    required this.width,
+    required this.height,
+    required this.backgroundColor,
+    required this.shadow,
+    required this.horizontalPadding,
+    required this.topPadding,
+    required this.bottomPadding,
+    required this.hasData,
+    required this.tab,
+    required this.state,
+    required this.isDark,
+    required this.emptyStyle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(color: backgroundColor, boxShadow: [shadow]),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          horizontalPadding,
+          topPadding,
+          horizontalPadding,
+          bottomPadding,
+        ),
+        child: hasData
+            ? _Chart(tab: tab, state: state, isDark: isDark)
+            : Center(child: Text(l10n.noDataForPeriod, style: emptyStyle)),
+      ),
+    );
+  }
+}
+
+class _StatisticsStatsCard extends StatelessWidget {
+  final double width;
+  final double height;
+  final Color backgroundColor;
+  final BoxShadow shadow;
+  final double horizontalPadding;
+  final double verticalPadding;
+  final bool isDark;
+  final _ChartTab tab;
+  final StatisticsState state;
+
+  const _StatisticsStatsCard({
+    required this.width,
+    required this.height,
+    required this.backgroundColor,
+    required this.shadow,
+    required this.horizontalPadding,
+    required this.verticalPadding,
+    required this.isDark,
+    required this.tab,
+    required this.state,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(color: backgroundColor, boxShadow: [shadow]),
+      padding: EdgeInsets.symmetric(
+        horizontal: horizontalPadding,
+        vertical: verticalPadding,
+      ),
+      child: _StatsBlock(isDark: isDark, tab: tab, state: state),
+    );
+  }
+}
+
 class _StatsBlock extends StatelessWidget {
   final bool isDark;
   final _ChartTab tab;
@@ -428,16 +558,23 @@ class _StatsBlock extends StatelessWidget {
   Widget build(BuildContext context) {
     final space = context.appSpace;
     final text = context.appText;
-    final l10n = AppLocalizations.of(context)!;
+    final l10n = AppLocalizations.of(context);
 
     final color = isDark ? AppPalette.dark350 : AppPalette.blue900;
 
-    String fmtPressure(double sys, double dia) => '${sys.toInt()}/${dia.toInt()}';
+    String fmtPressure(double sys, double dia) =>
+        '${sys.toInt()}/${dia.toInt()}';
     String fmtPulse(double v) => v == 0 ? '—' : '${v.toInt()}';
 
-    final avg = tab == _ChartTab.pressure ? fmtPressure(state.avgSys, state.avgDia) : fmtPulse(state.avgPulse);
-    final max = tab == _ChartTab.pressure ? fmtPressure(state.maxSys, state.maxDia) : fmtPulse(state.maxPulse);
-    final min = tab == _ChartTab.pressure ? fmtPressure(state.minSys, state.minDia) : fmtPulse(state.minPulse);
+    final avg = tab == _ChartTab.pressure
+        ? fmtPressure(state.avgSys, state.avgDia)
+        : fmtPulse(state.avgPulse);
+    final max = tab == _ChartTab.pressure
+        ? fmtPressure(state.maxSys, state.maxDia)
+        : fmtPulse(state.maxPulse);
+    final min = tab == _ChartTab.pressure
+        ? fmtPressure(state.minSys, state.minDia)
+        : fmtPulse(state.minPulse);
 
     Widget row(String label, String value) => Row(
       children: [
@@ -484,11 +621,7 @@ class _Chart extends StatelessWidget {
   final StatisticsState state;
   final bool isDark;
 
-  const _Chart({
-    required this.tab,
-    required this.state,
-    required this.isDark,
-  });
+  const _Chart({required this.tab, required this.state, required this.isDark});
 
   int _xLabelStep(int len, StatisticsPeriod period) {
     if (len <= 1) return 1;
@@ -521,12 +654,15 @@ class _Chart extends StatelessWidget {
   Widget build(BuildContext context) {
     final space = context.appSpace;
     final text = context.appText;
-    final colors = context.appColors;
-    final l10n = AppLocalizations.of(context)!;
+    final l10n = AppLocalizations.of(context);
     final localeName = Localizations.localeOf(context).toLanguageTag();
+    final dayFormatter = DateFormat('d', localeName);
+    final tooltipDateFormatter = DateFormat('dd.MM', localeName);
 
     final all = state.filteredRecords;
-    final records = tab == _ChartTab.pulse ? all.where((r) => r.pulse > 0).toList() : all;
+    final records = tab == _ChartTab.pulse
+        ? all.where((r) => r.pulse > 0).toList()
+        : all;
 
     if (records.isEmpty) {
       return Center(
@@ -554,13 +690,21 @@ class _Chart extends StatelessWidget {
       minY = 40;
       maxY = 220;
     } else {
-      final minP = records.map((e) => e.pulse).reduce((a, b) => a < b ? a : b).toDouble();
-      final maxP = records.map((e) => e.pulse).reduce((a, b) => a > b ? a : b).toDouble();
+      final minP = records
+          .map((e) => e.pulse)
+          .reduce((a, b) => a < b ? a : b)
+          .toDouble();
+      final maxP = records
+          .map((e) => e.pulse)
+          .reduce((a, b) => a > b ? a : b)
+          .toDouble();
       minY = (minP - 10).clamp(30, 220);
       maxY = (maxP + 10).clamp(60, 240);
     }
 
-    final gridColor = isDark ? AppPalette.dark600.withValues(alpha: 0.25) : AppPalette.grey400.withValues(alpha: 0.7);
+    final gridColor = isDark
+        ? AppPalette.dark600.withValues(alpha: 0.25)
+        : AppPalette.grey400.withValues(alpha: 0.7);
     final axisTextColor = isDark ? AppPalette.dark350 : AppPalette.blue900;
 
     final lineStrong = isDark ? AppPalette.dark350 : AppPalette.blue900;
@@ -568,29 +712,41 @@ class _Chart extends StatelessWidget {
 
     final spotsA = records.asMap().entries.map((e) {
       final x = e.key.toDouble();
-      final y = tab == _ChartTab.pressure ? e.value.systolic.toDouble() : e.value.pulse.toDouble();
+      final y = tab == _ChartTab.pressure
+          ? e.value.systolic.toDouble()
+          : e.value.pulse.toDouble();
       return FlSpot(x, y);
     }).toList();
 
     final spotsB = tab == _ChartTab.pressure
-        ? records.asMap().entries.map((e) => FlSpot(e.key.toDouble(), e.value.diastolic.toDouble())).toList()
+        ? records
+              .asMap()
+              .entries
+              .map(
+                (e) => FlSpot(e.key.toDouble(), e.value.diastolic.toDouble()),
+              )
+              .toList()
         : const <FlSpot>[];
 
     final pressureYLabels = <int>{80, 120, 160, 200};
     final pulseYLabels = _pulseYLabels(minY, maxY);
     final xStep = _xLabelStep(records.length, state.period);
 
-    String xLabel(DateTime dt) => DateFormat('d', localeName).format(dt);
+    String xLabel(DateTime dt) => dayFormatter.format(dt);
 
     // tooltip style
-    final tooltipBg = isDark ? AppPalette.dark900.withValues(alpha: 0.92) : AppPalette.grey050.withValues(alpha: 0.96);
+    final tooltipBg = isDark
+        ? AppPalette.dark900.withValues(alpha: 0.92)
+        : AppPalette.grey050.withValues(alpha: 0.96);
     final tooltipTextColor = isDark ? Colors.white : AppPalette.blue900;
 
     // ✅ зона давления из профиля
     final yLow = state.targetDiastolic.toDouble();
     final yHigh = state.targetSystolic.toDouble();
     final zoneColor = (tab == _ChartTab.pressure)
-        ? (isDark ? AppPalette.blueAccent.withValues(alpha: 0.10) : AppPalette.blueAccent.withValues(alpha: 0.12))
+        ? (isDark
+              ? AppPalette.blueAccent.withValues(alpha: 0.10)
+              : AppPalette.blueAccent.withValues(alpha: 0.12))
         : Colors.transparent;
 
     final zoneLineColor = isDark
@@ -602,58 +758,72 @@ class _Chart extends StatelessWidget {
         // ✅ ZONE (полоса)
         rangeAnnotations: tab == _ChartTab.pressure
             ? RangeAnnotations(
-          horizontalRangeAnnotations: [
-            HorizontalRangeAnnotation(
-              y1: yLow,
-              y2: yHigh,
-              color: zoneColor,
-            ),
-          ],
-        )
+                horizontalRangeAnnotations: [
+                  HorizontalRangeAnnotation(
+                    y1: yLow,
+                    y2: yHigh,
+                    color: zoneColor,
+                  ),
+                ],
+              )
             : const RangeAnnotations(),
 
         // ✅ границы зоны пунктиром
         extraLinesData: tab == _ChartTab.pressure
             ? ExtraLinesData(
-          horizontalLines: [
-            HorizontalLine(
-              y: yHigh,
-              color: zoneLineColor,
-              strokeWidth: 1,
-              dashArray: const [6, 6],
-            ),
-            HorizontalLine(
-              y: yLow,
-              color: zoneLineColor,
-              strokeWidth: 1,
-              dashArray: const [6, 6],
-            ),
-          ],
-        )
+                horizontalLines: [
+                  HorizontalLine(
+                    y: yHigh,
+                    color: zoneLineColor,
+                    strokeWidth: 1,
+                    dashArray: const [6, 6],
+                  ),
+                  HorizontalLine(
+                    y: yLow,
+                    color: zoneLineColor,
+                    strokeWidth: 1,
+                    dashArray: const [6, 6],
+                  ),
+                ],
+              )
             : ExtraLinesData(horizontalLines: const []),
 
         gridData: FlGridData(
           show: true,
           drawVerticalLine: true,
-          horizontalInterval: tab == _ChartTab.pressure ? pressureGridStep : pulseGridStep,
+          horizontalInterval: tab == _ChartTab.pressure
+              ? pressureGridStep
+              : pulseGridStep,
           verticalInterval: 1,
-          getDrawingHorizontalLine: (_) => FlLine(color: gridColor, strokeWidth: 1),
-          getDrawingVerticalLine: (_) => FlLine(color: gridColor, strokeWidth: 1),
+          getDrawingHorizontalLine: (_) =>
+              FlLine(color: gridColor, strokeWidth: 1),
+          getDrawingVerticalLine: (_) =>
+              FlLine(color: gridColor, strokeWidth: 1),
         ),
         titlesData: FlTitlesData(
-          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          topTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+          rightTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
           leftTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
               reservedSize: dp(context, space.s40),
-              interval: tab == _ChartTab.pressure ? pressureGridStep : pulseGridStep,
+              interval: tab == _ChartTab.pressure
+                  ? pressureGridStep
+                  : pulseGridStep,
               getTitlesWidget: (value, meta) {
                 final v = value.toInt();
                 if (tab == _ChartTab.pressure) {
-                  if (!pressureYLabels.contains(v)) return const SizedBox.shrink();
+                  if (!pressureYLabels.contains(v)) {
+                    return const SizedBox.shrink();
+                  }
                 } else {
-                  if (!pulseYLabels.contains(v)) return const SizedBox.shrink();
+                  if (!pulseYLabels.contains(v)) {
+                    return const SizedBox.shrink();
+                  }
                 }
                 return Text(
                   v.toString(),
@@ -675,8 +845,12 @@ class _Chart extends StatelessWidget {
               interval: 1,
               getTitlesWidget: (value, meta) {
                 final i = value.toInt();
-                if (i < 0 || i >= records.length) return const SizedBox.shrink();
-                if (i % xStep != 0 && i != records.length - 1) return const SizedBox.shrink();
+                if (i < 0 || i >= records.length) {
+                  return const SizedBox.shrink();
+                }
+                if (i % xStep != 0 && i != records.length - 1) {
+                  return const SizedBox.shrink();
+                }
                 return Padding(
                   padding: EdgeInsets.only(top: dp(context, space.s6)),
                   child: Text(
@@ -731,9 +905,11 @@ class _Chart extends StatelessWidget {
             getTooltipItems: (touchedSpots) {
               return touchedSpots.map((spot) {
                 final rec = records[spot.x.toInt()];
-                final dateStr = DateFormat('dd.MM', localeName).format(rec.dateTime);
+                final dateStr = tooltipDateFormatter.format(rec.dateTime);
                 final label = tab == _ChartTab.pressure
-                    ? (spot.barIndex == 0 ? l10n.systolicShort : l10n.diastolicShort)
+                    ? (spot.barIndex == 0
+                          ? l10n.systolicShort
+                          : l10n.diastolicShort)
                     : l10n.pulse;
                 return LineTooltipItem(
                   '$dateStr\n$label: ${spot.y.toInt()}',

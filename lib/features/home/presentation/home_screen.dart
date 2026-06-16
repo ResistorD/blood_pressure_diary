@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -7,10 +8,9 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/scale.dart';
-import '../../../../core/di/service_locator.dart';
-import '../../../../core/repositories/pressure_repository.dart';
 import '../data/blood_pressure_model.dart';
 import 'bloc/home_bloc.dart';
+import 'bloc/home_event.dart';
 import 'bloc/home_state.dart';
 import 'widgets/summary_card.dart';
 import 'widgets/record_list_item.dart';
@@ -25,8 +25,12 @@ String _recordsWord(BuildContext context, int n) {
   if (Localizations.localeOf(context).languageCode.toLowerCase() != 'ru') {
     return n == 1 ? 'record' : 'records';
   }
-  if (n % 10 == 1 && n % 100 != 11) return 'запись';
-  if ([2, 3, 4].contains(n % 10) && ![12, 13, 14].contains(n % 100)) return 'записи';
+  if (n % 10 == 1 && n % 100 != 11) {
+    return 'запись';
+  }
+  if ([2, 3, 4].contains(n % 10) && ![12, 13, 14].contains(n % 100)) {
+    return 'записи';
+  }
   return 'записей';
 }
 
@@ -57,7 +61,11 @@ class _HomeScreenState extends State<HomeScreen> {
       case _FilterPeriod.today:
         final d = DateTime(now.year, now.month, now.day);
         return records.where((r) {
-          final rd = DateTime(r.dateTime.year, r.dateTime.month, r.dateTime.day);
+          final rd = DateTime(
+            r.dateTime.year,
+            r.dateTime.month,
+            r.dateTime.day,
+          );
           return rd == d;
         }).toList();
       case _FilterPeriod.week:
@@ -71,9 +79,25 @@ class _HomeScreenState extends State<HomeScreen> {
       case _FilterPeriod.custom:
         final range = _customRange;
         if (range == null) return records;
-        final start = DateTime(range.start.year, range.start.month, range.start.day);
-        final end = DateTime(range.end.year, range.end.month, range.end.day, 23, 59, 59, 999);
-        return records.where((r) => !r.dateTime.isBefore(start) && !r.dateTime.isAfter(end)).toList();
+        final start = DateTime(
+          range.start.year,
+          range.start.month,
+          range.start.day,
+        );
+        final end = DateTime(
+          range.end.year,
+          range.end.month,
+          range.end.day,
+          23,
+          59,
+          59,
+          999,
+        );
+        return records
+            .where(
+              (r) => !r.dateTime.isBefore(start) && !r.dateTime.isAfter(end),
+            )
+            .toList();
     }
   }
 
@@ -94,21 +118,31 @@ class _HomeScreenState extends State<HomeScreen> {
       final note = (r.note ?? '').toLowerCase();
       final tags = r.tags.join(' ').toLowerCase();
       final d = r.dateTime;
-      final dateText = '${fmtFull.format(d)} ${fmtShort.format(d)} ${fmtWords.format(d)} ${fmtTime.format(d)}'
-          .toLowerCase();
+      final dateText =
+          '${fmtFull.format(d)} ${fmtShort.format(d)} ${fmtWords.format(d)} ${fmtTime.format(d)}'
+              .toLowerCase();
       return note.contains(q) || tags.contains(q) || dateText.contains(q);
     }).toList();
   }
 
   void _openEdit(BuildContext context, BloodPressureRecord record) {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => AddRecordScreen(record: record)));
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => AddRecordScreen(record: record)),
+    );
   }
 
   void _openAdd(BuildContext context) {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => const AddRecordScreen()));
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const AddRecordScreen()),
+    );
   }
 
-  Future<void> _handlePeriodChanged(BuildContext context, _FilterPeriod value) async {
+  Future<void> _handlePeriodChanged(
+    BuildContext context,
+    _FilterPeriod value,
+  ) async {
     if (value == _FilterPeriod.custom) {
       final now = DateTime.now();
       final picked = await showDateRangePicker(
@@ -137,18 +171,25 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return BlocBuilder<HomeBloc, HomeState>(
       builder: (context, state) {
-        final all = state is HomeLoaded ? state.records : const <BloodPressureRecord>[];
+        final all = state is HomeLoaded
+            ? state.records
+            : const <BloodPressureRecord>[];
         final filtered = _applyFilter(all);
-        final records = _applySearch(context, filtered)..sort((a, b) => b.dateTime.compareTo(a.dateTime));
+        final records = _applySearch(context, filtered)
+          ..sort((a, b) => b.dateTime.compareTo(a.dateTime));
         final filteredCount = records.length;
 
         final lastRecord = all.isNotEmpty
-            ? (List<BloodPressureRecord>.from(all)..sort((a, b) => b.dateTime.compareTo(a.dateTime))).first
+            ? (List<BloodPressureRecord>.from(
+                all,
+              )..sort((a, b) => b.dateTime.compareTo(a.dateTime))).first
             : null;
 
         int? trendDelta;
         if (lastRecord != null && filtered.isNotEmpty) {
-          final avgSys = filtered.map((r) => r.systolic).reduce((a, b) => a + b) / filtered.length;
+          final avgSys =
+              filtered.map((r) => r.systolic).reduce((a, b) => a + b) /
+              filtered.length;
           trendDelta = (lastRecord.systolic - avgSys).round();
         }
 
@@ -161,7 +202,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 period: _period,
                 filteredCount: filteredCount,
                 customRange: _customRange,
-                onPeriodChanged: (value) => _handlePeriodChanged(context, value),
+                onPeriodChanged: (value) =>
+                    _handlePeriodChanged(context, value),
                 lastRecord: lastRecord,
                 trendDelta: trendDelta,
               ),
@@ -280,7 +322,7 @@ class _HomeHeader extends StatelessWidget {
 
     final summaryTop = blueH - overlap + dp(context, space.s4);
 
-    double _textH(String s, TextStyle st) {
+    double textHeight(String s, TextStyle st) {
       final tp = TextPainter(
         text: TextSpan(text: s, style: st),
         textDirection: Directionality.of(context),
@@ -289,9 +331,12 @@ class _HomeHeader extends StatelessWidget {
       return tp.height;
     }
 
-    final titleH = _textH(_tr(context, ru: 'Мой дневник', en: 'My diary'), titleStyle);
+    final titleH = textHeight(
+      _tr(context, ru: 'Мой дневник', en: 'My diary'),
+      titleStyle,
+    );
     final countText = '$filteredCount ${_recordsWord(context, filteredCount)}';
-    final countH = _textH(countText, countStyle);
+    final countH = textHeight(countText, countStyle);
 
     final safety = dp(context, space.s6);
 
@@ -301,7 +346,10 @@ class _HomeHeader extends StatelessWidget {
     );
 
     final minGap = dp(context, space.s8);
-    final titleToCountGap = math.max(minGap, math.min(dp(context, space.s20), maxGap));
+    final titleToCountGap = math.max(
+      minGap,
+      math.min(dp(context, space.s20), maxGap),
+    );
 
     return SizedBox(
       height: blueH + shelfH,
@@ -361,11 +409,30 @@ class _HomeHeader extends StatelessWidget {
                 PopupMenuButton<_FilterPeriod>(
                   onSelected: onPeriodChanged,
                   itemBuilder: (context) => [
-                    PopupMenuItem(value: _FilterPeriod.today, child: Text(_tr(context, ru: 'Сегодня', en: 'Today'))),
-                    PopupMenuItem(value: _FilterPeriod.week, child: Text(_tr(context, ru: 'Неделя', en: 'Week'))),
-                    PopupMenuItem(value: _FilterPeriod.month, child: Text(_tr(context, ru: 'Месяц', en: 'Month'))),
-                    PopupMenuItem(value: _FilterPeriod.all, child: Text(_tr(context, ru: 'За всё время', en: 'All time'))),
-                    PopupMenuItem(value: _FilterPeriod.custom, child: Text(_tr(context, ru: 'Диапазон дат', en: 'Date range'))),
+                    PopupMenuItem(
+                      value: _FilterPeriod.today,
+                      child: Text(_tr(context, ru: 'Сегодня', en: 'Today')),
+                    ),
+                    PopupMenuItem(
+                      value: _FilterPeriod.week,
+                      child: Text(_tr(context, ru: 'Неделя', en: 'Week')),
+                    ),
+                    PopupMenuItem(
+                      value: _FilterPeriod.month,
+                      child: Text(_tr(context, ru: 'Месяц', en: 'Month')),
+                    ),
+                    PopupMenuItem(
+                      value: _FilterPeriod.all,
+                      child: Text(
+                        _tr(context, ru: 'За всё время', en: 'All time'),
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: _FilterPeriod.custom,
+                      child: Text(
+                        _tr(context, ru: 'Диапазон дат', en: 'Date range'),
+                      ),
+                    ),
                   ],
                   offset: Offset(0, dp(context, space.s30 - space.s2)),
                   child: Container(
@@ -393,7 +460,10 @@ class _HomeHeader extends StatelessWidget {
                           'assets/arrow_drop_down.svg',
                           width: icon24,
                           height: icon24,
-                          colorFilter: ColorFilter.mode(chipText, BlendMode.srcIn),
+                          colorFilter: ColorFilter.mode(
+                            chipText,
+                            BlendMode.srcIn,
+                          ),
                         ),
                       ],
                     ),
@@ -438,11 +508,12 @@ class _RecordsList extends StatelessWidget {
     final safeBottom = MediaQuery.paddingOf(context).bottom;
 
     final barH = dp(context, space.s72 - space.s2 - space.s1);
-    final outer = dp(context, space.s80 + space.s6);
     return barH + safeBottom + dp(context, space.s8);
   }
 
-  List<MapEntry<DateTime, List<BloodPressureRecord>>> _groupByDate(List<BloodPressureRecord> records) {
+  List<MapEntry<DateTime, List<BloodPressureRecord>>> _groupByDate(
+    List<BloodPressureRecord> records,
+  ) {
     final grouped = <DateTime, List<BloodPressureRecord>>{};
     for (final r in records) {
       final d = DateTime(r.dateTime.year, r.dateTime.month, r.dateTime.day);
@@ -507,130 +578,180 @@ class _RecordsList extends StatelessWidget {
       onTap: () => FocusScope.of(context).unfocus(),
       child: CustomScrollView(
         slivers: [
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(side, dp(context, space.s12), side, dp(context, space.s8)),
-            child: Container(
-              height: dp(context, space.s40 + space.s4),
-              decoration: BoxDecoration(
-                color: searchBg,
-                borderRadius: BorderRadius.circular(dp(context, radii.r10)),
-                boxShadow: [shadows.card],
-              ),
-              padding: EdgeInsets.symmetric(horizontal: dp(context, space.s12)),
-              child: Row(
-                children: [
-                  Icon(Icons.search, size: dp(context, space.s20), color: colors.iconPrimary),
-                  SizedBox(width: dp(context, space.s8)),
-                  Expanded(
-                    child: TextField(
-                      controller: searchController,
-                      onChanged: onQueryChanged,
-                      decoration: InputDecoration(
-                        border: InputBorder.none,
-                        isCollapsed: true,
-                        hintText: _tr(context, ru: 'Поиск по дате, заметке, тегам', en: 'Search by date, note, tags'),
-                        hintStyle: searchTextStyle.copyWith(color: colors.textSecondary),
-                      ),
-                      style: searchTextStyle,
-                    ),
-                  ),
-                  if (hasQuery)
-                    GestureDetector(
-                      onTap: () {
-                        searchController.clear();
-                        onQueryChanged('');
-                      },
-                      child: Icon(Icons.close, size: dp(context, space.s20), color: colors.iconPrimary),
-                    ),
-                ],
-              ),
-            ),
-          ),
-        ),
-        if (groups.isEmpty) ...[
           SliverToBoxAdapter(
             child: Padding(
-              padding: EdgeInsets.only(top: dp(context, space.s24)),
-              child: Center(
-                child: Column(
+              padding: EdgeInsets.fromLTRB(
+                side,
+                dp(context, space.s12),
+                side,
+                dp(context, space.s8),
+              ),
+              child: Container(
+                height: dp(context, space.s40 + space.s4),
+                decoration: BoxDecoration(
+                  color: searchBg,
+                  borderRadius: BorderRadius.circular(dp(context, radii.r10)),
+                  boxShadow: [shadows.card],
+                ),
+                padding: EdgeInsets.symmetric(
+                  horizontal: dp(context, space.s12),
+                ),
+                child: Row(
                   children: [
-                    SvgPicture.asset(
-                      'assets/pill.svg',
-                      width: dp(context, space.s72),
-                      height: dp(context, space.s72),
-                      colorFilter: ColorFilter.mode(colors.textPrimary, BlendMode.srcIn),
+                    Icon(
+                      Icons.search,
+                      size: dp(context, space.s20),
+                      color: colors.iconPrimary,
                     ),
-                    SizedBox(height: dp(context, space.s12)),
-                    Text(
-                      hasQuery
-                          ? _tr(context, ru: 'Ничего не найдено', en: 'No results found')
-                          : _tr(context, ru: 'Пока нет записей', en: 'No records yet'),
-                      style: emptyStyle,
-                      textAlign: TextAlign.center,
-                    ),
-                    SizedBox(height: dp(context, space.s8)),
-                    Text(
-                      _tr(context, ru: 'Добавьте первое измерение', en: 'Add your first measurement'),
-                      style: emptyStyle.copyWith(
-                        fontSize: sp(context, context.appText.fs14),
-                        fontWeight: context.appText.w500,
-                        color: colors.textSecondary,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    SizedBox(height: dp(context, space.s16)),
-                    SizedBox(
-                      height: dp(context, space.s40 + space.s4),
-                      child: ElevatedButton(
-                        onPressed: onAddTap,
-                        style: ElevatedButton.styleFrom(
-                          elevation: 0,
-                          backgroundColor: colors.brandStrong,
-                          foregroundColor: colors.textOnBrand,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(dp(context, radii.r10)),
+                    SizedBox(width: dp(context, space.s8)),
+                    Expanded(
+                      child: TextField(
+                        controller: searchController,
+                        onChanged: onQueryChanged,
+                        decoration: InputDecoration(
+                          border: InputBorder.none,
+                          isCollapsed: true,
+                          hintText: _tr(
+                            context,
+                            ru: 'Поиск по дате, заметке, тегам',
+                            en: 'Search by date, note, tags',
+                          ),
+                          hintStyle: searchTextStyle.copyWith(
+                            color: colors.textSecondary,
                           ),
                         ),
-                        child: Text(
-                          _tr(context, ru: 'Добавить запись', en: 'Add record'),
-                          style: TextStyle(
-                            fontFamily: context.appText.family,
-                            fontSize: sp(context, context.appText.fs16),
-                            fontWeight: context.appText.w600,
-                            height: 1.0,
-                          ),
-                        ),
+                        style: searchTextStyle,
                       ),
                     ),
+                    if (hasQuery)
+                      GestureDetector(
+                        onTap: () {
+                          searchController.clear();
+                          onQueryChanged('');
+                        },
+                        child: Icon(
+                          Icons.close,
+                          size: dp(context, space.s20),
+                          color: colors.iconPrimary,
+                        ),
+                      ),
                   ],
                 ),
               ),
             ),
           ),
-          SliverToBoxAdapter(child: SizedBox(height: bottomListPadding)),
-        ] else ...[
-          SliverToBoxAdapter(child: SizedBox(height: dp(context, space.s10))),
-          for (final entry in groups.indexed) ...[
+          if (groups.isEmpty) ...[
             SliverToBoxAdapter(
               child: Padding(
-                padding: EdgeInsets.only(
-                  right: side,
-                  top: dp(context, space.s2),
-                  bottom: dp(context, space.s2),
-                ),
-                child: Align(
-                  alignment: Alignment.centerRight,
-                  child: Text(_formatDate(context, entry.$2.key), textAlign: TextAlign.right, style: dateStyle),
+                padding: EdgeInsets.only(top: dp(context, space.s24)),
+                child: Center(
+                  child: Column(
+                    children: [
+                      SvgPicture.asset(
+                        'assets/pill.svg',
+                        width: dp(context, space.s72),
+                        height: dp(context, space.s72),
+                        colorFilter: ColorFilter.mode(
+                          colors.textPrimary,
+                          BlendMode.srcIn,
+                        ),
+                      ),
+                      SizedBox(height: dp(context, space.s12)),
+                      Text(
+                        hasQuery
+                            ? _tr(
+                                context,
+                                ru: 'Ничего не найдено',
+                                en: 'No results found',
+                              )
+                            : _tr(
+                                context,
+                                ru: 'Пока нет записей',
+                                en: 'No records yet',
+                              ),
+                        style: emptyStyle,
+                        textAlign: TextAlign.center,
+                      ),
+                      SizedBox(height: dp(context, space.s8)),
+                      Text(
+                        _tr(
+                          context,
+                          ru: 'Добавьте первое измерение',
+                          en: 'Add your first measurement',
+                        ),
+                        style: emptyStyle.copyWith(
+                          fontSize: sp(context, context.appText.fs14),
+                          fontWeight: context.appText.w500,
+                          color: colors.textSecondary,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      SizedBox(height: dp(context, space.s16)),
+                      SizedBox(
+                        height: dp(context, space.s40 + space.s4),
+                        child: ElevatedButton(
+                          onPressed: onAddTap,
+                          style: ElevatedButton.styleFrom(
+                            elevation: 0,
+                            backgroundColor: colors.brandStrong,
+                            foregroundColor: colors.textOnBrand,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(
+                                dp(context, radii.r10),
+                              ),
+                            ),
+                          ),
+                          child: Text(
+                            _tr(
+                              context,
+                              ru: 'Добавить запись',
+                              en: 'Add record',
+                            ),
+                            style: TextStyle(
+                              fontFamily: context.appText.family,
+                              fontSize: sp(context, context.appText.fs16),
+                              fontWeight: context.appText.w600,
+                              height: 1.0,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-            SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, i) {
+            SliverToBoxAdapter(child: SizedBox(height: bottomListPadding)),
+          ] else ...[
+            SliverToBoxAdapter(child: SizedBox(height: dp(context, space.s10))),
+            for (final entry in groups.indexed) ...[
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.only(
+                    right: side,
+                    top: dp(context, space.s2),
+                    bottom: dp(context, space.s2),
+                  ),
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      _formatDate(context, entry.$2.key),
+                      textAlign: TextAlign.right,
+                      style: dateStyle,
+                    ),
+                  ),
+                ),
+              ),
+              SliverList(
+                delegate: SliverChildBuilderDelegate((context, i) {
                   final r = entry.$2.value[i];
                   return Padding(
-                    padding: EdgeInsets.fromLTRB(side, dp(context, space.s12), side, 0),
+                    padding: EdgeInsets.fromLTRB(
+                      side,
+                      dp(context, space.s12),
+                      side,
+                      0,
+                    ),
                     child: _DismissibleRecord(
                       record: r,
                       child: RecordListItem(
@@ -639,14 +760,14 @@ class _RecordsList extends StatelessWidget {
                       ),
                     ),
                   );
-                },
-                childCount: entry.$2.value.length,
+                }, childCount: entry.$2.value.length),
               ),
-            ),
-            SliverToBoxAdapter(child: SizedBox(height: dp(context, space.s10))),
+              SliverToBoxAdapter(
+                child: SizedBox(height: dp(context, space.s10)),
+              ),
+            ],
+            SliverToBoxAdapter(child: SizedBox(height: bottomListPadding)),
           ],
-          SliverToBoxAdapter(child: SizedBox(height: bottomListPadding)),
-        ],
         ],
       ),
     );
@@ -657,29 +778,82 @@ class _DismissibleRecord extends StatelessWidget {
   final BloodPressureRecord record;
   final Widget child;
 
-  const _DismissibleRecord({
-    required this.record,
-    required this.child,
-  });
+  const _DismissibleRecord({required this.record, required this.child});
 
-  Future<void> _deleteWithUndo(BuildContext context) async {
-    final repo = getIt<PressureRepository>();
-    await repo.deleteRecord(record.id);
-    if (!context.mounted) return;
+  Future<bool> _deleteWithUndo(BuildContext context) async {
+    final homeBloc = context.read<HomeBloc>();
+    final deletedText = _tr(
+      context,
+      ru: 'Запись удалена',
+      en: 'Record deleted',
+    );
+    final undoText = _tr(context, ru: 'Отменить', en: 'Undo');
+    final deleteErrorText = _tr(
+      context,
+      ru: 'Не удалось удалить запись',
+      en: 'Could not delete record',
+    );
+    final restoreErrorText = _tr(
+      context,
+      ru: 'Не удалось восстановить запись',
+      en: 'Could not restore record',
+    );
+    final restoreSuccessText = _tr(
+      context,
+      ru: 'Запись восстановлена',
+      en: 'Record restored',
+    );
+    final deleteCompleter = Completer<void>();
+    homeBloc.add(
+      HomeDeleteRecordRequested(
+        recordId: record.id,
+        completer: deleteCompleter,
+      ),
+    );
+    try {
+      await deleteCompleter.future;
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(deleteErrorText)));
+      }
+      return false;
+    }
+    if (!context.mounted) return true;
 
     final messenger = ScaffoldMessenger.of(context);
     messenger.hideCurrentSnackBar();
     messenger.showSnackBar(
       SnackBar(
-        content: Text(_tr(context, ru: 'Запись удалена', en: 'Record deleted')),
+        content: Text(deletedText),
         action: SnackBarAction(
-          label: _tr(context, ru: 'Отменить', en: 'Undo'),
-          onPressed: () {
-            repo.addRecord(record);
+          label: undoText,
+          onPressed: () async {
+            try {
+              final restoreCompleter = Completer<void>();
+              homeBloc.add(
+                HomeRestoreRecordRequested(
+                  record: record,
+                  completer: restoreCompleter,
+                ),
+              );
+              await restoreCompleter.future;
+              if (!context.mounted) return;
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(SnackBar(content: Text(restoreSuccessText)));
+            } catch (_) {
+              if (!context.mounted) return;
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(SnackBar(content: Text(restoreErrorText)));
+            }
           },
         ),
       ),
     );
+    return true;
   }
 
   @override
@@ -694,7 +868,7 @@ class _DismissibleRecord extends StatelessWidget {
     return Dismissible(
       key: ValueKey(record.id),
       direction: DismissDirection.endToStart,
-      onDismissed: (_) => _deleteWithUndo(context),
+      confirmDismiss: (_) => _deleteWithUndo(context),
       background: const SizedBox.shrink(),
       secondaryBackground: Container(
         alignment: Alignment.centerRight,
@@ -703,7 +877,11 @@ class _DismissibleRecord extends StatelessWidget {
           color: bg,
           borderRadius: BorderRadius.circular(dp(context, radii.r10)),
         ),
-        child: Icon(Icons.delete_outline, color: colors.textOnBrand, size: iconSize),
+        child: Icon(
+          Icons.delete_outline,
+          color: colors.textOnBrand,
+          size: iconSize,
+        ),
       ),
       child: child,
     );

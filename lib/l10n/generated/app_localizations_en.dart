@@ -135,7 +135,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get bpLevelHtn2 => 'Hypertension (Stage 2)';
 
   @override
-  String get bpLevelCrisis => 'Hypertensive crisis';
+  String get bpLevelCrisis => 'Hypertension (Stage 3)';
 
   @override
   String get notifTitleMeasureNow => 'Time to measure';
