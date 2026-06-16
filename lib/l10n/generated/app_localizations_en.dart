@@ -420,7 +420,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get supportProjectText =>
-      'If the app is useful — you can support development. Yes, you can tap “burger” every day 🙂';
+      'If the app is useful, you can support development. This is not a subscription or obligation. Even sharing the app already helps 🙂';
 
   @override
   String get supportCoffee => '€2 — coffee';
@@ -444,7 +444,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get shareApp => 'Share the app';
 
   @override
-  String get shareAppHint => 'Send the link to friends';
+  String get shareAppHint => 'Share Pressure Diary with friends';
 
   @override
   String get shareAppText => 'App link:';

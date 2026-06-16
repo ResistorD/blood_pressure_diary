@@ -893,7 +893,7 @@ abstract class AppLocalizations {
   /// No description provided for @supportProjectText.
   ///
   /// In ru, this message translates to:
-  /// **'Если приложение оказалось полезным — можно символически поддержать разработку. Да, кнопку «бургер» можно нажимать хоть каждый день 🙂'**
+  /// **'Если приложение оказалось полезным — можно символически поддержать разработку. Это не подписка и не обязательство. Даже просто поделиться приложением — уже помощь 🙂'**
   String get supportProjectText;
 
   /// No description provided for @supportCoffee.

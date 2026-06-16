@@ -252,12 +252,6 @@ class AboutAppScreen extends StatelessWidget {
                         ),
                         SizedBox(height: dp(context, space.s8)),
                         actionRow(
-                          icon: Icons.star_outline,
-                          title: l10n.rateApp,
-                          onTap: () => _rateApp(context),
-                        ),
-                        SizedBox(height: dp(context, space.s8)),
-                        actionRow(
                           icon: Icons.privacy_tip_outlined,
                           title: l10n.privacyPolicy,
                           onTap: () {

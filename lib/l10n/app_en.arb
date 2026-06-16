@@ -146,7 +146,7 @@
   "emailClientNotFound": "No email app found",
   "actionFailed": "Action failed",
   "russian": "Russian",
-  "supportProjectText": "If the app is useful — you can support development. Yes, you can tap “burger” every day 🙂",
+  "supportProjectText": "If the app is useful, you can support development. This is not a subscription or obligation. Even sharing the app already helps \uD83D\uDE42",
   "supportCoffee": "€2 — coffee",
   "supportCoffeeHint": "Small thank-you",
   "supportPizza": "€3 — pizza",
@@ -154,7 +154,7 @@
   "supportBurger": "€5 — burger",
   "supportBurgerHint": "Maximum civic virtue",
   "shareApp": "Share the app",
-  "shareAppHint": "Send the link to friends",
+  "shareAppHint": "Share Pressure Diary with friends",
   "shareAppText": "App link:",
   "account": "Account",
   "@account": {

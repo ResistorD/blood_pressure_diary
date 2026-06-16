@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
-
+import 'package:flutter/services.dart';
 import 'package:blood_pressure_diary/core/theme/app_theme.dart';
 import 'package:blood_pressure_diary/core/theme/scale.dart';
 import 'package:blood_pressure_diary/l10n/generated/app_localizations.dart';
@@ -11,67 +11,48 @@ import 'package:blood_pressure_diary/l10n/generated/app_localizations.dart';
 class SupportProjectScreen extends StatelessWidget {
   const SupportProjectScreen({super.key});
 
-  static const _supportEmail = 'resistor.rs@gmail.com';
+  static const _kofi = 'https://ko-fi.com/pressurediary';
+  static const _sbpPhone = '+7 927 105 09 99';
 
   static void _snack(BuildContext context, String text) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
-  }
-
-  Future<void> _openEmail(
-      BuildContext context, {
-        required String subject,
-        required String body,
-      }) async {
-    final l10n = AppLocalizations.of(context)!;
-
-    final s = Uri.encodeComponent(subject);
-    final b = Uri.encodeComponent(body);
-
-    final uri = Uri.parse('mailto:$_supportEmail?subject=$s&body=$b');
-
-    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!ok && context.mounted) _snack(context, l10n.emailClientNotFound);
-  }
-
-  Future<void> _donate(BuildContext context, int eur, String label) async {
-    final l10n = AppLocalizations.of(context)!;
-
-    // Отличаемся от "Написать нам": другой смысл, другая рыба, сумма.
-    final subject = 'Pressure Diary — ${l10n.supportProject}: €$eur ($label)';
-    final body = [
-      'Здравствуйте!',
-      '',
-      'Хочу поддержать проект: €$eur ($label).',
-      '',
-      'Можете подсказать самый удобный способ?',
-      '',
-      '—',
-      'Sent from Pressure Diary',
-    ].join('\n');
-
-    await _openEmail(context, subject: subject, body: body);
   }
 
   Future<void> _shareApp(BuildContext context) async {
     final l10n = AppLocalizations.of(context)!;
 
     try {
-      final info = await PackageInfo.fromPlatform();
-      final packageName = info.packageName;
-
-      // Если приложение ещё не опубликовано — ссылка просто будет "в будущее", но код рабочий.
-      final playUrl = 'https://play.google.com/store/apps/details?id=$packageName';
+      const appUrl = 'https://resistord.github.io/pressure-diary-site';
 
       final text = [
-        '${l10n.appTitle}',
+        l10n.appTitle,
         '',
         l10n.shareAppText,
-        playUrl,
+        appUrl,
       ].join('\n');
 
       await Share.share(text);
     } catch (_) {
       if (context.mounted) _snack(context, l10n.actionFailed);
+    }
+  }
+
+
+
+  Future<void> _openKofi(BuildContext context) async {
+    try {
+      final ok = await launchUrl(Uri.parse(_kofi), mode: LaunchMode.externalApplication);
+      if (!ok && context.mounted) _snack(context, AppLocalizations.of(context)!.actionFailed);
+    } catch (_) {
+      if (context.mounted) _snack(context, AppLocalizations.of(context)!.actionFailed);
+    }
+  }
+
+  Future<void> _copyPhone(BuildContext context) async {
+    await Clipboard.setData(ClipboardData(text: _sbpPhone));
+    if (context.mounted) {
+      final ru = Localizations.localeOf(context).languageCode == 'ru';
+      _snack(context, ru ? 'Номер скопирован' : 'Phone copied');
     }
   }
 
@@ -266,26 +247,23 @@ class SupportProjectScreen extends StatelessWidget {
                     child: Column(
                       children: [
                         actionRow(
-                          icon: Icons.local_cafe_outlined,
-                          title: l10n.supportCoffee,
-                          subtitle: l10n.supportCoffeeHint,
-                          onTap: () => _donate(context, 2, 'coffee'),
+                          icon: Icons.public,
+                          title: 'Ko-fi',
+                          subtitle: Localizations.localeOf(context).languageCode == 'ru'
+                              ? 'Угостить кофе ☕'
+                              : 'Buy Pressure Diary a coffee ☕',
+                          onTap: () => _openKofi(context),
                         ),
                         SizedBox(height: dp(context, space.s8)),
-                        actionRow(
-                          icon: Icons.local_pizza_outlined,
-                          title: l10n.supportPizza,
-                          subtitle: l10n.supportPizzaHint,
-                          onTap: () => _donate(context, 3, 'pizza'),
-                        ),
-                        SizedBox(height: dp(context, space.s8)),
-                        actionRow(
-                          icon: Icons.lunch_dining_outlined,
-                          title: l10n.supportBurger,
-                          subtitle: l10n.supportBurgerHint,
-                          onTap: () => _donate(context, 5, 'burger'),
-                        ),
-                        SizedBox(height: dp(context, space.s8)),
+                        if (Localizations.localeOf(context).languageCode == 'ru') ...[
+                          actionRow(
+                            icon: Icons.payments_outlined,
+                            title: 'Поддержать через СБП',
+                            subtitle: 'Скопировать номер телефона',
+                            onTap: () => _copyPhone(context),
+                          ),
+                          SizedBox(height: dp(context, space.s8)),
+                        ],
                         actionRow(
                           icon: Icons.ios_share_outlined,
                           title: l10n.shareApp,
