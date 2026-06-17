@@ -12,20 +12,6 @@ import 'widgets/profile_form_widgets.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
-  String _providerTitle(BuildContext context, String provider) {
-    switch (provider) {
-      case 'google':
-        return 'Google';
-      case 'apple':
-        return 'Apple';
-      case 'email':
-        return 'Email';
-      default:
-        final l10n = AppLocalizations.of(context);
-        return provider.isEmpty ? l10n.account : provider;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -110,27 +96,6 @@ class ProfileScreen extends StatelessWidget {
       color: colors.textPrimary,
       height: 1.0,
     );
-
-    Widget primaryButton({
-      required String title,
-      String? subtitle,
-      required Color bg,
-      required Color fg,
-      required VoidCallback onTap,
-    }) {
-      return ProfilePrimaryButton(
-        title: title,
-        subtitle: subtitle,
-        backgroundColor: bg,
-        foregroundColor: fg,
-        onTap: onTap,
-        height: fieldH,
-        borderRadius: fieldR,
-        space: space,
-        titleStyle: valueStyle.copyWith(fontWeight: text.w600),
-        hintStyle: hintStyle,
-      );
-    }
 
     Widget wideField({required String textValue, VoidCallback? onTap}) {
       final bg = isDark ? colors.surfaceAlt : colors.background;
@@ -244,58 +209,6 @@ class ProfileScreen extends StatelessWidget {
       );
     }
 
-    Widget sheetItem({
-      required BuildContext context,
-      required String title,
-      required VoidCallback onTap,
-    }) {
-      return ProfileSheetItem(
-        title: title,
-        onTap: onTap,
-        height: fieldH,
-        borderRadius: fieldR,
-        backgroundColor: isDark ? colors.surfaceAlt : colors.background,
-        valueStyle: valueStyle,
-        space: space,
-      );
-    }
-
-    void showEmailInputSheet(BuildContext context) {
-      showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        builder: (_) => ProfileTextInputSheet(
-          title: 'Email',
-          buttonTitle: l10n.link,
-          initialValue: '',
-          keyboardType: TextInputType.emailAddress,
-          onSubmit: (email) {
-            if (email.isEmpty) return;
-            context.read<ProfileCubit>().linkAccount(
-              provider: 'email',
-              email: email,
-            );
-          },
-          sheetBackground: colors.surface,
-          fieldBackground: isDark ? colors.surfaceAlt : colors.background,
-          buttonBackground: isDark ? AppPalette.dark900 : AppPalette.blue900,
-          buttonForeground: isDark ? colors.textPrimary : colors.textOnBrand,
-          sheetRadius: dp(context, radii.r10),
-          fieldHeight: fieldH,
-          fieldRadius: fieldR,
-          titleStyle: sectionTitleStyle,
-          valueStyle: valueStyle,
-          buttonStyle: valueStyle.copyWith(
-            fontWeight: text.w600,
-            color: isDark ? colors.textPrimary : colors.textOnBrand,
-          ),
-          shadow: shadows.card,
-          space: space,
-        ),
-      );
-    }
-
     DateTime? tryParseDob(int stored) {
       if (stored < 19000101) return null;
       final s = stored.toString().padLeft(8, '0');
@@ -397,74 +310,6 @@ class ProfileScreen extends StatelessWidget {
       );
     }
 
-    void showAccountLinkSheet(BuildContext context) {
-      showModalBottomSheet(
-        context: context,
-        backgroundColor: Colors.transparent,
-        builder: (ctx) {
-          final sheetBg = colors.surface;
-          final sheetR = dp(context, radii.r10);
-
-          return SafeArea(
-            child: Padding(
-              padding: EdgeInsets.all(dp(context, space.s12)),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: sheetBg,
-                  borderRadius: BorderRadius.circular(sheetR),
-                  boxShadow: [shadows.card],
-                ),
-                child: Padding(
-                  padding: EdgeInsets.all(dp(context, space.s12)),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(l10n.chooseSignIn, style: sectionTitleStyle),
-                      SizedBox(height: dp(context, space.s12)),
-                      sheetItem(
-                        context: context,
-                        title: 'Email',
-                        onTap: () {
-                          Navigator.pop(ctx);
-                          showEmailInputSheet(context);
-                        },
-                      ),
-                      SizedBox(height: dp(context, space.s8)),
-                      sheetItem(
-                        context: context,
-                        title: 'Google',
-                        onTap: () {
-                          // локальная привязка: провайдер есть, email пустой
-                          context.read<ProfileCubit>().linkAccount(
-                            provider: 'google',
-                            email: '',
-                          );
-                          Navigator.pop(ctx);
-                        },
-                      ),
-                      SizedBox(height: dp(context, space.s8)),
-                      sheetItem(
-                        context: context,
-                        title: 'Apple',
-                        onTap: () {
-                          context.read<ProfileCubit>().linkAccount(
-                            provider: 'apple',
-                            email: '',
-                          );
-                          Navigator.pop(ctx);
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          );
-        },
-      );
-    }
-
     return Scaffold(
       backgroundColor: colors.background,
       body: BlocBuilder<ProfileCubit, ProfileState>(
@@ -481,21 +326,12 @@ class ProfileScreen extends StatelessWidget {
 
           final profile = state.profile;
           final displayedDob = formatDob(profile.age) ?? demoDob;
-          final isLoggedIn = profile.accountLinked;
-
           final cardBg = colors.surface;
 
           final innerZoneBg = isDark ? cardBg : AppPalette.grey050;
           final innerZoneBorderColor = isDark
               ? AppPalette.dark800
               : colors.background;
-
-          final accountBtnBg = isDark
-              ? (isLoggedIn ? colors.surfaceAlt : AppPalette.dark900)
-              : (isLoggedIn ? AppPalette.blue500 : AppPalette.blue900);
-
-          final accountBtnFg = isDark ? colors.textPrimary : colors.textOnBrand;
-
           final segBg = isDark ? colors.surfaceAlt : colors.background;
           final segActiveBg = colors.surface;
           final segText = colors.textPrimary;
@@ -504,11 +340,6 @@ class ProfileScreen extends StatelessWidget {
               dp(context, space.s80) +
               MediaQuery.paddingOf(context).bottom +
               dp(context, space.s20);
-
-          final accountLine = profile.accountEmail.trim().isNotEmpty
-              ? profile.accountEmail.trim()
-              : _providerTitle(context, profile.accountProvider);
-
           return Column(
             children: [
               Container(
@@ -563,36 +394,24 @@ class ProfileScreen extends StatelessWidget {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  if (!isLoggedIn) ...[
-                                    Text(l10n.notSignedIn, style: hintStyle),
-                                    SizedBox(height: pad8),
-                                    SizedBox(
-                                      width: double.infinity,
-                                      child: primaryButton(
-                                        title: l10n.signIn,
-                                        bg: accountBtnBg,
-                                        fg: accountBtnFg,
-                                        onTap: () =>
-                                            showAccountLinkSheet(context),
-                                      ),
+                                  Text(
+                                    Localizations.localeOf(context).languageCode ==
+                                            'ru'
+                                        ? 'Облачная синхронизация пока недоступна.'
+                                        : 'Cloud sync is not available yet.',
+                                    style: valueStyle.copyWith(
+                                      fontSize: sp(context, text.fs16),
+                                      fontWeight: text.w500,
                                     ),
-                                  ] else ...[
-                                    Text(l10n.accountLinked, style: hintStyle),
-                                    SizedBox(height: pad4),
-                                    Text(accountLine, style: valueStyle),
-                                    SizedBox(height: pad8),
-                                    SizedBox(
-                                      width: double.infinity,
-                                      child: primaryButton(
-                                        title: l10n.signOut,
-                                        bg: accountBtnBg,
-                                        fg: accountBtnFg,
-                                        onTap: () => context
-                                            .read<ProfileCubit>()
-                                            .unlinkAccount(),
-                                      ),
-                                    ),
-                                  ],
+                                  ),
+                                  SizedBox(height: pad6),
+                                  Text(
+                                    Localizations.localeOf(context).languageCode ==
+                                            'ru'
+                                        ? 'Все данные хранятся локально на устройстве.'
+                                        : 'All data is stored locally on this device.',
+                                    style: hintStyle,
+                                  ),
                                 ],
                               ),
                             ),
