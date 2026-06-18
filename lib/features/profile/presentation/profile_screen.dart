@@ -52,7 +52,6 @@ class ProfileScreen extends StatelessWidget {
     // Плотнее по Y — главный фикс
     final pad12 = dp(context, space.s12);
     final pad10 = dp(context, space.s10);
-    final pad8 = dp(context, space.s8);
     final pad6 = dp(context, space.s6);
     final pad4 = dp(context, space.s4);
     final pad2 = dp(context, space.s2);
@@ -395,7 +394,9 @@ class ProfileScreen extends StatelessWidget {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    Localizations.localeOf(context).languageCode ==
+                                    Localizations.localeOf(
+                                              context,
+                                            ).languageCode ==
                                             'ru'
                                         ? 'Облачная синхронизация пока недоступна.'
                                         : 'Cloud sync is not available yet.',
@@ -406,7 +407,9 @@ class ProfileScreen extends StatelessWidget {
                                   ),
                                   SizedBox(height: pad6),
                                   Text(
-                                    Localizations.localeOf(context).languageCode ==
+                                    Localizations.localeOf(
+                                              context,
+                                            ).languageCode ==
                                             'ru'
                                         ? 'Все данные хранятся локально на устройстве.'
                                         : 'All data is stored locally on this device.',

@@ -14,6 +14,8 @@ import 'package:blood_pressure_diary/features/home/data/blood_pressure_model.dar
 enum ExportFormat { csv, pdf }
 
 class ExportService {
+  static const _defaultPatientName = 'Дмитрий';
+
   // ✅ Кэш для шрифтов PDF
   pw.Font? _cachedTtf;
   pw.Font? _cachedTtfBold;
@@ -124,8 +126,7 @@ class ExportService {
     final ttf = await _loadTtf();
     final ttfBold = await _loadTtfBold();
 
-    final ageYears = _tryGetAgeYears(profile, now);
-    final ageStr = ageYears != null ? ageYears.toString() : '—';
+    final fields = pdfProfileFieldsForTest(profile, now);
 
     final periodStr =
         '${DateFormat('dd.MM.yyyy').format(threshold)} – ${DateFormat('dd.MM.yyyy').format(now)}';
@@ -153,11 +154,11 @@ class ExportService {
             style: const pw.TextStyle(fontSize: 10),
           ),
           pw.Text(
-            '${isRu ? 'Пациент' : 'Patient'}: ${_profileName(profile)}',
+            '${isRu ? 'Пациент' : 'Patient'}: ${fields.patientName}',
             style: const pw.TextStyle(fontSize: 10),
           ),
           pw.Text(
-            '${isRu ? 'Возраст' : 'Age'}: $ageStr',
+            '${isRu ? 'Возраст' : 'Age'}: ${fields.age}',
             style: const pw.TextStyle(fontSize: 10),
           ),
           pw.Text(
@@ -402,7 +403,16 @@ class ExportService {
 
   String _profileName(UserProfile? p) {
     final name = (p?.name ?? '').trim();
-    return name.isEmpty ? '—' : name;
+    return name.isEmpty ? _defaultPatientName : name;
+  }
+
+  @visibleForTesting
+  PdfProfileFields pdfProfileFieldsForTest(UserProfile? profile, DateTime now) {
+    final ageYears = _tryGetAgeYears(profile, now);
+    return PdfProfileFields(
+      patientName: _profileName(profile),
+      age: ageYears != null ? ageYears.toString() : '—',
+    );
   }
 
   DateTime? _tryParseDob(UserProfile? p) {
@@ -538,4 +548,12 @@ class _Stats {
     outOfRangeCount: 0,
     outOfRangePct: 0,
   );
+}
+
+@visibleForTesting
+class PdfProfileFields {
+  final String patientName;
+  final String age;
+
+  const PdfProfileFields({required this.patientName, required this.age});
 }

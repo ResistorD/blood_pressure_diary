@@ -376,8 +376,12 @@ class SettingsScreen extends StatelessWidget {
           Future<void> ensureDefaultRemindersPersisted() async {
             // UI shows 2 default reminders (08:00 / 20:00) when the list is empty.
             // Persist them on first interaction so that add/remove/edit works consistently.
-            if (s.reminders.isNotEmpty || !context.mounted) return;
             final cubit = context.read<SettingsCubit>();
+            if (!cubit.state.settings.notificationsEnabled ||
+                cubit.state.settings.reminders.isNotEmpty ||
+                !context.mounted) {
+              return;
+            }
             await cubit.addReminder(const TimeOfDay(hour: 8, minute: 0));
             if (context.mounted) {
               await cubit.addReminder(const TimeOfDay(hour: 20, minute: 0));
@@ -385,6 +389,14 @@ class SettingsScreen extends StatelessWidget {
           }
 
           Future<void> pickAndAddTime() async {
+            if (!context
+                .read<SettingsCubit>()
+                .state
+                .settings
+                .notificationsEnabled) {
+              return;
+            }
+
             final picked = await _pickTimeInput(context);
             if (picked == null || !context.mounted) return;
 
@@ -396,21 +408,26 @@ class SettingsScreen extends StatelessWidget {
 
           Future<void> pickReplaceAt(int index) async {
             final cubit = context.read<SettingsCubit>();
+            if (!cubit.state.settings.notificationsEnabled) return;
+
             final picked = await _pickTimeInput(context);
             if (picked == null || !context.mounted) return;
 
             await ensureDefaultRemindersPersisted();
+            if (!context.mounted) return;
 
-            if (s.reminders.length > index) {
-              await cubit.removeReminder(index);
-            }
-            if (context.mounted) {
-              cubit.addReminder(picked);
-            }
+            await cubit.updateReminder(index, picked);
           }
 
           void removeAt(int index) {
             if (index < 0) return;
+            if (!context
+                .read<SettingsCubit>()
+                .state
+                .settings
+                .notificationsEnabled) {
+              return;
+            }
             ensureDefaultRemindersPersisted().then((_) {
               if (!context.mounted) return;
               final curr = context
@@ -578,12 +595,15 @@ class SettingsScreen extends StatelessWidget {
                       ),
                     ),
                     if (removable) ...[
-                      minusButton(rowHeight: h, onTap: () => removeAt(index)),
+                      minusButton(
+                        rowHeight: h,
+                        onTap: enabled ? () => removeAt(index) : () {},
+                      ),
                       SizedBox(width: betweenMinusAndField),
                     ],
                     GestureDetector(
                       behavior: HitTestBehavior.opaque,
-                      onTap: () => pickReplaceAt(index),
+                      onTap: enabled ? () => pickReplaceAt(index) : () {},
                       child: timeValueBox(value: value, height: h),
                     ),
                   ],
@@ -677,7 +697,7 @@ class SettingsScreen extends StatelessWidget {
                         opacity: enabled ? 1.0 : 0.55,
                         child: GestureDetector(
                           behavior: HitTestBehavior.opaque,
-                          onTap: pickAndAddTime,
+                          onTap: enabled ? pickAndAddTime : () {},
                           child: Padding(
                             padding: EdgeInsets.only(
                               right: dp(context, space.s6),

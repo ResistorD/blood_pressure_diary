@@ -25,12 +25,12 @@ class AppSettings {
   AppSettings({
     this.themeMode = AppThemeMode.light,
     this.languageCode = 'ru',
-    this.reminders = const [],
+    List<String> reminders = const [],
     this.notificationsEnabled = false,
     this.accountLinked = false,
     this.accountEmail = '',
     this.accountProvider = '',
-  });
+  }) : reminders = List<String>.from(reminders);
 
   /// ✅ copyWith для избежания дублирования кода в SettingsCubit
   AppSettings copyWith({
@@ -45,7 +45,7 @@ class AppSettings {
     return AppSettings(
       themeMode: themeMode ?? this.themeMode,
       languageCode: languageCode ?? this.languageCode,
-      reminders: reminders ?? this.reminders,
+      reminders: List<String>.from(reminders ?? this.reminders),
       notificationsEnabled: notificationsEnabled ?? this.notificationsEnabled,
       accountLinked: accountLinked ?? this.accountLinked,
       accountEmail: accountEmail ?? this.accountEmail,
