@@ -12,9 +12,9 @@ class NotificationService {
 
     const AndroidInitializationSettings androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
     const DarwinInitializationSettings iosSettings = DarwinInitializationSettings(
-      requestAlertPermission: false,
-      requestBadgePermission: false,
-      requestSoundPermission: false,
+      requestAlertPermission: true,
+      requestBadgePermission: true,
+      requestSoundPermission: true,
     );
 
     const InitializationSettings settings = InitializationSettings(
@@ -23,6 +23,8 @@ class NotificationService {
     );
 
     await _notificationsPlugin.initialize(settings);
+    // Запрашиваем разрешения сразу после инициализации
+    await requestPermissions();
   }
 
   Future<bool> requestPermissions() async {
