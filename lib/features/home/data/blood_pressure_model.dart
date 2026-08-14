@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:isar/isar.dart';
 
 import 'package:blood_pressure_diary/core/utils/pressure_assessment_policy.dart';
+import 'package:blood_pressure_diary/l10n/generated/app_localizations.dart';
 
 part 'blood_pressure_model.g.dart';
 
@@ -15,9 +16,9 @@ class BloodPressureRecord {
   late int diastolic;
   late int pulse;
 
-  String? note;    // Поле для заметок (бывший comment)
+  String? note; // Поле для заметок (бывший comment)
   String? emotion; // Твой эмодзи
-  
+
   // ✅ Индекс для тегов (для быстрого поиска по тегам в будущем)
   @Index(type: IndexType.value)
   List<String> tags = const []; // Контекстные теги (после кофе, стресс и т.п.)
@@ -39,22 +40,21 @@ class BloodPressureRecord {
     }
   }
 
-  @ignore
-  String get statusText {
+  String statusText(AppLocalizations l10n) {
     final category = PressureAssessmentPolicy.assess(systolic, diastolic);
     switch (category) {
       case PressureCategory.low:
-        return 'Понижено';
+        return l10n.bpLevelLow;
       case PressureCategory.normal:
-        return 'Норма';
+        return l10n.bpLevelNormal;
       case PressureCategory.elevated:
-        return 'Повышено';
+        return l10n.bpLevelElevated;
       case PressureCategory.high1:
-        return 'Гипертония 1';
+        return l10n.bpLevelHtn1;
       case PressureCategory.high2:
-        return 'Гипертония 2';
+        return l10n.bpLevelHtn2;
       case PressureCategory.crisis:
-        return 'Кризис';
+        return l10n.bpLevelCrisis;
     }
   }
 }

@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'about_app_screen.dart';
 
 import 'package:flutter/material.dart';
@@ -7,57 +6,22 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:blood_pressure_diary/core/services/export_service.dart';
 import 'package:blood_pressure_diary/core/services/backup_service.dart';
 import 'package:blood_pressure_diary/core/database/isar_service.dart';
+import 'package:blood_pressure_diary/core/repositories/pressure_repository.dart';
 import 'package:blood_pressure_diary/core/di/service_locator.dart';
 import 'package:blood_pressure_diary/core/theme/app_theme.dart';
 import 'package:blood_pressure_diary/core/theme/scale.dart';
+import 'package:blood_pressure_diary/features/profile/presentation/bloc/profile_cubit.dart';
 import 'package:blood_pressure_diary/features/settings/presentation/bloc/settings_cubit.dart';
 import 'package:blood_pressure_diary/features/settings/presentation/bloc/settings_state.dart';
 
 import 'package:blood_pressure_diary/l10n/generated/app_localizations.dart';
 
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
-import 'package:file_picker/file_picker.dart';
-
 import '../data/models/settings_model.dart';
+import 'settings_file_actions.dart';
+import 'settings_restore_coordinator.dart';
+import 'widgets/settings_action_button.dart';
 
-enum _DayPeriod { morning, day, evening, night }
-
-bool _isTimeInPeriod(TimeOfDay t, _DayPeriod p) {
-  final minutes = t.hour * 60 + t.minute;
-
-  bool inRange(int startH, int endH) {
-    final start = startH * 60;
-    final end = endH * 60;
-    if (start <= end) return minutes >= start && minutes < end;
-    // wrap-around (e.g. 22–06)
-    return minutes >= start || minutes < end;
-  }
-
-  switch (p) {
-    case _DayPeriod.morning:
-      return inRange(6, 10);
-    case _DayPeriod.day:
-      return inRange(12, 16);
-    case _DayPeriod.evening:
-      return inRange(18, 22);
-    case _DayPeriod.night:
-      return inRange(22, 6);
-  }
-}
-
-TimeOfDay _initialTimeForPeriod(_DayPeriod p) {
-  switch (p) {
-    case _DayPeriod.morning:
-      return const TimeOfDay(hour: 8, minute: 0);
-    case _DayPeriod.day:
-      return const TimeOfDay(hour: 14, minute: 0);
-    case _DayPeriod.evening:
-      return const TimeOfDay(hour: 20, minute: 0);
-    case _DayPeriod.night:
-      return const TimeOfDay(hour: 23, minute: 0);
-  }
-}
+enum DayPeriod { morning, day, evening, night }
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -72,12 +36,15 @@ class SettingsScreen extends StatelessWidget {
     final safeBottom = MediaQuery.paddingOf(context).bottom;
     // Bottom bar in AppNavigation: barH (69) + lift (43) = 112 (tokens-based)
     final barH = dp(context, s.s72 - s.s2 - s.s1);
-    final outer = dp(context, s.s80 + s.s6);
-    final lift = outer / 2;
     return barH + safeBottom + dp(context, s.s8);
   }
 
-  Future<void> _runBlocking(BuildContext context, Future<void> Function() action) async {
+  Future<bool> _runBlocking(
+    BuildContext context,
+    Future<void> Function() action,
+    String failureMessage,
+  ) async {
+    Object? error;
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -86,72 +53,221 @@ class SettingsScreen extends StatelessWidget {
 
     try {
       await action();
+      return true;
+    } catch (e) {
+      error = e;
+      return false;
     } finally {
       if (context.mounted) Navigator.pop(context);
+      if (error != null && context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(failureMessage)));
+      }
     }
   }
 
   Future<void> _backupToJson(BuildContext context) async {
     final isar = getIt<IsarService>();
-    final backupService = BackupService(isar);
+    final backupService = BackupService(isar, getIt<PressureRepository>());
+    final fileActions = SettingsFileActions(
+      backupService: backupService,
+      isarService: isar,
+    );
+    final l10n = AppLocalizations.of(context);
 
-    await _runBlocking(context, () async {
-      final json = await backupService.createBackupJson();
-
-      final dir = await getTemporaryDirectory();
-      final ts = DateTime.now().toIso8601String().replaceAll(':', '-');
-      final file = File('${dir.path}/pressure_diary_backup_$ts.json');
-      await file.writeAsString(json, flush: true);
-
-      await Share.shareXFiles(
-        [XFile(file.path)],
-        text: 'Pressure Diary backup (JSON)',
-      );
-    });
+    await _runBlocking(
+      context,
+      () async {
+        await fileActions.shareBackupJson(shareText: l10n.backupJson);
+      },
+      _tr(
+        context,
+        'Не удалось создать резервную копию',
+        'Failed to create backup',
+      ),
+    );
   }
 
   Future<void> _restoreFromJson(BuildContext context) async {
     final isar = getIt<IsarService>();
-    final backupService = BackupService(isar);
-
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: const ['json'],
-      withData: false,
+    final backupService = BackupService(isar, getIt<PressureRepository>());
+    final fileActions = SettingsFileActions(
+      backupService: backupService,
+      isarService: isar,
     );
 
-    if (result == null || result.files.isEmpty) return;
-    final path = result.files.first.path;
+    final path = await fileActions.pickBackupJsonPath();
     if (path == null) return;
+    if (!context.mounted) return;
+
+    final title = _tr(
+      context,
+      'Восстановление из копии',
+      'Restore from backup',
+    );
+    final message = _tr(
+      context,
+      'Это действие заменит все текущие данные приложения (профиль, настройки и записи давления). Продолжить?',
+      'This will replace all current app data (profile, settings, and measurements). Continue?',
+    );
+    final cancel = _tr(context, 'Отмена', 'Cancel');
+    final restore = _tr(context, 'Восстановить', 'Restore');
+    final restored = _tr(context, 'Данные восстановлены', 'Data restored');
 
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: Text(_tr(context, 'Восстановление из копии', 'Restore from backup')),
-        content: Text(_tr(context, 'Это действие заменит все текущие данные приложения (профиль, настройки и записи давления). Продолжить?', 'This will replace all current app data (profile, settings, and measurements). Continue?')),
+        title: Text(title),
+        content: Text(message),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: Text(_tr(context, 'Отмена', 'Cancel'))),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: Text(_tr(context, 'Восстановить', 'Restore'))),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(cancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(restore),
+          ),
         ],
       ),
     );
 
     if (confirmed != true) return;
-
-    await _runBlocking(context, () async {
-      final jsonText = await File(path).readAsString();
-      await backupService.restoreFromJson(jsonText);
-    });
-
     if (!context.mounted) return;
+
+    final settingsCubit = context.read<SettingsCubit>();
+    final profileCubit = context.read<ProfileCubit>();
+    const restoreCoordinator = SettingsRestoreCoordinator();
+
+    final ok = await _runBlocking(
+      context,
+      () async {
+        await restoreCoordinator.restoreAndRefresh(
+          restoreBackup: () => fileActions.restoreBackupFromPath(path),
+          reloadSettings: settingsCubit.reloadSettings,
+          loadProfile: ({required force}) =>
+              profileCubit.loadProfile(force: force),
+        );
+      },
+      _tr(context, 'Не удалось восстановить данные', 'Failed to restore data'),
+    );
+
+    if (!ok || !context.mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(restored)));
+  }
+
+  Future<void> _importFromCsv(BuildContext context) async {
+    final isar = getIt<IsarService>();
+    final backupService = BackupService(isar, getIt<PressureRepository>());
+    final fileActions = SettingsFileActions(
+      backupService: backupService,
+      isarService: isar,
+    );
+
+    CsvImportPreview? preview;
+    try {
+      preview = await fileActions.pickAndParseCsv();
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _tr(
+              context,
+              'Не удалось прочитать CSV-файл',
+              'Failed to read CSV file',
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
+    if (preview == null) return;
+    if (!context.mounted) return;
+
+    if (preview.records.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _tr(
+              context,
+              'В CSV не найдено подходящих записей',
+              'No valid records found in CSV',
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(_tr(context, 'Импорт CSV', 'CSV import')),
+        content: Text(
+          _tr(
+            context,
+            'Будет добавлено записей: ${preview!.records.length}.\nПропущено строк: ${preview.skippedRows}.\n\nСуществующие записи удалены не будут. Продолжить?',
+            'Records to add: ${preview.records.length}.\nSkipped rows: ${preview.skippedRows}.\n\nExisting records will not be deleted. Continue?',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(_tr(context, 'Отмена', 'Cancel')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(_tr(context, 'Импорт', 'Import')),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+
+    final ok = await _runBlocking(context, () async {
+      await fileActions.importCsvRecords(preview!.records);
+    }, _tr(context, 'Не удалось импортировать CSV', 'Failed to import CSV'));
+
+    if (!ok || !context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(_tr(context, 'Данные восстановлены', 'Data restored'))),
+      SnackBar(
+        content: Text(
+          _tr(
+            context,
+            'CSV импортирован: ${preview.records.length} записей',
+            'CSV imported: ${preview.records.length} records',
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<TimeOfDay?> _pickTimeInput(
+    BuildContext context, {
+    TimeOfDay? initialTime,
+  }) {
+    return showTimePicker(
+      context: context,
+      initialTime: initialTime ?? TimeOfDay.now(),
+      initialEntryMode: TimePickerEntryMode.input,
+      builder: (ctx, child) {
+        return MediaQuery(
+          data: MediaQuery.of(ctx).copyWith(alwaysUse24HourFormat: true),
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context)!;
+    final l10n = AppLocalizations.of(context);
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -166,7 +282,7 @@ class SettingsScreen extends StatelessWidget {
     final headerH = dp(context, space.s128);
     final side = context.horizontalPadding;
 
-    final cardW = dp(context, space.w320);
+    final cardW = MediaQuery.sizeOf(context).width - side * 2;
     final innerW = cardW - dp(context, space.s24); // 296
     final cardR = dp(context, radii.r10);
 
@@ -243,31 +359,13 @@ class SettingsScreen extends StatelessWidget {
       height: 1.0,
     );
 
-    Future<TimeOfDay?> _pickTimeInput(BuildContext context, {TimeOfDay? initialTime}) {
-      return showTimePicker(
-        context: context,
-        initialTime: initialTime ?? TimeOfDay.now(),
-        initialEntryMode: TimePickerEntryMode.input,
-        builder: (ctx, child) {
-          return MediaQuery(
-            data: MediaQuery.of(ctx).copyWith(alwaysUse24HourFormat: true),
-            child: child ?? const SizedBox.shrink(),
-          );
-        },
-      );
-    }
-
-
     return BlocListener<SettingsCubit, SettingsState>(
       listener: (context, state) {
         final msg = state.errorMessage;
         if (msg == null) return;
 
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(msg),
-            backgroundColor: colors.danger,
-          ),
+          SnackBar(content: Text(msg), backgroundColor: colors.danger),
         );
       },
       child: BlocBuilder<SettingsCubit, SettingsState>(
@@ -278,8 +376,12 @@ class SettingsScreen extends StatelessWidget {
           Future<void> ensureDefaultRemindersPersisted() async {
             // UI shows 2 default reminders (08:00 / 20:00) when the list is empty.
             // Persist them on first interaction so that add/remove/edit works consistently.
-            if (s.reminders.isNotEmpty || !context.mounted) return;
             final cubit = context.read<SettingsCubit>();
+            if (!cubit.state.settings.notificationsEnabled ||
+                cubit.state.settings.reminders.isNotEmpty ||
+                !context.mounted) {
+              return;
+            }
             await cubit.addReminder(const TimeOfDay(hour: 8, minute: 0));
             if (context.mounted) {
               await cubit.addReminder(const TimeOfDay(hour: 20, minute: 0));
@@ -287,6 +389,14 @@ class SettingsScreen extends StatelessWidget {
           }
 
           Future<void> pickAndAddTime() async {
+            if (!context
+                .read<SettingsCubit>()
+                .state
+                .settings
+                .notificationsEnabled) {
+              return;
+            }
+
             final picked = await _pickTimeInput(context);
             if (picked == null || !context.mounted) return;
 
@@ -296,27 +406,35 @@ class SettingsScreen extends StatelessWidget {
             context.read<SettingsCubit>().addReminder(picked);
           }
 
-
-
           Future<void> pickReplaceAt(int index) async {
+            final cubit = context.read<SettingsCubit>();
+            if (!cubit.state.settings.notificationsEnabled) return;
+
             final picked = await _pickTimeInput(context);
             if (picked == null || !context.mounted) return;
 
             await ensureDefaultRemindersPersisted();
+            if (!context.mounted) return;
 
-            if (s.reminders.length > index) {
-              await context.read<SettingsCubit>().removeReminder(index);
-            }
-            if (context.mounted) {
-              context.read<SettingsCubit>().addReminder(picked);
-            }
+            await cubit.updateReminder(index, picked);
           }
 
           void removeAt(int index) {
             if (index < 0) return;
+            if (!context
+                .read<SettingsCubit>()
+                .state
+                .settings
+                .notificationsEnabled) {
+              return;
+            }
             ensureDefaultRemindersPersisted().then((_) {
               if (!context.mounted) return;
-              final curr = context.read<SettingsCubit>().state.settings.reminders;
+              final curr = context
+                  .read<SettingsCubit>()
+                  .state
+                  .settings
+                  .reminders;
               if (index >= curr.length) return;
               context.read<SettingsCubit>().removeReminder(index);
             });
@@ -386,7 +504,9 @@ class SettingsScreen extends StatelessWidget {
                     height: hit,
                     decoration: BoxDecoration(
                       color: bg,
-                      borderRadius: BorderRadius.circular(dp(context, space.s6)),
+                      borderRadius: BorderRadius.circular(
+                        dp(context, space.s6),
+                      ),
                     ),
                     child: Icon(
                       Icons.remove_circle_outline,
@@ -407,7 +527,7 @@ class SettingsScreen extends StatelessWidget {
             final betweenRows = dp(context, space.s4);
             final betweenMinusAndField = dp(context, space.s6);
 
-            TimeOfDay? _parseTime(String v) {
+            TimeOfDay? parseTime(String v) {
               final parts = v.split(':');
               if (parts.length != 2) return null;
               final h = int.tryParse(parts[0]);
@@ -417,7 +537,7 @@ class SettingsScreen extends StatelessWidget {
               return TimeOfDay(hour: h, minute: m);
             }
 
-            _DayPeriod _periodForTime(TimeOfDay t) {
+            DayPeriod periodForTime(TimeOfDay t) {
               final minutes = t.hour * 60 + t.minute;
 
               bool inRange(int startH, int endH) {
@@ -428,28 +548,27 @@ class SettingsScreen extends StatelessWidget {
                 return minutes >= start || minutes < end;
               }
 
-              if (inRange(6, 10)) return _DayPeriod.morning;
-              if (inRange(12, 16)) return _DayPeriod.day;
-              if (inRange(18, 22)) return _DayPeriod.evening;
-              return _DayPeriod.night;
+              if (inRange(6, 10)) return DayPeriod.morning;
+              if (inRange(12, 16)) return DayPeriod.day;
+              if (inRange(18, 22)) return DayPeriod.evening;
+              return DayPeriod.night;
             }
 
-            String _labelForTimeValue(String v) {
-              final t = _parseTime(v);
-              if (t == null) return _tr(context, 'Время', 'Time');
+            String labelForTimeValue(String v) {
+              final t = parseTime(v);
+              if (t == null) return l10n.time;
 
-              switch (_periodForTime(t)) {
-                case _DayPeriod.morning:
-                  return _tr(context, 'Утро', 'Morning');
-                case _DayPeriod.day:
+              switch (periodForTime(t)) {
+                case DayPeriod.morning:
+                  return l10n.morning;
+                case DayPeriod.day:
                   return _tr(context, 'День', 'Day');
-                case _DayPeriod.evening:
-                  return _tr(context, 'Вечер', 'Evening');
-                case _DayPeriod.night:
+                case DayPeriod.evening:
+                  return l10n.evening;
+                case DayPeriod.night:
                   return _tr(context, 'Ночь', 'Night');
               }
             }
-
 
             double rowHeightForIndex(int i) => i == 0 ? h43 : h44;
 
@@ -476,12 +595,15 @@ class SettingsScreen extends StatelessWidget {
                       ),
                     ),
                     if (removable) ...[
-                      minusButton(rowHeight: h, onTap: () => removeAt(index)),
+                      minusButton(
+                        rowHeight: h,
+                        onTap: enabled ? () => removeAt(index) : () {},
+                      ),
                       SizedBox(width: betweenMinusAndField),
                     ],
                     GestureDetector(
                       behavior: HitTestBehavior.opaque,
-                      onTap: () => pickReplaceAt(index),
+                      onTap: enabled ? () => pickReplaceAt(index) : () {},
                       child: timeValueBox(value: value, height: h),
                     ),
                   ],
@@ -501,18 +623,29 @@ class SettingsScreen extends StatelessWidget {
                 child: Column(
                   children: [
                     if (s.reminders.isEmpty) ...[
-                      row(index: 0, label: _tr(context, 'Утро', 'Morning'), value: '08:00', h: h43),
+                      row(
+                        index: 0,
+                        label: l10n.morning,
+                        value: '08:00',
+                        h: h43,
+                      ),
                       SizedBox(height: betweenRows),
-                      row(index: 1, label: _tr(context, 'Вечер', 'Evening'), value: '20:00', h: h44),
+                      row(
+                        index: 1,
+                        label: l10n.evening,
+                        value: '20:00',
+                        h: h44,
+                      ),
                     ] else ...[
                       for (int i = 0; i < s.reminders.length; i++) ...[
                         row(
                           index: i,
-                          label: _labelForTimeValue(s.reminders[i]),
+                          label: labelForTimeValue(s.reminders[i]),
                           value: s.reminders[i],
                           h: rowHeightForIndex(i),
                         ),
-                        if (i != s.reminders.length - 1) SizedBox(height: betweenRows),
+                        if (i != s.reminders.length - 1)
+                          SizedBox(height: betweenRows),
                       ],
                     ],
                   ],
@@ -535,12 +668,17 @@ class SettingsScreen extends StatelessWidget {
                           Expanded(
                             child: Align(
                               alignment: Alignment.centerLeft,
-                              child: Text(l10n.reminders, style: cardTitleStyle),
+                              child: Text(
+                                l10n.reminders,
+                                style: cardTitleStyle,
+                              ),
                             ),
                           ),
                           _FigmaSwitch(
                             value: enabled,
-                            onChanged: (v) => context.read<SettingsCubit>().toggleNotifications(v),
+                            onChanged: (v) => context
+                                .read<SettingsCubit>()
+                                .toggleNotifications(v),
                             trackOn: trackOn,
                             trackOff: trackOff,
                             knobOn: knobOn,
@@ -559,10 +697,15 @@ class SettingsScreen extends StatelessWidget {
                         opacity: enabled ? 1.0 : 0.55,
                         child: GestureDetector(
                           behavior: HitTestBehavior.opaque,
-                          onTap: pickAndAddTime,
+                          onTap: enabled ? pickAndAddTime : () {},
                           child: Padding(
-                            padding: EdgeInsets.only(right: dp(context, space.s6)),
-                            child: Text('+${l10n.addReminder.toUpperCase()}', style: addStyle),
+                            padding: EdgeInsets.only(
+                              right: dp(context, space.s6),
+                            ),
+                            child: Text(
+                              '+${l10n.addReminder.toUpperCase()}',
+                              style: addStyle,
+                            ),
                           ),
                         ),
                       ),
@@ -577,7 +720,11 @@ class SettingsScreen extends StatelessWidget {
             return GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: () async {
-                final chosen = await _showThemeSheet(context, l10n, s.themeMode);
+                final chosen = await _showThemeSheet(
+                  context,
+                  l10n,
+                  s.themeMode,
+                );
                 if (chosen != null && context.mounted) {
                   context.read<SettingsCubit>().setThemeMode(chosen);
                 }
@@ -598,10 +745,17 @@ class SettingsScreen extends StatelessWidget {
                           color: fieldBg,
                           borderRadius: BorderRadius.circular(cardR),
                         ),
-                        padding: EdgeInsets.symmetric(horizontal: dp(context, space.s12)),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: dp(context, space.s12),
+                        ),
                         child: Row(
                           children: [
-                            Expanded(child: Text(_themeTitle(s.themeMode, l10n), style: itemStyle)),
+                            Expanded(
+                              child: Text(
+                                _themeTitle(s.themeMode, l10n),
+                                style: itemStyle,
+                              ),
+                            ),
                             Icon(
                               Icons.keyboard_arrow_down,
                               color: colors.textPrimary,
@@ -617,14 +771,13 @@ class SettingsScreen extends StatelessWidget {
             );
           }
 
-
           Widget languageCard() {
             String titleFor(String code) {
               switch (code) {
                 case 'ru':
-                  return 'Русский';
+                  return l10n.languageRu;
                 case 'en':
-                  return 'English';
+                  return l10n.languageEn;
                 default:
                   return code;
               }
@@ -633,7 +786,11 @@ class SettingsScreen extends StatelessWidget {
             return GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: () async {
-                final chosen = await _showLanguageSheet(context, l10n, s.languageCode);
+                final chosen = await _showLanguageSheet(
+                  context,
+                  l10n,
+                  s.languageCode,
+                );
                 if (chosen != null && context.mounted) {
                   context.read<SettingsCubit>().changeLanguage(chosen);
                 }
@@ -654,10 +811,17 @@ class SettingsScreen extends StatelessWidget {
                           color: fieldBg,
                           borderRadius: BorderRadius.circular(cardR),
                         ),
-                        padding: EdgeInsets.symmetric(horizontal: dp(context, space.s12)),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: dp(context, space.s12),
+                        ),
                         child: Row(
                           children: [
-                            Expanded(child: Text(titleFor(s.languageCode), style: itemStyle)),
+                            Expanded(
+                              child: Text(
+                                titleFor(s.languageCode),
+                                style: itemStyle,
+                              ),
+                            ),
                             Icon(
                               Icons.keyboard_arrow_down,
                               color: colors.textPrimary,
@@ -673,26 +837,84 @@ class SettingsScreen extends StatelessWidget {
             );
           }
 
-          Widget actionButton({required String title, required VoidCallback onTap}) {
-            return GestureDetector(
-              behavior: HitTestBehavior.opaque,
+          Widget actionButton({
+            required String title,
+            required VoidCallback onTap,
+          }) {
+            return SettingsActionButton(
+              title: title,
               onTap: onTap,
-              child: SizedBox(
-                width: cardW,
-                height: h47,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: cardBg,
-                    borderRadius: BorderRadius.circular(cardR),
-                    boxShadow: [shadows.card],
-                  ),
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(horizontal: dp(context, space.s16)),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(title, style: itemStyle),
-                    ),
-                  ),
+              width: cardW,
+              height: h47,
+              backgroundColor: cardBg,
+              borderRadius: cardR,
+              shadow: shadows.card,
+              textStyle: itemStyle,
+              space: space,
+            );
+          }
+
+          Widget themeLanguageSection() {
+            return Column(
+              children: [
+                themeCard(),
+                SizedBox(height: gap16),
+                languageCard(),
+              ],
+            );
+          }
+
+          Widget backupImportExportSection() {
+            return Column(
+              children: [
+                actionButton(
+                  title: l10n.backupJson,
+                  onTap: () => _backupToJson(context),
+                ),
+                SizedBox(height: gap8),
+                actionButton(
+                  title: l10n.restoreFromBackup,
+                  onTap: () => _restoreFromJson(context),
+                ),
+                SizedBox(height: gap8),
+                actionButton(
+                  title: _tr(context, 'Импорт CSV', 'Import CSV'),
+                  onTap: () => _importFromCsv(context),
+                ),
+                SizedBox(height: gap8),
+                actionButton(
+                  title: l10n.clearData,
+                  onTap: () => _showClearDataDialog(context, l10n),
+                ),
+                SizedBox(height: gap8),
+                actionButton(
+                  title: '${l10n.export} (CSV, PDF)',
+                  onTap: state.isExporting
+                      ? () {}
+                      : () => _showExportBottomSheet(context, l10n),
+                ),
+              ],
+            );
+          }
+
+          Widget aboutSupportLegalSection() {
+            return actionButton(
+              title: l10n.aboutApp,
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const AboutAppScreen()),
+                );
+              },
+            );
+          }
+
+          Widget versionFooter() {
+            return Padding(
+              padding: EdgeInsets.only(top: gap16),
+              child: Center(
+                child: Text(
+                  '${l10n.versionLabel} ${state.appVersion ?? '—'}',
+                  style: versionStyle,
                 ),
               ),
             );
@@ -735,41 +957,12 @@ class SettingsScreen extends StatelessWidget {
                       children: [
                         remindersCard(),
                         SizedBox(height: gap16),
-                        themeCard(),
+                        themeLanguageSection(),
                         SizedBox(height: gap16),
-                        languageCard(),
-                        SizedBox(height: gap16),
-
-                        actionButton(title: _tr(context, 'Резервная копия (JSON)', 'Backup (JSON)'), onTap: () => _backupToJson(context)),
+                        backupImportExportSection(),
                         SizedBox(height: gap8),
-                        actionButton(title: _tr(context, 'Восстановить из копии', 'Restore from backup'), onTap: () => _restoreFromJson(context)),
-                        SizedBox(height: gap8),
-
-                        actionButton(title: l10n.clearData, onTap: () => _showClearDataDialog(context, l10n)),
-                        SizedBox(height: gap8),
-                        actionButton(
-                          title: '${l10n.export} (CSV, PDF)',
-                          onTap: state.isExporting ? () {} : () => _showExportBottomSheet(context, l10n),
-                        ),
-                        SizedBox(height: gap8),
-                        actionButton(
-                          title: _tr(context, 'О приложении', 'About'),
-                          onTap: () async {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(builder: (_) => const AboutAppScreen()),
-                            );
-                          },
-                        ),
-
-                        Padding(
-                          padding: EdgeInsets.only(top: gap16),
-                          child: Center(
-                            child: Text(
-                              '${l10n.versionLabel} ${state.appVersion ?? '—'}',
-                              style: versionStyle,
-                            ),
-                          ),
-                        ),
+                        aboutSupportLegalSection(),
+                        versionFooter(),
 
                         SizedBox(height: gap16),
                       ],
@@ -802,7 +995,11 @@ class SettingsScreen extends StatelessWidget {
     }
   }
 
-  Future<AppThemeMode?> _showThemeSheet(BuildContext context, AppLocalizations l10n, AppThemeMode current) {
+  Future<AppThemeMode?> _showThemeSheet(
+    BuildContext context,
+    AppLocalizations l10n,
+    AppThemeMode current,
+  ) {
     return showModalBottomSheet<AppThemeMode>(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -834,10 +1031,10 @@ class SettingsScreen extends StatelessWidget {
   }
 
   Future<String?> _showLanguageSheet(
-      BuildContext context,
-      AppLocalizations l10n,
-      String current,
-      ) {
+    BuildContext context,
+    AppLocalizations l10n,
+    String current,
+  ) {
     return showModalBottomSheet<String>(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -867,7 +1064,6 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
-
   void _showExportBottomSheet(BuildContext context, AppLocalizations l10n) {
     showModalBottomSheet<ExportFormat>(
       context: context,
@@ -880,7 +1076,13 @@ class SettingsScreen extends StatelessWidget {
           children: [
             Padding(
               padding: const EdgeInsets.all(16.0),
-              child: Text(l10n.export, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              child: Text(
+                l10n.export,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
             ListTile(
               leading: const Icon(Icons.picture_as_pdf_outlined),
@@ -909,7 +1111,10 @@ class SettingsScreen extends StatelessWidget {
     });
   }
 
-  Future<int?> _showExportPeriodSheet(BuildContext context, AppLocalizations l10n) {
+  Future<int?> _showExportPeriodSheet(
+    BuildContext context,
+    AppLocalizations l10n,
+  ) {
     return showModalBottomSheet<int?>(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -929,8 +1134,13 @@ class SettingsScreen extends StatelessWidget {
             children: [
               Padding(
                 padding: const EdgeInsets.all(16.0),
-                child: Text(_tr(context, 'Период', 'Period'),
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                child: Text(
+                  _tr(context, 'Период', 'Period'),
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
               item(_tr(context, '3 дня', '3 days'), 3),
               item(_tr(context, '7 дней', '7 days'), 7),

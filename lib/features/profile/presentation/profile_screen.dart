@@ -8,26 +8,13 @@ import '../../../l10n/generated/app_localizations.dart';
 
 import 'bloc/profile_cubit.dart';
 import 'bloc/profile_state.dart';
+import 'widgets/profile_form_widgets.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
-  String _providerTitle(BuildContext context, String provider) {
-    switch (provider) {
-      case 'google':
-        return 'Google';
-      case 'apple':
-        return 'Apple';
-      case 'email':
-        return 'Email';
-      default:
-        final l10n = AppLocalizations.of(context)!;
-        return provider.isEmpty ? l10n.account : provider;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context)!;
+    final l10n = AppLocalizations.of(context);
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -51,7 +38,7 @@ class ProfileScreen extends StatelessWidget {
     // UI-only: в макете показан пример даты
     const demoDob = '25.12.1980';
 
-    String? _formatDob(int stored) {
+    String? formatDob(int stored) {
       // Храним дату рождения как YYYYMMDD в поле age (чтобы не трогать Isar-схему).
       // Если stored выглядит как "обычный возраст" (0..150) — даты нет.
       if (stored < 19000101) return null;
@@ -65,14 +52,13 @@ class ProfileScreen extends StatelessWidget {
     // Плотнее по Y — главный фикс
     final pad12 = dp(context, space.s12);
     final pad10 = dp(context, space.s10);
-    final pad8 = dp(context, space.s8);
     final pad6 = dp(context, space.s6);
     final pad4 = dp(context, space.s4);
     final pad2 = dp(context, space.s2);
 
     final titleStyle = TextStyle(
       fontFamily: text.family,
-      fontSize: sp(context, text.fs26),
+      fontSize: sp(context, text.fs24),
       fontWeight: text.w600,
       color: colors.textOnBrand,
       height: 1.0,
@@ -110,95 +96,36 @@ class ProfileScreen extends StatelessWidget {
       height: 1.0,
     );
 
-    final privacyStyle = TextStyle(
-      fontFamily: text.family,
-      fontSize: sp(context, text.fs12),
-      fontWeight: text.w400,
-      color: colors.textPrimary,
-      height: 1.0,
-    );
-
-    Widget _primaryButton({
-      required String title,
-      String? subtitle,
-      required Color bg,
-      required Color fg,
-      required VoidCallback onTap,
-    }) {
-      return GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: Container(
-          height: fieldH,
-          decoration: BoxDecoration(
-            color: bg,
-            borderRadius: BorderRadius.circular(fieldR),
-          ),
-          alignment: Alignment.center,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                title,
-                style: TextStyle(
-                  fontFamily: text.family,
-                  fontSize: sp(context, text.fs20),
-                  fontWeight: text.w600,
-                  color: fg,
-                  height: 1.0,
-                ),
-              ),
-              if (subtitle != null && subtitle.isNotEmpty) ...[
-                SizedBox(height: dp(context, space.s2)),
-                Text(subtitle, style: hintStyle.copyWith(color: fg), textAlign: TextAlign.center),
-              ],
-            ],
-          ),
-        ),
-      );
-    }
-
-    Widget _wideField({required String textValue, VoidCallback? onTap}) {
+    Widget wideField({required String textValue, VoidCallback? onTap}) {
       final bg = isDark ? colors.surfaceAlt : colors.background;
-      return GestureDetector(
-        behavior: HitTestBehavior.opaque,
+      return ProfileWideField(
+        textValue: textValue,
         onTap: onTap,
-        child: Container(
-          height: fieldH,
-          width: double.infinity,
-          decoration: BoxDecoration(
-            color: bg,
-            borderRadius: BorderRadius.circular(fieldR),
-          ),
-          padding: EdgeInsets.symmetric(horizontal: dp(context, space.s12)),
-          alignment: Alignment.centerLeft,
-          child: Text(textValue, style: valueStyle),
-        ),
+        height: fieldH,
+        borderRadius: fieldR,
+        backgroundColor: bg,
+        valueStyle: valueStyle,
+        space: space,
       );
     }
 
-    Widget _valueBox({required String textValue, VoidCallback? onTap}) {
+    Widget valueBox({required String textValue, VoidCallback? onTap}) {
       final w = dp(context, space.s120 + space.s16 + space.s1); // 137
       final bg = isDark ? colors.surfaceAlt : colors.background;
 
-      return GestureDetector(
-        behavior: HitTestBehavior.opaque,
+      return ProfileValueBox(
+        textValue: textValue,
         onTap: onTap,
-        child: Container(
-          height: fieldH,
-          width: w,
-          decoration: BoxDecoration(
-            color: bg,
-            borderRadius: BorderRadius.circular(fieldR),
-          ),
-          padding: EdgeInsets.symmetric(horizontal: dp(context, space.s12)),
-          alignment: Alignment.centerRight,
-          child: Text(textValue, style: valueStyle),
-        ),
+        width: w,
+        height: fieldH,
+        borderRadius: fieldR,
+        backgroundColor: bg,
+        valueStyle: valueStyle,
+        space: space,
       );
     }
 
-    Widget _segPill({
+    Widget segPill({
       required String title,
       required bool selected,
       required VoidCallback onTap,
@@ -206,23 +133,16 @@ class ProfileScreen extends StatelessWidget {
       required Color inactiveText,
       required Color activeText,
     }) {
-      return Expanded(
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: onTap,
-          child: Container(
-            height: fieldH,
-            decoration: BoxDecoration(
-              color: selected ? activeBg : Colors.transparent,
-              borderRadius: BorderRadius.circular(fieldR),
-            ),
-            alignment: Alignment.center,
-            child: Text(
-              title,
-              style: valueStyle.copyWith(color: selected ? activeText : inactiveText),
-            ),
-          ),
-        ),
+      return ProfileSegmentPill(
+        title: title,
+        selected: selected,
+        onTap: onTap,
+        height: fieldH,
+        borderRadius: fieldR,
+        activeBackground: activeBg,
+        inactiveText: inactiveText,
+        activeText: activeText,
+        valueStyle: valueStyle,
       );
     }
 
@@ -261,7 +181,7 @@ class ProfileScreen extends StatelessWidget {
                       ),
                     ),
                   ),
-                  _valueBox(textValue: topValue, onTap: onTapTop),
+                  valueBox(textValue: topValue, onTap: onTapTop),
                 ],
               ),
             ),
@@ -279,7 +199,7 @@ class ProfileScreen extends StatelessWidget {
                       ),
                     ),
                   ),
-                  _valueBox(textValue: bottomValue, onTap: onTapBottom),
+                  valueBox(textValue: bottomValue, onTap: onTapBottom),
                 ],
               ),
             ),
@@ -288,104 +208,7 @@ class ProfileScreen extends StatelessWidget {
       );
     }
 
-    Widget _sheetItem({
-      required BuildContext context,
-      required String title,
-      required VoidCallback onTap,
-    }) {
-      return GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: Container(
-          height: fieldH,
-          decoration: BoxDecoration(
-            color: isDark ? colors.surfaceAlt : colors.background,
-            borderRadius: BorderRadius.circular(fieldR),
-          ),
-          padding: EdgeInsets.symmetric(horizontal: dp(context, space.s12)),
-          alignment: Alignment.centerLeft,
-          child: Text(title, style: valueStyle),
-        ),
-      );
-    }
-
-    void _showEmailInputSheet(BuildContext context) {
-      final controller = TextEditingController();
-
-      showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        builder: (ctx) {
-          final sheetBg = colors.surface;
-          final sheetR = dp(context, radii.r10);
-          final bottomInset = MediaQuery.viewInsetsOf(ctx).bottom;
-
-          return SafeArea(
-            child: Padding(
-              padding: EdgeInsets.only(
-                left: dp(context, space.s12),
-                right: dp(context, space.s12),
-                bottom: dp(context, space.s12) + bottomInset,
-              ),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: sheetBg,
-                  borderRadius: BorderRadius.circular(sheetR),
-                  boxShadow: [shadows.card],
-                ),
-                child: Padding(
-                  padding: EdgeInsets.all(dp(context, space.s12)),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Email', style: sectionTitleStyle),
-                      SizedBox(height: dp(context, space.s8)),
-                      Container(
-                        height: fieldH,
-                        decoration: BoxDecoration(
-                          color: isDark ? colors.surfaceAlt : colors.background,
-                          borderRadius: BorderRadius.circular(fieldR),
-                        ),
-                        padding: EdgeInsets.symmetric(horizontal: dp(context, space.s12)),
-                        alignment: Alignment.centerLeft,
-                        child: TextField(
-                          controller: controller,
-                          keyboardType: TextInputType.emailAddress,
-                          decoration: const InputDecoration(
-                            border: InputBorder.none,
-                            isCollapsed: true,
-                          ),
-                          style: valueStyle,
-                        ),
-                      ),
-                      SizedBox(height: dp(context, space.s12)),
-                      SizedBox(
-                        width: double.infinity,
-                        child: _primaryButton(
-                          title: l10n.link,
-                          bg: isDark ? AppPalette.dark900 : AppPalette.blue900,
-                          fg: isDark ? colors.textPrimary : colors.textOnBrand,
-                          onTap: () {
-                            final email = controller.text.trim();
-                            if (email.isEmpty) return;
-                            context.read<ProfileCubit>().linkAccount(provider: 'email', email: email);
-                            Navigator.pop(ctx);
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          );
-        },
-      );
-    }
-
-    DateTime? _tryParseDob(int stored) {
+    DateTime? tryParseDob(int stored) {
       if (stored < 19000101) return null;
       final s = stored.toString().padLeft(8, '0');
       final yyyy = int.tryParse(s.substring(0, 4));
@@ -395,9 +218,10 @@ class ProfileScreen extends StatelessWidget {
       return DateTime(yyyy, mm, dd);
     }
 
-    Future<void> _pickDob(BuildContext context, UserProfile profile) async {
+    Future<void> pickDob(BuildContext context, UserProfile profile) async {
       final now = DateTime.now();
-      final initial = _tryParseDob(profile.age) ?? DateTime(now.year - 30, 1, 1);
+      final initial = tryParseDob(profile.age) ?? DateTime(now.year - 30, 1, 1);
+      final cubit = context.read<ProfileCubit>();
 
       final picked = await showDatePicker(
         context: context,
@@ -409,249 +233,79 @@ class ProfileScreen extends StatelessWidget {
       if (picked == null) return;
 
       final stored = (picked.year * 10000) + (picked.month * 100) + picked.day;
-      context.read<ProfileCubit>().updateProfile(age: stored);
+      cubit.updateProfile(age: stored);
     }
 
-    void _showNameInputSheet(BuildContext context, UserProfile profile) {
-      final controller = TextEditingController(text: profile.name.isEmpty ? '' : profile.name);
-
+    void showNameInputSheet(BuildContext context, UserProfile profile) {
       showModalBottomSheet(
         context: context,
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
-        builder: (ctx) {
-          final sheetBg = colors.surface;
-          final sheetR = dp(context, radii.r10);
-          final bottomInset = MediaQuery.viewInsetsOf(ctx).bottom;
-
-          return SafeArea(
-            child: Padding(
-              padding: EdgeInsets.only(
-                left: dp(context, space.s12),
-                right: dp(context, space.s12),
-                bottom: dp(context, space.s12) + bottomInset,
-                top: dp(context, space.s12),
-              ),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: sheetBg,
-                  borderRadius: BorderRadius.circular(sheetR),
-                  boxShadow: [shadows.card],
-                ),
-                child: Padding(
-                  padding: EdgeInsets.all(dp(context, space.s12)),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(l10n.name, style: labelStyle),
-                      SizedBox(height: dp(context, space.s8)),
-                      TextField(
-                        controller: controller,
-                        autofocus: true,
-                        style: valueStyle,
-                        decoration: InputDecoration(
-                          filled: true,
-                          fillColor: isDark ? colors.surfaceAlt : colors.background,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(fieldR),
-                            borderSide: BorderSide.none,
-                          ),
-                        ),
-                      ),
-                      SizedBox(height: dp(context, space.s12)),
-                      SizedBox(
-                        width: double.infinity,
-                        height: fieldH,
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: isDark ? AppPalette.dark900 : AppPalette.blue900,
-                            foregroundColor: isDark ? colors.textPrimary : colors.textOnBrand,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(fieldR),
-                            ),
-                            elevation: 0,
-                          ),
-                          onPressed: () {
-                            final v = controller.text.trim();
-                            context.read<ProfileCubit>().updateProfile(name: v);
-                            Navigator.of(ctx).pop();
-                          },
-                          child: Text(
-                            l10n.save,
-                            style: valueStyle.copyWith(
-                              fontWeight: text.w600,
-                              color: isDark ? colors.textPrimary : colors.textOnBrand,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          );
-        },
+        builder: (_) => ProfileTextInputSheet(
+          title: l10n.name,
+          buttonTitle: l10n.save,
+          initialValue: profile.name.isEmpty ? '' : profile.name,
+          keyboardType: TextInputType.text,
+          onSubmit: (value) {
+            context.read<ProfileCubit>().updateProfile(name: value);
+          },
+          sheetBackground: colors.surface,
+          fieldBackground: isDark ? colors.surfaceAlt : colors.background,
+          buttonBackground: isDark ? AppPalette.dark900 : AppPalette.blue900,
+          buttonForeground: isDark ? colors.textPrimary : colors.textOnBrand,
+          sheetRadius: dp(context, radii.r10),
+          fieldHeight: fieldH,
+          fieldRadius: fieldR,
+          titleStyle: labelStyle,
+          valueStyle: valueStyle,
+          buttonStyle: valueStyle.copyWith(
+            fontWeight: text.w600,
+            color: isDark ? colors.textPrimary : colors.textOnBrand,
+          ),
+          shadow: shadows.card,
+          space: space,
+        ),
       );
     }
 
-    void _showIntInputSheet(
-        BuildContext context, {
-          required String title,
-          required int initialValue,
-          required void Function(int value) onSubmit,
-        }) {
-      final controller = TextEditingController(text: initialValue.toString());
-
+    void showIntInputSheet(
+      BuildContext context, {
+      required String title,
+      required int initialValue,
+      required void Function(int value) onSubmit,
+    }) {
       showModalBottomSheet(
         context: context,
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
-        builder: (ctx) {
-          final sheetBg = colors.surface;
-          final sheetR = dp(context, radii.r10);
-          final bottomInset = MediaQuery.viewInsetsOf(ctx).bottom;
-
-          return SafeArea(
-            child: Padding(
-              padding: EdgeInsets.only(
-                left: dp(context, space.s12),
-                right: dp(context, space.s12),
-                bottom: dp(context, space.s12) + bottomInset,
-                top: dp(context, space.s12),
-              ),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: sheetBg,
-                  borderRadius: BorderRadius.circular(sheetR),
-                  boxShadow: [shadows.card],
-                ),
-                child: Padding(
-                  padding: EdgeInsets.all(dp(context, space.s12)),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(title, style: labelStyle),
-                      SizedBox(height: dp(context, space.s8)),
-                      TextField(
-                        controller: controller,
-                        keyboardType: TextInputType.number,
-                        autofocus: true,
-                        style: valueStyle,
-                        decoration: InputDecoration(
-                          filled: true,
-                          fillColor: isDark ? colors.surfaceAlt : colors.background,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(fieldR),
-                            borderSide: BorderSide.none,
-                          ),
-                        ),
-                      ),
-                      SizedBox(height: dp(context, space.s12)),
-                      SizedBox(
-                        width: double.infinity,
-                        height: fieldH,
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: isDark
-                                ? AppPalette.dark900
-                                : AppPalette.blue900,
-                            foregroundColor: isDark
-                                ? colors.textPrimary
-                                : colors.textOnBrand,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(fieldR),
-                            ),
-                            elevation: 0,
-                          ),
-                          onPressed: () {
-                            final v = int.tryParse(controller.text.trim());
-                            if (v == null) return;
-                            onSubmit(v);
-                            Navigator.of(ctx).pop();
-                          },
-                          child: Text(
-                            l10n.save,
-                            style: TextStyle(
-                              fontFamily: text.family,
-                              fontSize: sp(context, text.fs20),
-                              fontWeight: text.w600,
-                              height: 1.0,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          );
-        },
-      );
-    }
-
-    void _showAccountLinkSheet(BuildContext context) {
-      showModalBottomSheet(
-        context: context,
-        backgroundColor: Colors.transparent,
-        builder: (ctx) {
-          final sheetBg = colors.surface;
-          final sheetR = dp(context, radii.r10);
-
-          return SafeArea(
-            child: Padding(
-              padding: EdgeInsets.all(dp(context, space.s12)),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: sheetBg,
-                  borderRadius: BorderRadius.circular(sheetR),
-                  boxShadow: [shadows.card],
-                ),
-                child: Padding(
-                  padding: EdgeInsets.all(dp(context, space.s12)),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(l10n.chooseSignIn, style: sectionTitleStyle),
-                      SizedBox(height: dp(context, space.s12)),
-                      _sheetItem(
-                        context: context,
-                        title: 'Email',
-                        onTap: () {
-                          Navigator.pop(ctx);
-                          _showEmailInputSheet(context);
-                        },
-                      ),
-                      SizedBox(height: dp(context, space.s8)),
-                      _sheetItem(
-                        context: context,
-                        title: 'Google',
-                        onTap: () {
-                          // локальная привязка: провайдер есть, email пустой
-                          context.read<ProfileCubit>().linkAccount(provider: 'google', email: '');
-                          Navigator.pop(ctx);
-                        },
-                      ),
-                      SizedBox(height: dp(context, space.s8)),
-                      _sheetItem(
-                        context: context,
-                        title: 'Apple',
-                        onTap: () {
-                          context.read<ProfileCubit>().linkAccount(provider: 'apple', email: '');
-                          Navigator.pop(ctx);
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          );
-        },
+        builder: (_) => ProfileTextInputSheet(
+          title: title,
+          buttonTitle: l10n.save,
+          initialValue: initialValue.toString(),
+          keyboardType: TextInputType.number,
+          onSubmit: (value) {
+            final parsed = int.tryParse(value);
+            if (parsed == null) return;
+            onSubmit(parsed);
+          },
+          sheetBackground: colors.surface,
+          fieldBackground: isDark ? colors.surfaceAlt : colors.background,
+          buttonBackground: isDark ? AppPalette.dark900 : AppPalette.blue900,
+          buttonForeground: isDark ? colors.textPrimary : colors.textOnBrand,
+          sheetRadius: dp(context, radii.r10),
+          fieldHeight: fieldH,
+          fieldRadius: fieldR,
+          titleStyle: labelStyle,
+          valueStyle: valueStyle,
+          buttonStyle: TextStyle(
+            fontFamily: text.family,
+            fontSize: sp(context, text.fs20),
+            fontWeight: text.w600,
+            height: 1.0,
+          ),
+          shadow: shadows.card,
+          space: space,
+        ),
       );
     }
 
@@ -670,30 +324,21 @@ class ProfileScreen extends StatelessWidget {
           }
 
           final profile = state.profile;
-          final displayedDob = _formatDob(profile.age) ?? demoDob;
-          final isLoggedIn = profile.accountLinked;
-
+          final displayedDob = formatDob(profile.age) ?? demoDob;
           final cardBg = colors.surface;
 
           final innerZoneBg = isDark ? cardBg : AppPalette.grey050;
-          final innerZoneBorderColor = isDark ? AppPalette.dark800 : colors.background;
-
-          final accountBtnBg = isDark
-              ? (isLoggedIn ? colors.surfaceAlt : AppPalette.dark900)
-              : (isLoggedIn ? AppPalette.blue500 : AppPalette.blue900);
-
-          final accountBtnFg = isDark ? colors.textPrimary : colors.textOnBrand;
-
+          final innerZoneBorderColor = isDark
+              ? AppPalette.dark800
+              : colors.background;
           final segBg = isDark ? colors.surfaceAlt : colors.background;
           final segActiveBg = colors.surface;
           final segText = colors.textPrimary;
 
-          final bottomPad = dp(context, space.s80) + MediaQuery.paddingOf(context).bottom + dp(context, space.s20);
-
-          final accountLine = profile.accountEmail.trim().isNotEmpty
-              ? profile.accountEmail.trim()
-              : _providerTitle(context, profile.accountProvider);
-
+          final bottomPad =
+              dp(context, space.s80) +
+              MediaQuery.paddingOf(context).bottom +
+              dp(context, space.s20);
           return Column(
             children: [
               Container(
@@ -719,193 +364,178 @@ class ProfileScreen extends StatelessWidget {
                   child: Column(
                     children: [
                       // ---- Аккаунт
-                      SizedBox(
-                        width: double.infinity,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: cardBg,
-                            borderRadius: BorderRadius.circular(cardR),
-                            boxShadow: [shadows.card],
-                          ),
-                          child: Padding(
-                            padding: EdgeInsets.all(pad12),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(l10n.account, style: sectionTitleStyle),
-                                SizedBox(height: pad6),
-                                Container(
-                                  width: double.infinity,
-                                  decoration: BoxDecoration(
-                                    color: innerZoneBg,
-                                    borderRadius: BorderRadius.circular(cardR),
-                                    border: isDark
-                                        ? Border.all(
-                                      color: innerZoneBorderColor,
-                                      width: dp(context, space.s1),
-                                    )
-                                        : null,
+                      ProfileSectionCard(
+                        backgroundColor: cardBg,
+                        borderRadius: cardR,
+                        shadow: shadows.card,
+                        padding: EdgeInsets.all(pad12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(l10n.account, style: sectionTitleStyle),
+                            SizedBox(height: pad6),
+                            Container(
+                              width: double.infinity,
+                              decoration: BoxDecoration(
+                                color: innerZoneBg,
+                                borderRadius: BorderRadius.circular(cardR),
+                                border: isDark
+                                    ? Border.all(
+                                        color: innerZoneBorderColor,
+                                        width: dp(context, space.s1),
+                                      )
+                                    : null,
+                              ),
+                              padding: EdgeInsets.symmetric(
+                                horizontal: pad12,
+                                vertical: pad10,
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    Localizations.localeOf(
+                                              context,
+                                            ).languageCode ==
+                                            'ru'
+                                        ? 'Облачная синхронизация пока недоступна.'
+                                        : 'Cloud sync is not available yet.',
+                                    style: valueStyle.copyWith(
+                                      fontSize: sp(context, text.fs16),
+                                      fontWeight: text.w500,
+                                    ),
                                   ),
-                                  padding: EdgeInsets.symmetric(horizontal: pad12, vertical: pad10),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      if (!isLoggedIn) ...[
-                                        Text(l10n.notSignedIn, style: hintStyle),
-                                        SizedBox(height: pad8),
-                                        SizedBox(
-                                          width: double.infinity,
-                                          child: _primaryButton(
-                                            title: l10n.signIn,
-                                            bg: accountBtnBg,
-                                            fg: accountBtnFg,
-                                            onTap: () => _showAccountLinkSheet(context),
-                                          ),
-                                        ),
-                                      ] else ...[
-                                        Text(l10n.accountLinked, style: hintStyle),
-                                        SizedBox(height: pad4),
-                                        Text(accountLine, style: valueStyle),
-                                        SizedBox(height: pad8),
-                                        SizedBox(
-                                          width: double.infinity,
-                                          child: _primaryButton(
-                                            title: l10n.signOut,
-                                            bg: accountBtnBg,
-                                            fg: accountBtnFg,
-                                            onTap: () => context.read<ProfileCubit>().unlinkAccount(),
-                                          ),
-                                        ),
-                                      ],
-                                    ],
+                                  SizedBox(height: pad6),
+                                  Text(
+                                    Localizations.localeOf(
+                                              context,
+                                            ).languageCode ==
+                                            'ru'
+                                        ? 'Все данные хранятся локально на устройстве.'
+                                        : 'All data is stored locally on this device.',
+                                    style: hintStyle,
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
-                          ),
+                          ],
                         ),
                       ),
 
                       SizedBox(height: pad12),
 
                       // ---- Профиль
-                      SizedBox(
-                        width: double.infinity,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: cardBg,
-                            borderRadius: BorderRadius.circular(cardR),
-                            boxShadow: [shadows.card],
-                          ),
-                          child: Padding(
-                            padding: EdgeInsets.all(pad12),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                      ProfileSectionCard(
+                        backgroundColor: cardBg,
+                        borderRadius: cardR,
+                        shadow: shadows.card,
+                        padding: EdgeInsets.all(pad12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(l10n.name, style: labelStyle),
+                            SizedBox(height: pad6),
+                            wideField(
+                              textValue: profile.name.isEmpty
+                                  ? 'Дмитрий'
+                                  : profile.name,
+                              onTap: () => showNameInputSheet(context, profile),
+                            ),
+
+                            SizedBox(height: pad10),
+
+                            Row(
                               children: [
-                                Text(l10n.name, style: labelStyle),
-                                SizedBox(height: pad6),
-                                _wideField(
-                                  textValue: profile.name.isEmpty ? 'Дмитрий' : profile.name,
-                                  onTap: () => _showNameInputSheet(context, profile),
+                                Expanded(
+                                  child: Text(l10n.gender, style: labelStyle),
                                 ),
-
-                                SizedBox(height: pad10),
-
-                                Row(
-                                  children: [
-                                    Expanded(child: Text(l10n.gender, style: labelStyle)),
-                                    SizedBox(width: dp(context, space.s20)),
-                                    Expanded(
-                                      child: Align(
-                                        alignment: Alignment.centerRight,
-                                        child: Text(l10n.birthDate, style: labelStyle),
-                                      ),
+                                SizedBox(width: dp(context, space.s20)),
+                                Expanded(
+                                  child: Align(
+                                    alignment: Alignment.centerRight,
+                                    child: Text(
+                                      l10n.birthDate,
+                                      style: labelStyle,
                                     ),
-                                  ],
-                                ),
-                                SizedBox(height: pad6),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Container(
-                                        height: fieldH,
-                                        decoration: BoxDecoration(
-                                          color: segBg,
-                                          borderRadius: BorderRadius.circular(fieldR),
-                                        ),
-                                        padding: EdgeInsets.all(pad4),
-                                        child: Row(
-                                          children: [
-                                            _segPill(
-                                              title: l10n.male,
-                                              selected: profile.gender == 'male',
-                                              activeBg: segActiveBg,
-                                              inactiveText: segText,
-                                              activeText: segText,
-                                              onTap: () => context.read<ProfileCubit>().updateProfile(gender: 'male'),
-                                            ),
-                                            SizedBox(width: pad4),
-                                            _segPill(
-                                              title: l10n.female,
-                                              selected: profile.gender == 'female',
-                                              activeBg: segActiveBg,
-                                              inactiveText: segText,
-                                              activeText: segText,
-                                              onTap: () => context.read<ProfileCubit>().updateProfile(gender: 'female'),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                    SizedBox(width: dp(context, space.s20)),
-                                    _valueBox(
-                                      textValue: displayedDob,
-                                      onTap: () => _pickDob(context, profile),
-                                    ),
-                                  ],
-                                ),
-
-                                SizedBox(height: pad10),
-
-                                Text(l10n.pressureNorms, style: labelStyle),
-                                SizedBox(height: pad6),
-                                normsBlock(
-                                  topValue: profile.targetSystolic.toString(),
-                                  bottomValue: profile.targetDiastolic.toString(),
-                                  onTapTop: () => _showIntInputSheet(
-                                    context,
-                                    title: 'Верхнее',
-                                    initialValue: profile.targetSystolic,
-                                    onSubmit: (v) => context.read<ProfileCubit>().updateProfile(targetSystolic: v),
-                                  ),
-                                  onTapBottom: () => _showIntInputSheet(
-                                    context,
-                                    title: 'Нижнее',
-                                    initialValue: profile.targetDiastolic,
-                                    onSubmit: (v) => context.read<ProfileCubit>().updateProfile(targetDiastolic: v),
-                                  ),
-                                ),
-
-                                SizedBox(height: pad12),
-
-                                SizedBox(
-                                  width: double.infinity,
-                                  child: _primaryButton(
-                                    title: l10n.buyPremium,
-                                    subtitle: l10n.oneTimePayment,
-                                    bg: isDark ? AppPalette.dark900 : AppPalette.blue900,
-                                    fg: isDark ? colors.textPrimary : colors.textOnBrand,
-                                    onTap: () {},
                                   ),
                                 ),
                               ],
                             ),
-                          ),
+                            SizedBox(height: pad6),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Container(
+                                    height: fieldH,
+                                    decoration: BoxDecoration(
+                                      color: segBg,
+                                      borderRadius: BorderRadius.circular(
+                                        fieldR,
+                                      ),
+                                    ),
+                                    padding: EdgeInsets.all(pad4),
+                                    child: Row(
+                                      children: [
+                                        segPill(
+                                          title: l10n.male,
+                                          selected: profile.gender == 'male',
+                                          activeBg: segActiveBg,
+                                          inactiveText: segText,
+                                          activeText: segText,
+                                          onTap: () => context
+                                              .read<ProfileCubit>()
+                                              .updateProfile(gender: 'male'),
+                                        ),
+                                        SizedBox(width: pad4),
+                                        segPill(
+                                          title: l10n.female,
+                                          selected: profile.gender == 'female',
+                                          activeBg: segActiveBg,
+                                          inactiveText: segText,
+                                          activeText: segText,
+                                          onTap: () => context
+                                              .read<ProfileCubit>()
+                                              .updateProfile(gender: 'female'),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(width: dp(context, space.s20)),
+                                valueBox(
+                                  textValue: displayedDob,
+                                  onTap: () => pickDob(context, profile),
+                                ),
+                              ],
+                            ),
+
+                            SizedBox(height: pad10),
+
+                            Text(l10n.pressureNorms, style: labelStyle),
+                            SizedBox(height: pad6),
+                            normsBlock(
+                              topValue: profile.targetSystolic.toString(),
+                              bottomValue: profile.targetDiastolic.toString(),
+                              onTapTop: () => showIntInputSheet(
+                                context,
+                                title: l10n.upper,
+                                initialValue: profile.targetSystolic,
+                                onSubmit: (v) => context
+                                    .read<ProfileCubit>()
+                                    .updateProfile(targetSystolic: v),
+                              ),
+                              onTapBottom: () => showIntInputSheet(
+                                context,
+                                title: l10n.lower,
+                                initialValue: profile.targetDiastolic,
+                                onSubmit: (v) => context
+                                    .read<ProfileCubit>()
+                                    .updateProfile(targetDiastolic: v),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-
-                      //SizedBox(height: pad12),
-                      //Text('Политика конфиденциальности', style: privacyStyle, textAlign: TextAlign.center),
                     ],
                   ),
                 ),

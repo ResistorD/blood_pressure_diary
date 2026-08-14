@@ -26,7 +26,10 @@ class _AppNavigationState extends State<AppNavigation> {
   int _selectedIndex = 0;
 
   void _openAddRecord() {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => const AddRecordScreen()));
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const AddRecordScreen()),
+    );
   }
 
   void _onNavTap(int navIndex) {
@@ -51,7 +54,7 @@ class _AppNavigationState extends State<AppNavigation> {
     return MultiBlocProvider(
       providers: [
         BlocProvider(create: (_) => GetIt.I<HomeBloc>()),
-        BlocProvider.value(value: GetIt.I<ProfileCubit>()..loadProfile()),
+        BlocProvider(create: (_) => GetIt.I<ProfileCubit>()..loadProfile()),
         BlocProvider.value(value: GetIt.I<SettingsCubit>()),
       ],
       child: Scaffold(
@@ -70,10 +73,7 @@ class _BottomNavBar extends StatelessWidget {
   final int activeIndex; // 0..3
   final ValueChanged<int> onTap; // 0..4 (2 is center)
 
-  const _BottomNavBar({
-    required this.activeIndex,
-    required this.onTap,
-  });
+  const _BottomNavBar({required this.activeIndex, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -258,13 +258,13 @@ class _Fab extends StatelessWidget {
       color: isDark ? null : barBg,
       gradient: isDark
           ? const LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [
-          AppPalette.dark800, // #3C3C3C
-          AppPalette.dark805, // #3D3D3D
-        ],
-      )
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                AppPalette.dark800, // #3C3C3C
+                AppPalette.dark805, // #3D3D3D
+              ],
+            )
           : null,
     );
 
@@ -274,18 +274,11 @@ class _Fab extends StatelessWidget {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          Container(
-            width: outer,
-            height: outer,
-            decoration: outerDecoration,
-          ),
+          Container(width: outer, height: outer, decoration: outerDecoration),
           Container(
             width: inner,
             height: inner,
-            decoration: BoxDecoration(
-              color: innerBg,
-              shape: BoxShape.circle,
-            ),
+            decoration: BoxDecoration(color: innerBg, shape: BoxShape.circle),
             child: Center(
               child: SvgPicture.asset(
                 'assets/Plus.svg',

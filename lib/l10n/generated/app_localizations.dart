@@ -317,7 +317,7 @@ abstract class AppLocalizations {
   /// No description provided for @bpLevelLow.
   ///
   /// In ru, this message translates to:
-  /// **'Понижено'**
+  /// **'Низкое'**
   String get bpLevelLow;
 
   /// No description provided for @bpLevelNormal.
@@ -329,7 +329,7 @@ abstract class AppLocalizations {
   /// No description provided for @bpLevelElevated.
   ///
   /// In ru, this message translates to:
-  /// **'Повышено'**
+  /// **'Повышенное'**
   String get bpLevelElevated;
 
   /// No description provided for @bpLevelHtn1.
@@ -347,7 +347,7 @@ abstract class AppLocalizations {
   /// No description provided for @bpLevelCrisis.
   ///
   /// In ru, this message translates to:
-  /// **'Кризис'**
+  /// **'Гипертония 3'**
   String get bpLevelCrisis;
 
   /// No description provided for @notifTitleMeasureNow.
@@ -893,7 +893,7 @@ abstract class AppLocalizations {
   /// No description provided for @supportProjectText.
   ///
   /// In ru, this message translates to:
-  /// **'Если приложение оказалось полезным — можно символически поддержать разработку. Да, кнопку «бургер» можно нажимать хоть каждый день 🙂'**
+  /// **'Если приложение оказалось полезным — можно символически поддержать разработку. Это не подписка и не обязательство. Даже просто поделиться приложением — уже помощь 🙂'**
   String get supportProjectText;
 
   /// No description provided for @supportCoffee.

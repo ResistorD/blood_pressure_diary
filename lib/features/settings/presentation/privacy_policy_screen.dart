@@ -24,19 +24,17 @@ class PrivacyPolicyScreen extends StatelessWidget {
 
     final gap20 = dp(context, space.s20);
     final gap16 = dp(context, space.s16);
-    final gap12 = dp(context, space.s12);
-    final gap10 = dp(context, space.s10);
 
     final headerBg = isDark ? AppPalette.dark800 : AppPalette.blue700;
 
-    final l10n = AppLocalizations.of(context)!;
+    final l10n = AppLocalizations.of(context);
 
     const lastUpdate = '15.02.2026';
 
     final titleStyle = TextStyle(
       fontFamily: txt.family,
       fontSize: sp(context, txt.fs24),
-      fontWeight: txt.w700,
+      fontWeight: txt.w600,
       color: colors.textOnBrand,
       height: 1.0,
     );
@@ -63,34 +61,31 @@ class PrivacyPolicyScreen extends StatelessWidget {
         children: [
           // ШАПКА — как на экране ввода: цвет, отступы, крестик
           Container(
-            height: headerH + topInset,
+            height: headerH,
             width: double.infinity,
             color: headerBg,
             padding: EdgeInsets.only(
               left: side,
               right: side,
-              top: topInset + gap12,
-              bottom: gap12,
+              top: topInset + dp(context, space.s20),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Stack(
               children: [
-                SizedBox(height: gap10),
-                Row(
-                  children: [
-                    _HeaderIconButton(
-                      icon: Icons.close,
-                      onTap: () => Navigator.of(context).pop(),
-                    ),
-                    const Spacer(),
-                  ],
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    l10n.privacyPolicy,
+                    style: titleStyle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-                SizedBox(height: gap12),
-                Text(
-                  l10n.privacyPolicy,
-                  style: titleStyle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                Align(
+                  alignment: Alignment.topRight,
+                  child: _HeaderIconButton(
+                    icon: Icons.close,
+                    onTap: () => Navigator.of(context).pop(),
+                  ),
                 ),
               ],
             ),
@@ -114,10 +109,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
                     style: metaStyle,
                   ),
                   SizedBox(height: gap16),
-                  Text(
-                    l10n.privacyPolicyFullText,
-                    style: bodyStyle,
-                  ),
+                  Text(l10n.privacyPolicyFullText, style: bodyStyle),
                 ],
               ),
             ),

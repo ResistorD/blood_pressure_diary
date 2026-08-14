@@ -17,16 +17,16 @@ class SettingsCubit extends Cubit<SettingsState> {
   final NotificationService _notificationService;
 
   SettingsCubit(
-      this._isarService,
-      this._pressureRepository,
-      this._exportService,
-      this._notificationService,
-      ) : super(SettingsState(AppSettings())) {
-    _loadSettings();
+    this._isarService,
+    this._pressureRepository,
+    this._exportService,
+    this._notificationService,
+  ) : super(SettingsState(AppSettings())) {
+    reloadSettings();
     _loadAppVersion();
   }
 
-  Future<void> _loadSettings() async {
+  Future<void> reloadSettings() async {
     // ✅ Надёжно: всегда получаем singleton-настройки из Isar
     final settings = await _isarService.getOrCreateSettings();
     emit(SettingsState(settings, appVersion: state.appVersion));
@@ -54,6 +54,8 @@ class SettingsCubit extends Cubit<SettingsState> {
   }
 
   Future<void> addReminder(TimeOfDay time) async {
+    if (!state.settings.notificationsEnabled) return;
+
     final hour = time.hour.toString().padLeft(2, '0');
     final minute = time.minute.toString().padLeft(2, '0');
     final timeStr = "$hour:$minute";
@@ -65,37 +67,74 @@ class SettingsCubit extends Cubit<SettingsState> {
 
     final newSettings = state.settings.copyWith(reminders: newList);
     await _isarService.saveSettings(newSettings);
+    emit(state.copyWith(settings: newSettings));
 
-    if (state.settings.notificationsEnabled) {
-      final id = timeStr.hashCode;
+    try {
       await _notificationService.scheduleDailyNotification(
-        id,
+        timeStr.hashCode,
         time,
         languageCode: state.settings.languageCode,
       );
+    } catch (e) {
+      debugPrint('Schedule reminder notification error: $e');
     }
-
-    emit(state.copyWith(settings: newSettings));
   }
 
   Future<void> removeReminder(int index) async {
+    if (!state.settings.notificationsEnabled) return;
     if (index < 0 || index >= state.settings.reminders.length) return;
 
     final timeStr = state.settings.reminders[index];
-    final newList = List<String>.from(state.settings.reminders)..removeAt(index);
+    final newList = List<String>.from(state.settings.reminders)
+      ..removeAt(index);
 
     final newSettings = state.settings.copyWith(reminders: newList);
     await _isarService.saveSettings(newSettings);
-
-    // Cancel scheduled notification if it exists
-    await _notificationService.cancelNotification(timeStr.hashCode);
-
     emit(state.copyWith(settings: newSettings));
+
+    try {
+      await _notificationService.cancelNotification(timeStr.hashCode);
+    } catch (e) {
+      debugPrint('Cancel reminder notification error: $e');
+    }
+  }
+
+  Future<void> updateReminder(int index, TimeOfDay time) async {
+    if (!state.settings.notificationsEnabled) return;
+    if (index < 0 || index >= state.settings.reminders.length) return;
+
+    final hour = time.hour.toString().padLeft(2, '0');
+    final minute = time.minute.toString().padLeft(2, '0');
+    final newTimeStr = "$hour:$minute";
+    final oldTimeStr = state.settings.reminders[index];
+
+    final newList = List<String>.from(state.settings.reminders);
+    final duplicateIndex = newList.indexOf(newTimeStr);
+    if (duplicateIndex != -1 && duplicateIndex != index) return;
+
+    newList[index] = newTimeStr;
+    newList.sort();
+
+    final newSettings = state.settings.copyWith(reminders: newList);
+    await _isarService.saveSettings(newSettings);
+    emit(state.copyWith(settings: newSettings));
+
+    try {
+      await _notificationService.cancelNotification(oldTimeStr.hashCode);
+      await _notificationService.scheduleDailyNotification(
+        newTimeStr.hashCode,
+        time,
+        languageCode: state.settings.languageCode,
+      );
+    } catch (e) {
+      debugPrint('Update reminder notification error: $e');
+    }
   }
 
   Future<void> toggleNotifications(bool enabled) async {
     final newSettings = state.settings.copyWith(notificationsEnabled: enabled);
     await _isarService.saveSettings(newSettings);
+    emit(state.copyWith(settings: newSettings));
 
     if (enabled) {
       // Reschedule all reminders
@@ -106,20 +145,26 @@ class SettingsCubit extends Cubit<SettingsState> {
           hour: int.parse(parts[0]),
           minute: int.parse(parts[1]),
         );
-        await _notificationService.scheduleDailyNotification(
-          timeStr.hashCode,
-          time,
-          languageCode: state.settings.languageCode,
-        );
+        try {
+          await _notificationService.scheduleDailyNotification(
+            timeStr.hashCode,
+            time,
+            languageCode: state.settings.languageCode,
+          );
+        } catch (e) {
+          debugPrint('Schedule reminder notification error: $e');
+        }
       }
     } else {
       // Cancel all reminders
       for (final timeStr in newSettings.reminders) {
-        await _notificationService.cancelNotification(timeStr.hashCode);
+        try {
+          await _notificationService.cancelNotification(timeStr.hashCode);
+        } catch (e) {
+          debugPrint('Cancel reminder notification error: $e');
+        }
       }
     }
-
-    emit(state.copyWith(settings: newSettings));
   }
 
   Future<void> exportData(ExportFormat format, {int? days}) async {

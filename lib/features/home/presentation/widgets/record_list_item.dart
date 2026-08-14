@@ -103,7 +103,7 @@ class RecordListItem extends StatelessWidget {
 
     final iconSize = dp(context, s.s22);
     final iconGap = dp(context, s.s6);
-    final blockGap = dp(context, s.s8);
+    final blockGap = dp(context, s.s20);
 
     final cardR = dp(context, r.r5);
     final padH = dp(context, s.s20);
@@ -191,7 +191,8 @@ class RecordListItem extends StatelessWidget {
                   boxShadow: [sh.card],
                 ),
                 child: hasMeta
-                    ? Center(
+                    ? Align(
+                  alignment: Alignment.centerLeft,
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -216,7 +217,8 @@ class RecordListItem extends StatelessWidget {
                     ],
                   ),
                 )
-                    : Center(
+                    : Align(
+                  alignment: Alignment.centerLeft,
                   child: _MainRow(
                     record: record,
                     valueStyle: valueStyle,
@@ -373,6 +375,12 @@ class _MainRow extends StatelessWidget {
               colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
             ),
           ],
+        ),
+        SizedBox(width: blockGap),
+        Container(
+          width: 1,
+          height: iconSize,
+          color: iconColor.withValues(alpha: 0.35),
         ),
         SizedBox(width: blockGap),
         Row(

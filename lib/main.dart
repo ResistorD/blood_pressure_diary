@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -27,6 +28,9 @@ void main() async {
   runZonedGuarded(
     () async {
       WidgetsFlutterBinding.ensureInitialized();
+      await SystemChrome.setPreferredOrientations([
+        DeviceOrientation.portraitUp,
+      ]);
       runApp(const BloodPressureAppBootstrap());
     },
     (error, stack) {
@@ -40,7 +44,8 @@ class BloodPressureAppBootstrap extends StatefulWidget {
   const BloodPressureAppBootstrap({super.key});
 
   @override
-  State<BloodPressureAppBootstrap> createState() => _BloodPressureAppBootstrapState();
+  State<BloodPressureAppBootstrap> createState() =>
+      _BloodPressureAppBootstrapState();
 }
 
 class _BloodPressureAppBootstrapState extends State<BloodPressureAppBootstrap> {
@@ -55,16 +60,14 @@ class _BloodPressureAppBootstrapState extends State<BloodPressureAppBootstrap> {
   Future<void> _initializeApp() async {
     try {
       final dir = await getApplicationDocumentsDirectory();
-      final isar = await Isar.open(
-        [BloodPressureRecordSchema, AppSettingsSchema, UserProfileSchema],
-        directory: dir.path,
-      );
+      final isar = await Isar.open([
+        BloodPressureRecordSchema,
+        AppSettingsSchema,
+        UserProfileSchema,
+      ], directory: dir.path);
 
       await setupLocator(isar);
       await initializeDateFormatting('ru');
-      
-      // ✅ Safety buffer для гарантии инициализации DI
-      await Future.delayed(const Duration(milliseconds: 50));
     } catch (e, stack) {
       debugPrint('Initialization Error: $e\n$stack');
       rethrow;
@@ -87,17 +90,27 @@ class _BloodPressureAppBootstrapState extends State<BloodPressureAppBootstrap> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(Icons.error_outline, size: 64, color: Colors.red),
+                        const Icon(
+                          Icons.error_outline,
+                          size: 64,
+                          color: Colors.red,
+                        ),
                         const SizedBox(height: 16),
                         const Text(
                           'Failed to initialize app',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                          ),
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 8),
                         Text(
                           '${snapshot.error}',
-                          style: const TextStyle(fontSize: 14, color: Colors.grey),
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey,
+                          ),
                           textAlign: TextAlign.center,
                         ),
                       ],
@@ -119,11 +132,7 @@ class _BloodPressureAppBootstrapState extends State<BloodPressureAppBootstrap> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(
-                    Icons.favorite,
-                    size: 80,
-                    color: Colors.white,
-                  ),
+                  const Icon(Icons.favorite, size: 80, color: Colors.white),
                   const SizedBox(height: 24),
                   const Text(
                     'Blood Pressure Diary',
@@ -163,7 +172,7 @@ class BloodPressureApp extends StatelessWidget {
         builder: (context, state) {
           return MaterialApp(
             debugShowCheckedModeBanner: false,
-            onGenerateTitle: (context) => AppLocalizations.of(context)!.appTitle,
+            onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
             theme: AppTheme.lightTheme,
             darkTheme: AppTheme.darkTheme,
             themeMode: _getThemeMode(state.settings.themeMode),
@@ -181,7 +190,10 @@ class BloodPressureApp extends StatelessWidget {
               final mq = MediaQuery.of(context);
               return MediaQuery(
                 data: mq.copyWith(
-                  textScaler: const TextScaler.linear(1.0),
+                  textScaler: mq.textScaler.clamp(
+                    minScaleFactor: 1.0,
+                    maxScaleFactor: 1.3,
+                  ),
                 ),
                 child: child ?? const SizedBox.shrink(),
               );

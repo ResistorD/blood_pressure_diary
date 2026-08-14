@@ -120,13 +120,13 @@ class AppLocalizationsRu extends AppLocalizations {
   String get tagMissedDose => 'Пропустил приём';
 
   @override
-  String get bpLevelLow => 'Понижено';
+  String get bpLevelLow => 'Низкое';
 
   @override
   String get bpLevelNormal => 'Норма';
 
   @override
-  String get bpLevelElevated => 'Повышено';
+  String get bpLevelElevated => 'Повышенное';
 
   @override
   String get bpLevelHtn1 => 'Гипертония 1';
@@ -135,7 +135,7 @@ class AppLocalizationsRu extends AppLocalizations {
   String get bpLevelHtn2 => 'Гипертония 2';
 
   @override
-  String get bpLevelCrisis => 'Кризис';
+  String get bpLevelCrisis => 'Гипертония 3';
 
   @override
   String get notifTitleMeasureNow => 'Пора измерить давление';
@@ -422,7 +422,7 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get supportProjectText =>
-      'Если приложение оказалось полезным — можно символически поддержать разработку. Да, кнопку «бургер» можно нажимать хоть каждый день 🙂';
+      'Если приложение оказалось полезным — можно символически поддержать разработку. Это не подписка и не обязательство. Даже просто поделиться приложением — уже помощь 🙂';
 
   @override
   String get supportCoffee => '€2 — кофе';

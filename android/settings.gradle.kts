@@ -33,6 +33,7 @@ plugins {
     id("com.android.application") version "8.9.2" apply false
     id("com.android.library") version "8.9.2" apply false
     id("org.jetbrains.kotlin.android") version "2.1.0" apply false
+    id("org.gradle.toolchains.foojay-resolver-convention") version "0.10.0"
 }
 
 include(":app")

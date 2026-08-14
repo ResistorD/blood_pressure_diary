@@ -1,20 +1,41 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/scale.dart';
+import '../../../../core/utils/blood_pressure_color_utils.dart';
+import '../../../profile/presentation/bloc/profile_cubit.dart';
+import '../../../profile/presentation/bloc/profile_state.dart';
 import '../../data/blood_pressure_model.dart';
 import 'package:blood_pressure_diary/core/utils/l10n_extensions.dart';
 
 class SummaryCard extends StatelessWidget {
   final BloodPressureRecord? record;
+  final int? trendDelta;
 
-  const SummaryCard({super.key, this.record});
+  const SummaryCard({super.key, this.record, this.trendDelta});
 
   String _time(BuildContext context, DateTime t) {
     final locale = Localizations.localeOf(context).toLanguageTag();
     return DateFormat.Hm(locale).format(t); // locale-aware (12/24h where applicable)
+  }
+
+  String _trendLabel(BuildContext context, int delta) {
+    if (delta == 0) return _tr(context, ru: '≈ среднее', en: '≈ average');
+    final sign = delta > 0 ? '↗' : '↘';
+    final value = delta > 0 ? '+${delta.abs()}' : '-${delta.abs()}';
+    final tail = delta > 0
+        ? _tr(context, ru: 'выше среднего', en: 'above average')
+        : _tr(context, ru: 'ниже среднего', en: 'below average');
+    final period = _tr(context, ru: 'в выбранном периоде', en: 'for selected period');
+    return '$sign $value $tail $period';
+  }
+
+  String _tr(BuildContext context, {required String ru, required String en}) {
+    final code = Localizations.localeOf(context).languageCode.toLowerCase();
+    return code == 'ru' ? ru : en;
   }
 
   @override
@@ -22,26 +43,42 @@ class SummaryCard extends StatelessWidget {
     final l10n = context.l10n;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
+    final profileState = context.watch<ProfileCubit>().state;
+    int targetSys = 120;
+    int targetDia = 80;
+    if (profileState is ProfileLoaded) {
+      targetSys = profileState.profile.targetSystolic;
+      targetDia = profileState.profile.targetDiastolic;
+    }
+
     final colors = context.appColors;
     final space = context.appSpace;
     final radii = context.appRadii;
     final shadow = context.appShadow;
     final text = context.appText;
 
-    final width = MediaQuery.sizeOf(context).width - context.horizontalPadding * 2;
+    final width = MediaQuery.of(context).size.width - context.horizontalPadding * 2;
     final height = dp(context, space.s114); // фикс по макету
     final r = dp(context, radii.r10);
 
     final bg = isDark ? AppPalette.dark900 : AppPalette.blue600;
     final mainText = isDark ? AppPalette.dark400 : colors.textOnBrand;
-    final checkColor = isDark ? AppPalette.dark600 : AppPalette.blue500;
+    final dotColor = record == null
+        ? (isDark ? AppPalette.dark600 : AppPalette.blue500)
+        : BloodPressureColorUtils.getIndicatorColor(
+            context,
+            systolic: record!.systolic,
+            diastolic: record!.diastolic,
+            targetSystolic: targetSys,
+            targetDiastolic: targetDia,
+          );
 
-    // ✅ увеличили, но без убийства высоты
-    final checkSize = dp(context, space.s40);
+    final dotBase = dp(context, space.s10 + space.s4 + space.s1); // 15
+    final dotSize = dotBase * 1.5;
 
     final pressureStyle = TextStyle(
       fontFamily: text.family,
-      fontSize: sp(context, text.fs30),
+      fontSize: sp(context, text.fs30 + 4),
       fontWeight: text.w600,
       color: mainText,
       height: 1.0,
@@ -49,7 +86,7 @@ class SummaryCard extends StatelessWidget {
 
     final pulseStyle = TextStyle(
       fontFamily: text.family,
-      fontSize: sp(context, text.fs22),
+      fontSize: sp(context, text.fs22 + 4),
       fontWeight: text.w600,
       color: mainText,
       height: 1.0,
@@ -58,6 +95,14 @@ class SummaryCard extends StatelessWidget {
     final timeStyle = TextStyle(
       fontFamily: text.family,
       fontSize: sp(context, text.fs22),
+      fontWeight: text.w600,
+      color: mainText,
+      height: 1.0,
+    );
+
+    final trendStyle = TextStyle(
+      fontFamily: text.family,
+      fontSize: sp(context, text.fs14),
       fontWeight: text.w600,
       color: mainText,
       height: 1.0,
@@ -76,9 +121,9 @@ class SummaryCard extends StatelessWidget {
       // ✅ уменьшаем вертикальные паддинги
       padding: EdgeInsets.fromLTRB(
         dp(context, space.s16),
-        dp(context, space.s6),
+        dp(context, space.s6) * 1.5,
         dp(context, space.s16),
-        dp(context, space.s6),
+        dp(context, space.s6) * 1.5,
       ),
       child: (record == null)
           ? Center(
@@ -95,17 +140,31 @@ class SummaryCard extends StatelessWidget {
       )
           : Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // 1) Давление
-          Text(
-            '${record!.systolic}/${record!.diastolic}',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: pressureStyle,
+          // 1) Давление слева, время справа
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '${record!.systolic}/${record!.diastolic}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: pressureStyle,
+                ),
+              ),
+              SvgPicture.asset(
+                'assets/clock.svg',
+                width: dp(context, space.s20),
+                height: dp(context, space.s20),
+                colorFilter: ColorFilter.mode(clockColor, BlendMode.srcIn),
+              ),
+              SizedBox(width: dp(context, space.s6)),
+              Text(_time(context, record!.dateTime), style: timeStyle),
+            ],
           ),
-          SizedBox(height: dp(context, space.s1)),
 
-          // 2) Пульс + галочка
+          // 2) Пульс слева, индикатор справа
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
@@ -119,36 +178,34 @@ class SummaryCard extends StatelessWidget {
                 ),
               ),
               SizedBox(
-                width: checkSize,
-                height: checkSize,
+                width: dotSize,
+                height: dotSize,
                 child: Center(
-                  child: SvgPicture.asset(
-                    'assets/check.svg',
-                    width: checkSize,
-                    height: checkSize,
-                    colorFilter: ColorFilter.mode(checkColor, BlendMode.srcIn),
+                  child: Container(
+                    width: dotSize,
+                    height: dotSize,
+                    decoration: BoxDecoration(
+                      color: dotColor,
+                      shape: BoxShape.circle,
+                    ),
                   ),
                 ),
               ),
             ],
           ),
 
-          // ✅ “опустить” время визуально, но не раздувать высоту
-          Padding(
-            padding: EdgeInsets.only(top: dp(context, space.s4)),
-            child: Row(
-              children: [
-                SvgPicture.asset(
-                  'assets/clock.svg',
-                  width: dp(context, space.s20),
-                  height: dp(context, space.s20),
-                  colorFilter: ColorFilter.mode(clockColor, BlendMode.srcIn),
-                ),
-                SizedBox(width: dp(context, space.s6)),
-                Text(_time(context, record!.dateTime), style: timeStyle),
-              ],
-            ),
-          ),
+          // 3) Тренд (снизу, по центру)
+          if (trendDelta != null)
+            Center(
+              child: Text(
+                _trendLabel(context, trendDelta!),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: trendStyle,
+              ),
+            )
+          else
+            const SizedBox.shrink(),
         ],
       ),
     );

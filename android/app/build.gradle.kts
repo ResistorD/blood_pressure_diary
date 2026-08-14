@@ -13,10 +13,11 @@ android {
 
     defaultConfig {
         applicationId = "com.dmitry.blood_pressure_diary"
-        minSdk = flutter.minSdkVersion
+        minSdk = 24
         targetSdk = 35
-        versionCode = flutter.versionCode
-        versionName = flutter.versionName
+        versionCode = 1
+        versionName = "1.0.0"
+        setProperty("archivesBaseName", "PressureDiary-v${versionName}")
     }
 
     compileOptions {
@@ -59,7 +60,7 @@ afterEvaluate {
             flutterOut.mkdirs()
 
             // Без java.io.File — просто resolve()
-            val dst = flutterOut.resolve("app-release.apk")
+            val dst = flutterOut.resolve("PressureDiary.apk")
             apk.copyTo(dst, overwrite = true)
 
             println("✔ Mirrored APK to: ${dst.absolutePath}")

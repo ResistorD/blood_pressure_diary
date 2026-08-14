@@ -1,8 +1,14 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get_it/get_it.dart';
 import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:flutter/services.dart';
 
 import 'package:blood_pressure_diary/features/home/data/blood_pressure_model.dart';
 
@@ -79,6 +85,8 @@ class _AddRecordView extends StatefulWidget {
 class _AddRecordViewState extends State<_AddRecordView> {
   final TextEditingController _noteController = TextEditingController();
   final FocusNode _noteFocusNode = FocusNode();
+  Timer? _draftDebounce;
+  bool _draftLoaded = false;
 
   @override
   void initState() {
@@ -87,16 +95,322 @@ class _AddRecordViewState extends State<_AddRecordView> {
     // чтобы не было "цифровая под стандартной".
     _noteFocusNode.addListener(() {
       if (_noteFocusNode.hasFocus) {
+        _haptic();
         context.read<AddRecordBloc>().add(const FieldChanged(InputField.none));
       }
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadDraftIfNeeded();
     });
   }
 
   @override
   void dispose() {
+    _draftDebounce?.cancel();
     _noteController.dispose();
     _noteFocusNode.dispose();
     super.dispose();
+  }
+
+  void _haptic() {
+    HapticFeedback.selectionClick();
+  }
+
+  Future<File> _draftFile() async {
+    final dir = await getApplicationDocumentsDirectory();
+    return File('${dir.path}/add_record_draft.json');
+  }
+
+  bool _hasDraftContent(AddRecordState s) {
+    return s.systolic.trim().isNotEmpty ||
+        s.diastolic.trim().isNotEmpty ||
+        s.pulse.trim().isNotEmpty ||
+        s.note.trim().isNotEmpty ||
+        s.tags.isNotEmpty;
+  }
+
+  void _scheduleDraftSave(AddRecordState s) {
+    if (!_draftLoaded || widget.isEditing) return;
+    _draftDebounce?.cancel();
+    _draftDebounce = Timer(const Duration(milliseconds: 400), () {
+      _saveDraft(s);
+    });
+  }
+
+  Future<void> _saveDraft(AddRecordState s) async {
+    if (widget.isEditing) return;
+    final file = await _draftFile();
+    if (!_hasDraftContent(s)) {
+      if (await file.exists()) {
+        await file.delete();
+      }
+      return;
+    }
+
+    final payload = <String, dynamic>{
+      'systolic': s.systolic,
+      'diastolic': s.diastolic,
+      'pulse': s.pulse,
+      'note': s.note,
+      'selectedDateTime': s.selectedDateTime.toIso8601String(),
+      'tags': s.tags,
+    };
+    await file.writeAsString(jsonEncode(payload), flush: true);
+  }
+
+  Future<void> _clearDraft() async {
+    final file = await _draftFile();
+    if (await file.exists()) {
+      await file.delete();
+    }
+  }
+
+  Future<File> _commentTemplatesFile() async {
+    final dir = await getApplicationDocumentsDirectory();
+    return File('${dir.path}/comment_templates.json');
+  }
+
+  Future<List<String>> _loadCommentTemplates() async {
+    final file = await _commentTemplatesFile();
+    if (!await file.exists()) return <String>[];
+
+    try {
+      final raw = await file.readAsString();
+      final data = jsonDecode(raw);
+      if (data is! List) return <String>[];
+
+      return data
+          .map((e) => e.toString().trim())
+          .where((e) => e.isNotEmpty)
+          .toSet()
+          .toList();
+    } catch (_) {
+      return <String>[];
+    }
+  }
+
+  Future<void> _saveCommentTemplates(List<String> templates) async {
+    final file = await _commentTemplatesFile();
+    final clean = templates
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toSet()
+        .toList();
+
+    await file.writeAsString(jsonEncode(clean), flush: true);
+  }
+
+  Future<void> _openCommentTemplatesSheet(BuildContext context, String currentNote) async {
+    _haptic();
+
+    final templates = await _loadCommentTemplates();
+    if (!context.mounted) return;
+
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (sheetContext, setSheetState) {
+            final colors = context.appColors;
+            final space = context.appSpace;
+            final radii = context.appRadii;
+            final txt = context.appText;
+            final isDark = Theme.of(context).brightness == Brightness.dark;
+
+            final note = currentNote.trim();
+            final canAdd = note.isNotEmpty && !templates.contains(note);
+
+            final bg = isDark ? AppPalette.dark800 : colors.surface;
+            final itemBg = isDark ? AppPalette.dark700 : colors.background;
+            final titleStyle = TextStyle(
+              fontFamily: txt.family,
+              fontSize: sp(context, txt.fs18),
+              fontWeight: txt.w700,
+              color: colors.textPrimary,
+              height: 1.0,
+            );
+            final itemStyle = TextStyle(
+              fontFamily: txt.family,
+              fontSize: sp(context, txt.fs16),
+              fontWeight: txt.w500,
+              color: colors.textPrimary,
+              height: 1.0,
+            );
+            final hintStyle = TextStyle(
+              fontFamily: txt.family,
+              fontSize: sp(context, txt.fs14),
+              fontWeight: txt.w400,
+              color: isDark ? AppPalette.dark350 : AppPalette.grey500,
+              height: 1.2,
+            );
+
+            return SafeArea(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: bg,
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(dp(context, radii.r10)),
+                    topRight: Radius.circular(dp(context, radii.r10)),
+                  ),
+                ),
+                padding: EdgeInsets.fromLTRB(
+                  dp(context, space.s16),
+                  dp(context, space.s16),
+                  dp(context, space.s16),
+                  dp(context, space.s16),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      _tr(context, ru: 'Шаблоны комментариев', en: 'Comment templates'),
+                      style: titleStyle,
+                    ),
+                    SizedBox(height: dp(context, space.s12)),
+                    if (canAdd) ...[
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () async {
+                          templates.add(note);
+                          await _saveCommentTemplates(templates);
+                          setSheetState(() {});
+                        },
+                        child: Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: dp(context, space.s12),
+                            vertical: dp(context, space.s12),
+                          ),
+                          decoration: BoxDecoration(
+                            color: itemBg,
+                            borderRadius: BorderRadius.circular(dp(context, radii.r10)),
+                          ),
+                          child: Text(
+                            _tr(context, ru: '+ Добавить текущий комментарий', en: '+ Add current comment'),
+                            style: itemStyle,
+                          ),
+                        ),
+                      ),
+                      SizedBox(height: dp(context, space.s12)),
+                    ],
+                    if (templates.isEmpty)
+                      Text(
+                        _tr(
+                          context,
+                          ru: 'Шаблонов пока нет. Введите комментарий и добавьте его здесь.',
+                          en: 'No templates yet. Enter a comment and add it here.',
+                        ),
+                        style: hintStyle,
+                      )
+                    else
+                      Flexible(
+                        child: ListView.separated(
+                          shrinkWrap: true,
+                          itemCount: templates.length,
+                          separatorBuilder: (_, __) => SizedBox(height: dp(context, space.s8)),
+                          itemBuilder: (_, i) {
+                            final template = templates[i];
+                            return Container(
+                              decoration: BoxDecoration(
+                                color: itemBg,
+                                borderRadius: BorderRadius.circular(dp(context, radii.r10)),
+                              ),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: GestureDetector(
+                                      behavior: HitTestBehavior.opaque,
+                                      onTap: () => Navigator.of(sheetContext).pop(template),
+                                      child: Padding(
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: dp(context, space.s12),
+                                          vertical: dp(context, space.s12),
+                                        ),
+                                        child: Text(
+                                          template,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: itemStyle,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  IconButton(
+                                    icon: Icon(
+                                      Icons.close,
+                                      size: dp(context, space.s20),
+                                      color: isDark ? AppPalette.dark350 : AppPalette.grey500,
+                                    ),
+                                    onPressed: () async {
+                                      templates.removeAt(i);
+                                      await _saveCommentTemplates(templates);
+                                      setSheetState(() {});
+                                    },
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (selected == null || !context.mounted) return;
+    context.read<AddRecordBloc>().add(NoteChanged(selected));
+  }
+
+  Future<void> _loadDraftIfNeeded() async {
+    if (widget.isEditing) {
+      _draftLoaded = true;
+      return;
+    }
+
+    try {
+      final file = await _draftFile();
+      if (!await file.exists()) {
+        _draftLoaded = true;
+        return;
+      }
+      final raw = await file.readAsString();
+      final data = jsonDecode(raw);
+      if (data is! Map) {
+        await file.delete();
+        _draftLoaded = true;
+        return;
+      }
+      final systolic = (data['systolic'] ?? '').toString();
+      final diastolic = (data['diastolic'] ?? '').toString();
+      final pulse = (data['pulse'] ?? '').toString();
+      final note = (data['note'] ?? '').toString();
+      final dtRaw = (data['selectedDateTime'] ?? '').toString();
+      final tagsRaw = data['tags'];
+
+      final dt = DateTime.tryParse(dtRaw) ?? DateTime.now();
+      final tags = tagsRaw is List ? tagsRaw.map((e) => e.toString()).toList() : <String>[];
+
+      if (!mounted) return;
+      context.read<AddRecordBloc>().add(DraftLoaded(
+        systolic: systolic,
+        diastolic: diastolic,
+        pulse: pulse,
+        note: note,
+        selectedDateTime: dt,
+        tags: tags,
+      ));
+    } catch (_) {
+      // игнорируем ошибки чтения черновика
+    } finally {
+      _draftLoaded = true;
+    }
   }
 
   String? _validationHint(AddRecordState s, bool isRu) {
@@ -230,8 +544,6 @@ class _AddRecordViewState extends State<_AddRecordView> {
 
     final gap20 = dp(context, space.s20);
     final gap16 = dp(context, space.s16);
-    final gap12 = dp(context, space.s12);
-    final gap10 = dp(context, space.s10);
 
     final headerBg = isDark ? AppPalette.dark800 : AppPalette.blue700;
     final surface = isDark ? AppPalette.dark700 : colors.surface;
@@ -249,7 +561,7 @@ class _AddRecordViewState extends State<_AddRecordView> {
     final titleStyle = TextStyle(
       fontFamily: txt.family,
       fontSize: sp(context, txt.fs24),
-      fontWeight: txt.w700,
+      fontWeight: txt.w600,
       color: colors.textOnBrand,
       height: 1.0,
     );
@@ -298,8 +610,15 @@ class _AddRecordViewState extends State<_AddRecordView> {
     final focusBorderW = dp(context, space.s1);
 
     return BlocListener<AddRecordBloc, AddRecordState>(
-      listenWhen: (prev, curr) => curr.isSaved,
-      listener: (context, state) => Navigator.pop(context),
+      listenWhen: (prev, curr) => prev != curr,
+      listener: (context, state) {
+        if (state.isSaved) {
+          _clearDraft();
+          Navigator.pop(context);
+          return;
+        }
+        _scheduleDraftSave(state);
+      },
       child: Scaffold(
         backgroundColor: colors.background,
         body: BlocBuilder<AddRecordBloc, AddRecordState>(
@@ -320,33 +639,37 @@ class _AddRecordViewState extends State<_AddRecordView> {
             return Column(
               children: [
                 Container(
-                  height: headerH + topInset,
+                  height: headerH,
                   width: double.infinity,
                   color: headerBg,
                   padding: EdgeInsets.only(
                     left: side,
                     right: side,
-                    top: topInset + gap12,
-                    bottom: gap12,
+                    top: topInset + dp(context, space.s20),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  child: Stack(
                     children: [
-                      SizedBox(height: gap10),
-                      Row(
-                        children: [
-                          _HeaderIconButton(icon: Icons.close, onTap: () => Navigator.of(context).pop()),
-                          const Spacer(),
-                          if (widget.isEditing)
-                            _HeaderIconButton(icon: Icons.delete_outline, onTap: () => _confirmDelete(context)),
-                        ],
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          _tr(context, ru: 'Новая запись', en: 'New record'),
+                          style: titleStyle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
-                      SizedBox(height: gap12),
-                      Text(
-                        _tr(context, ru: 'Новая запись', en: 'New record'),
-                        style: titleStyle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                      Align(
+                        alignment: Alignment.topRight,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _HeaderIconButton(icon: Icons.close, onTap: () => Navigator.of(context).pop()),
+                            if (widget.isEditing) ...[
+                              SizedBox(width: dp(context, space.s8)),
+                              _HeaderIconButton(icon: Icons.delete_outline, onTap: () => _confirmDelete(context)),
+                            ],
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -378,6 +701,7 @@ class _AddRecordViewState extends State<_AddRecordView> {
                                 focusBorderColor: focusBorderColor,
                                 focusBorderWidth: focusBorderW,
                                 onTap: () {
+                                  _haptic();
                                   FocusScope.of(context).unfocus();
                                   context.read<AddRecordBloc>().add(const FieldChanged(InputField.systolic));
                                 },
@@ -396,6 +720,7 @@ class _AddRecordViewState extends State<_AddRecordView> {
                                 focusBorderColor: focusBorderColor,
                                 focusBorderWidth: focusBorderW,
                                 onTap: () {
+                                  _haptic();
                                   FocusScope.of(context).unfocus();
                                   context.read<AddRecordBloc>().add(const FieldChanged(InputField.diastolic));
                                 },
@@ -414,6 +739,7 @@ class _AddRecordViewState extends State<_AddRecordView> {
                                 focusBorderColor: focusBorderColor,
                                 focusBorderWidth: focusBorderW,
                                 onTap: () {
+                                  _haptic();
                                   FocusScope.of(context).unfocus();
                                   context.read<AddRecordBloc>().add(const FieldChanged(InputField.pulse));
                                 },
@@ -436,7 +762,10 @@ class _AddRecordViewState extends State<_AddRecordView> {
                             textStyle: pillValueStyleRegular,
                             chevronColor: chevronColor,
                             shadow: shadows.card,
-                            onTap: () => _pickTime(context, dt),
+                            onTap: () {
+                              _haptic();
+                              _pickTime(context, dt);
+                            },
                           ),
                           span23: _ChevronPill(
                             height: pillH,
@@ -446,7 +775,10 @@ class _AddRecordViewState extends State<_AddRecordView> {
                             textStyle: pillValueStyleRegular,
                             chevronColor: chevronColor,
                             shadow: shadows.card,
-                            onTap: () => _pickDate(context, dt),
+                            onTap: () {
+                              _haptic();
+                              _pickDate(context, dt);
+                            },
                           ),
                         ),
 
@@ -475,9 +807,29 @@ class _AddRecordViewState extends State<_AddRecordView> {
                             textAlignVertical: TextAlignVertical.top,
                             onChanged: (v) => context.read<AddRecordBloc>().add(NoteChanged(v)),
                             style: commentStyle,
-                            decoration: InputDecoration.collapsed(
+                            decoration: InputDecoration(
+                              border: InputBorder.none,
+                              isCollapsed: true,
                               hintText: _tr(context, ru: 'Комментарий', en: 'Comment'),
                               hintStyle: commentHintStyle,
+                              suffixIcon: IconButton(
+                                tooltip: _tr(context, ru: 'Шаблоны', en: 'Templates'),
+                                padding: EdgeInsets.zero,
+                                constraints: BoxConstraints(
+                                  minWidth: dp(context, space.s32),
+                                  minHeight: dp(context, space.s32),
+                                ),
+                                icon: Icon(
+                                  Icons.content_paste,
+                                  size: dp(context, space.s20),
+                                  color: hintColor,
+                                ),
+                                onPressed: () {
+                                  FocusScope.of(context).unfocus();
+                                  context.read<AddRecordBloc>().add(const FieldChanged(InputField.none));
+                                  _openCommentTemplatesSheet(context, state.note);
+                                },
+                              ),
                             ),
                           ),
                         ),
@@ -489,7 +841,10 @@ class _AddRecordViewState extends State<_AddRecordView> {
                           hint: validationHint,
                           isExpanded: state.isTagsExpanded,
                           selectedCount: state.tags.length,
-                          onTap: () => context.read<AddRecordBloc>().add(TagsExpandedToggled()),
+                          onTap: () {
+                            _haptic();
+                            context.read<AddRecordBloc>().add(TagsExpandedToggled());
+                          },
                           textStyle: pillValueStyleRegular,
                         ),
 
@@ -515,7 +870,10 @@ class _AddRecordViewState extends State<_AddRecordView> {
                                       Text(tag.label(context), style: pillValueStyleRegular),
                                     ],
                                   ),
-                                  onSelected: (_) => context.read<AddRecordBloc>().add(TagToggled(tag.value)),
+                                  onSelected: (_) {
+                                    _haptic();
+                                    context.read<AddRecordBloc>().add(TagToggled(tag.value));
+                                  },
                                   backgroundColor: surface,
                                 ),
                             ],
@@ -532,7 +890,12 @@ class _AddRecordViewState extends State<_AddRecordView> {
                           span23: SizedBox(
                             height: pillH,
                             child: ElevatedButton(
-                              onPressed: state.isValid ? () => context.read<AddRecordBloc>().add(SaveSubmitted()) : null,
+                              onPressed: state.isValid
+                                  ? () {
+                                _haptic();
+                                context.read<AddRecordBloc>().add(SaveSubmitted());
+                              }
+                                  : null,
                               style: ElevatedButton.styleFrom(
                                 elevation: 0,
                                 backgroundColor: isDark ? AppPalette.dark800 : colors.brandStrong,
@@ -558,8 +921,14 @@ class _AddRecordViewState extends State<_AddRecordView> {
                           SizedBox(height: gap20),
                           CustomKeypad(
                             enabledKeys: state.enabledKeys,
-                            onKeyPressed: (v) => context.read<AddRecordBloc>().add(NumberPressed(v)),
-                            onDeletePressed: () => context.read<AddRecordBloc>().add(BackspacePressed()),
+                            onKeyPressed: (v) {
+                              _haptic();
+                              context.read<AddRecordBloc>().add(NumberPressed(v));
+                            },
+                            onDeletePressed: () {
+                              _haptic();
+                              context.read<AddRecordBloc>().add(BackspacePressed());
+                            },
                             horizontalPadding: 0,
                             gap: keypadGap,
                             cellHeight: keypadCellH,
@@ -610,7 +979,10 @@ class _HeaderIconButton extends StatelessWidget {
         padding: EdgeInsets.zero,
         constraints: const BoxConstraints(),
         icon: Icon(icon, color: colors.textOnBrand, size: size),
-        onPressed: onTap,
+        onPressed: () {
+          HapticFeedback.selectionClick();
+          onTap();
+        },
       ),
     );
   }
@@ -767,18 +1139,15 @@ class _TagsDisclosureRow extends StatelessWidget {
           children: [
             // ✅ Подсказка стоит ПЕРЕД "Теги+"
             if (hint != null) ...[
-              Flexible(
+              Expanded(
                 child: Text(
                   hint!,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.right,
-                  style: TextStyle(
-                    fontFamily: context.appText.family,
-                    fontSize: sp(context, context.appText.fs12),
+                  textAlign: TextAlign.left,
+                  style: textStyle.copyWith(
                     fontWeight: context.appText.w500,
                     color: colors.danger,
-                    height: 1.0,
                   ),
                 ),
               ),
@@ -797,4 +1166,3 @@ class _TagsDisclosureRow extends StatelessWidget {
     );
   }
 }
-

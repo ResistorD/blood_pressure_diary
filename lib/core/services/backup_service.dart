@@ -1,14 +1,16 @@
 import 'dart:convert';
 
 import 'package:blood_pressure_diary/core/database/isar_service.dart';
+import 'package:blood_pressure_diary/core/repositories/pressure_repository.dart';
 import 'package:blood_pressure_diary/core/database/models/user_profile.dart';
 import 'package:blood_pressure_diary/features/home/data/blood_pressure_model.dart';
 import 'package:blood_pressure_diary/features/settings/data/models/settings_model.dart';
 
 class BackupService {
   final IsarService _isar;
+  final PressureRepository _pressureRepository;
 
-  BackupService(this._isar);
+  BackupService(this._isar, this._pressureRepository);
 
   static const int backupVersion = 1;
 
@@ -69,6 +71,7 @@ class BackupService {
       profile: profile,
       records: records,
     );
+    _pressureRepository.invalidateCache();
   }
 
   // -------------------- MAPPERS --------------------
@@ -86,7 +89,7 @@ class BackupService {
   AppSettings _settingsFromMap(Map<String, dynamic> m) {
     final themeStr = (m['themeMode'] ?? 'light').toString();
     final theme = AppThemeMode.values.firstWhere(
-          (e) => e.name == themeStr,
+      (e) => e.name == themeStr,
       orElse: () => AppThemeMode.light,
     );
 
@@ -121,8 +124,12 @@ class BackupService {
       age: (m['age'] is num) ? (m['age'] as num).toInt() : 0,
       gender: (m['gender'] ?? 'male').toString(),
       weight: (m['weight'] is num) ? (m['weight'] as num).toDouble() : 0.0,
-      targetSystolic: (m['targetSystolic'] is num) ? (m['targetSystolic'] as num).toInt() : 120,
-      targetDiastolic: (m['targetDiastolic'] is num) ? (m['targetDiastolic'] as num).toInt() : 80,
+      targetSystolic: (m['targetSystolic'] is num)
+          ? (m['targetSystolic'] as num).toInt()
+          : 120,
+      targetDiastolic: (m['targetDiastolic'] is num)
+          ? (m['targetDiastolic'] as num).toInt()
+          : 80,
     )..id = 0;
   }
 
@@ -133,7 +140,7 @@ class BackupService {
     'pulse': r.pulse,
     'note': r.note,
     'emotion': r.emotion,
-    'tags': r.tags,  // ✅ Добавлено сохранение тегов
+    'tags': r.tags, // ✅ Добавлено сохранение тегов
   };
 
   BloodPressureRecord _recordFromMap(Map<String, dynamic> m) {
@@ -149,7 +156,9 @@ class BackupService {
     final r = BloodPressureRecord()
       ..dateTime = dt
       ..systolic = (m['systolic'] is num) ? (m['systolic'] as num).toInt() : 0
-      ..diastolic = (m['diastolic'] is num) ? (m['diastolic'] as num).toInt() : 0
+      ..diastolic = (m['diastolic'] is num)
+          ? (m['diastolic'] as num).toInt()
+          : 0
       ..pulse = (m['pulse'] is num) ? (m['pulse'] as num).toInt() : 0
       ..note = m['note']?.toString()
       ..emotion = m['emotion']?.toString()

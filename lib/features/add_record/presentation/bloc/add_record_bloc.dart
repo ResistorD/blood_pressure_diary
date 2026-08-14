@@ -13,6 +13,7 @@ class AddRecordBloc extends Bloc<AddRecordEvent, AddRecordState> {
 
   AddRecordBloc(this._repository) : super(AddRecordState()) {
     on<EditStarted>(_onEditStarted);
+    on<DraftLoaded>(_onDraftLoaded);
     on<NumberPressed>(_onNumberPressed);
     on<BackspacePressed>(_onBackspacePressed);
     on<FieldChanged>(_onFieldChanged);
@@ -127,6 +128,21 @@ class AddRecordBloc extends Bloc<AddRecordEvent, AddRecordState> {
       activeField: InputField.systolic,
       tags: List<String>.from(event.record.tags),
       isTagsExpanded: event.record.tags.isNotEmpty,
+    );
+    emit(ns);
+    _updateEnabledKeys(emit, ns);
+  }
+
+  void _onDraftLoaded(DraftLoaded event, Emitter<AddRecordState> emit) {
+    final ns = state.copyWith(
+      systolic: event.systolic,
+      diastolic: event.diastolic,
+      pulse: event.pulse,
+      note: event.note,
+      selectedDateTime: event.selectedDateTime,
+      activeField: InputField.systolic,
+      tags: List<String>.from(event.tags),
+      isTagsExpanded: event.tags.isNotEmpty,
     );
     emit(ns);
     _updateEnabledKeys(emit, ns);

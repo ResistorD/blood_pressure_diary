@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 @immutable
 class _C {
   static const Color white = Color(0xFFFFFFFF);
-  static const Color black = Color(0xFF000000);
 }
 
 class AppPalette {
@@ -28,7 +27,9 @@ class AppPalette {
   // Dark greys
   static const Color dark900 = Color(0xFF2D2D2D); // rgb(45,45,45)
   static const Color dark800 = Color(0xFF3C3C3C); // rgb(60,60,60)
-  static const Color dark805 = Color(0xFF3D3D3D); // rgb(61,61,61) (для linear кольца)
+  static const Color dark805 = Color(
+    0xFF3D3D3D,
+  ); // rgb(61,61,61) (для linear кольца)
   static const Color dark700 = Color(0xFF4C4C4C); // rgb(76,76,76)
   static const Color dark600 = Color(0xFF747474); // rgb(116,116,116)
   static const Color dark400 = Color(0xFFCCCCCC); // rgb(204,204,204)
@@ -188,7 +189,8 @@ class AppColors extends ThemeExtension<AppColors> {
       dangerSoft: dangerSoft ?? this.dangerSoft,
       shadow: shadow ?? this.shadow,
       profileAccentBrown: profileAccentBrown ?? this.profileAccentBrown,
-      profileAccentBrownDark: profileAccentBrownDark ?? this.profileAccentBrownDark,
+      profileAccentBrownDark:
+          profileAccentBrownDark ?? this.profileAccentBrownDark,
     );
   }
 
@@ -216,7 +218,10 @@ class AppColors extends ThemeExtension<AppColors> {
       dangerSoft: l(dangerSoft, other.dangerSoft),
       shadow: l(shadow, other.shadow),
       profileAccentBrown: l(profileAccentBrown, other.profileAccentBrown),
-      profileAccentBrownDark: l(profileAccentBrownDark, other.profileAccentBrownDark),
+      profileAccentBrownDark: l(
+        profileAccentBrownDark,
+        other.profileAccentBrownDark,
+      ),
     );
   }
 }
@@ -465,10 +470,7 @@ class AppShadows extends ThemeExtension<AppShadows> {
   final BoxShadow card; // 0 2 4 rgba(0,0,0,0.1)
   final BoxShadow strong; // rgba(0,0,0,0.25)
 
-  const AppShadows({
-    required this.card,
-    required this.strong,
-  });
+  const AppShadows({required this.card, required this.strong});
 
   static const base = AppShadows(
     card: BoxShadow(
@@ -485,10 +487,7 @@ class AppShadows extends ThemeExtension<AppShadows> {
 
   @override
   AppShadows copyWith({BoxShadow? card, BoxShadow? strong}) {
-    return AppShadows(
-      card: card ?? this.card,
-      strong: strong ?? this.strong,
-    );
+    return AppShadows(card: card ?? this.card, strong: strong ?? this.strong);
   }
 
   @override
@@ -598,15 +597,11 @@ class AppTypography extends ThemeExtension<AppTypography> {
 // AppTheme (ThemeData builder)
 
 class AppTheme {
-  static ThemeData get lightTheme => _build(
-    brightness: Brightness.light,
-    colors: AppColors.light,
-  );
+  static ThemeData get lightTheme =>
+      _build(brightness: Brightness.light, colors: AppColors.light);
 
-  static ThemeData get darkTheme => _build(
-    brightness: Brightness.dark,
-    colors: AppColors.dark,
-  );
+  static ThemeData get darkTheme =>
+      _build(brightness: Brightness.dark, colors: AppColors.dark);
 
   static ThemeData _build({
     required Brightness brightness,
@@ -749,11 +744,16 @@ class AppTheme {
 // Context accessors (это и есть appColors/appSpace/...)
 
 extension AppThemeX on BuildContext {
-  AppColors get appColors => Theme.of(this).extension<AppColors>() ?? AppColors.light;
-  AppTypography get appText => Theme.of(this).extension<AppTypography>() ?? AppTypography.base;
-  AppSpacing get appSpace => Theme.of(this).extension<AppSpacing>() ?? AppSpacing.base;
-  AppRadii get appRadii => Theme.of(this).extension<AppRadii>() ?? AppRadii.base;
-  AppShadows get appShadow => Theme.of(this).extension<AppShadows>() ?? AppShadows.base;
+  AppColors get appColors =>
+      Theme.of(this).extension<AppColors>() ?? AppColors.light;
+  AppTypography get appText =>
+      Theme.of(this).extension<AppTypography>() ?? AppTypography.base;
+  AppSpacing get appSpace =>
+      Theme.of(this).extension<AppSpacing>() ?? AppSpacing.base;
+  AppRadii get appRadii =>
+      Theme.of(this).extension<AppRadii>() ?? AppRadii.base;
+  AppShadows get appShadow =>
+      Theme.of(this).extension<AppShadows>() ?? AppShadows.base;
 }
 
 // -----------------------------------------------------------------------------
